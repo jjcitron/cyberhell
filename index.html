@@ -1425,7 +1425,13 @@ class CyberDoomEngine {
     });
 
     // Set Spawn
-    this.camera.position.set(data.playerSpawn.pos[0], data.playerSpawn.pos[1], data.playerSpawn.pos[2]);
+    const spawnFloor = this.getFloorAt(data.playerSpawn.pos[0], data.playerSpawn.pos[2]);
+    const spawnY = spawnFloor.inside ? spawnFloor.floorY + this.player.height : data.playerSpawn.pos[1];
+    this.camera.position.set(data.playerSpawn.pos[0], spawnY, data.playerSpawn.pos[2]);
+    // A player may only move across known floor rectangles.  Keeping the last
+    // grounded position gives us a deterministic recovery point if malformed
+    // map data ever presents a gap instead of allowing a fall into the void.
+    this.player.safePosition = new THREE.Vector3(this.camera.position.x, spawnY, this.camera.position.z);
     this.yaw = data.playerSpawn.rot;
     this.pitch = 0;
     this.camera.rotation.set(0, 0, 0);
@@ -2250,19 +2256,49 @@ class CyberDoomEngine {
     const newZ = this.camera.position.z + this.player.velocity.z * delta;
     const newY = this.camera.position.y + this.player.velocity.y * delta;
 
-    // Cylinder Wall Collision Resolution
+    // Cylinder Wall Collision Resolution.  Resolve in short steps so a slow
+    // frame cannot carry the player through a thin wall or over a floor seam.
     const pRadius = 0.55;
-    const resolved = this.resolveWallCollisions(newX, newZ, pRadius);
+    const horizontalDistance = Math.hypot(newX - this.camera.position.x, newZ - this.camera.position.z);
+    const collisionSteps = Math.max(1, Math.ceil(horizontalDistance / (pRadius * 0.5)));
+    let resolved = { x: this.camera.position.x, z: this.camera.position.z };
+    let leftKnownFloor = false;
+    for (let step = 1; step <= collisionSteps; step++) {
+      const t = step / collisionSteps;
+      const candidateX = THREE.MathUtils.lerp(this.camera.position.x, newX, t);
+      const candidateZ = THREE.MathUtils.lerp(this.camera.position.z, newZ, t);
+      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius);
+      if (!this.getFloorAt(candidate.x, candidate.z).inside) {
+        leftKnownFloor = true;
+        break;
+      }
+      resolved = candidate;
+    }
+
+    if (leftKnownFloor) {
+      this.player.velocity.x = 0;
+      this.player.velocity.z = 0;
+    }
 
     this.camera.position.x = resolved.x;
     this.camera.position.z = resolved.z;
 
     // Sector Floor Clamping
-    const floorY = this.getSectorFloor(this.camera.position.x, this.camera.position.z);
+    const floor = this.getFloorAt(this.camera.position.x, this.camera.position.z);
+    if (!floor.inside) {
+      // This is a last-resort guard for externally loaded maps: never permit
+      // the camera to remain outside a physical floor.
+      this.camera.position.copy(this.player.safePosition);
+      this.player.velocity.set(0, 0, 0);
+      this.player.onGround = true;
+      return;
+    }
+    const floorY = floor.floorY;
     if (newY <= floorY + this.player.height) {
       this.camera.position.y = floorY + this.player.height;
       this.player.velocity.y = 0;
       this.player.onGround = true;
+      this.player.safePosition.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     } else {
       this.camera.position.y = newY;
       this.player.onGround = false;
@@ -2354,12 +2390,14 @@ class CyberDoomEngine {
     return { x: resX, z: resZ };
   }
 
-  getSectorFloor(x, z) {
+  getFloorAt(x, z) {
     if (!this.levelData || !this.levelData.sectors || this.levelData.sectors.length === 0) {
-      return 0.0;
+      return { inside: false, floorY: 0.0 };
     }
 
-    // 1. Check exact floor rect bounds
+    // Floor rectangles are the collision authority.  Do not use the nearest
+    // rectangle as a floor: that made a visual gap traversable and let the
+    // camera drift beyond the rendered level.
     for (let i = 0; i < this.levelData.sectors.length; i++) {
       const sec = this.levelData.sectors[i];
       const rects = sec.resolvedFloors || sec.floors;
@@ -2368,51 +2406,18 @@ class CyberDoomEngine {
           const halfW = r.width / 2;
           const halfD = r.depth / 2;
           if (x >= r.x - halfW && x <= r.x + halfW && z >= r.z - halfD && z <= r.z + halfD) {
-            return sec.floorY;
+            return { inside: true, floorY: sec.floorY };
           }
         }
       } else if (sec.x !== undefined && sec.width !== undefined) {
         const halfW = sec.width / 2;
         const halfD = sec.depth / 2;
         if (x >= sec.x - halfW && x <= sec.x + halfW && z >= sec.z - halfD && z <= sec.z + halfD) {
-          return sec.floorY;
+          return { inside: true, floorY: sec.floorY };
         }
       }
     }
-
-    // 2. Point-to-box distance for nearest sector
-    let bestFloor = 0.0;
-    let minRectDist = Infinity;
-
-    for (let i = 0; i < this.levelData.sectors.length; i++) {
-      const sec = this.levelData.sectors[i];
-      const rects = sec.resolvedFloors || sec.floors;
-      if (rects) {
-        for (const r of rects) {
-          const halfW = r.width / 2;
-          const halfD = r.depth / 2;
-          const dx = Math.max(0, Math.abs(x - r.x) - halfW);
-          const dz = Math.max(0, Math.abs(z - r.z) - halfD);
-          const rectDist = Math.hypot(dx, dz);
-          if (rectDist < minRectDist) {
-            minRectDist = rectDist;
-            bestFloor = sec.floorY;
-          }
-        }
-      } else if (sec.x !== undefined && sec.width !== undefined) {
-        const halfW = sec.width / 2;
-        const halfD = sec.depth / 2;
-        const dx = Math.max(0, Math.abs(x - sec.x) - halfW);
-        const dz = Math.max(0, Math.abs(z - sec.z) - halfD);
-        const rectDist = Math.hypot(dx, dz);
-        if (rectDist < minRectDist) {
-          minRectDist = rectDist;
-          bestFloor = sec.floorY;
-        }
-      }
-    }
-
-    return bestFloor;
+    return { inside: false, floorY: 0.0 };
   }
 
   loadLevelFromFile(filePath, notify = true) {
