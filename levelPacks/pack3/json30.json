@@ -4267,8 +4267,11 @@
       "bottomY": 0.4,
       "topY": 3.6,
       "h": 8.0,
-      "tex": "city_ruins",
-      "solid": true
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_exit_game",
+      "isExit": true
     },
     {
       "p1": [
@@ -6610,7 +6613,8 @@
       "tex": "switch_off",
       "solid": true,
       "isSwitch": true,
-      "switchId": "sw_495"
+      "switchId": "sw_exit_game",
+      "isExit": true
     },
     {
       "p1": [

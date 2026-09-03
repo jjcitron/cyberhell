@@ -122,7 +122,12 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 
                 is_single = (s2_idx == 65535)
                 is_door = special in [1, 26, 27, 28, 31, 32, 117, 118]
-                is_switch = special in [9, 11, 14, 18, 42, 63, 103]
+                # Exit specials: 11/51 are switch exits, 52/124 walkover exits.
+                # These used to fall into the generic switch bucket and get a
+                # sw_<tag> id the engine ignores, which is why no converted
+                # level could be finished.  They must carry sw_exit_game.
+                is_exit = special in [11, 51, 52, 124]
+                is_switch = is_exit or special in [9, 14, 18, 42, 63, 103]
 
                 if s1_idx >= len(sidedefs): continue
                 sec1_id = sidedefs[s1_idx][5]
@@ -174,7 +179,9 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     w['closed'] = True
                 if is_switch:
                     w['isSwitch'] = True
-                    w['switchId'] = f'sw_{tag or idx}'
+                    w['switchId'] = 'sw_exit_game' if is_exit else f'sw_{tag or idx}'
+                    if is_exit:
+                        w['isExit'] = True
 
                 walls_json.append(w)
 
@@ -292,6 +299,10 @@ def convert_all():
         json.dump(master_manifest, f, indent=2)
 
     print(f"\nALL WADs CONVERTED SUCCESSFUL! Master manifest saved to {master_path}")
+    print("Tagging exit linedefs here is necessary but not sufficient: sectors are")
+    print("approximated as bounding boxes, so an exit can end up walled off.")
+    print("Run  python patch_exit_switches.py  then  node tests/check-exits.js")
+    print("to place a reachable exit on every level and prove it.")
 
 if __name__ == '__main__':
     convert_all()

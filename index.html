@@ -741,7 +741,10 @@ const MAP01_DATA = {
       id: "start_room", floorY: 0, ceilY: 6, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.85,
       floors: [
         { x: 0, z: 7, width: 16, depth: 10 },
-        { x: -11, z: 0, width: 6, depth: 4 },
+        // West doorway. It used to sit at z -2..2, entirely south of the start
+        // room floor, so the courtyard and its chainsaw were sealed off. It now
+        // runs at z 3..7 and overlaps both neighbours by a unit.
+        { x: -11, z: 5, width: 8, depth: 4 },
         { x: 0, z: 1, width: 6, depth: 2 }
       ]
     },
@@ -756,7 +759,9 @@ const MAP01_DATA = {
     {
       id: "corridor_main", floorY: 0, ceilY: 5.5, floorTex: "tech_floor", ceilTex: "tech_panel", light: 0.75,
       floors: [
-        { x: 0, z: -9, width: 6, depth: 22 },
+        // Runs a unit past z -20 so the corridor and the north room share
+        // floor across the threshold instead of meeting on a hairline.
+        { x: 0, z: -9.5, width: 6, depth: 23 },
         { x: 7.5, z: -8, width: 9, depth: 8 }
       ]
     },
@@ -801,7 +806,9 @@ const MAP01_DATA = {
     {
       id: "exit_room", floorY: -1.5, ceilY: 5, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.7,
       floors: [
-        { x: 33, z: -29, width: 6, depth: 6 }
+        // Overlaps the south room by a unit at z = -26 so the doorway is a
+        // continuous floor rather than two rectangles meeting on a hairline.
+        { x: 33, z: -28.5, width: 6, depth: 7 }
       ]
     }
   ],
@@ -810,11 +817,13 @@ const MAP01_DATA = {
   walls: [
     // --- START ROOM BOUNDARIES ---
     { p1: [-8, 12], p2: [8, 12], h: 6, tex: "cyber_rust", solid: true },
-    { p1: [-8, 12], p2: [-8, 2], h: 6, tex: "cyber_rust", solid: true },
+    // West wall, split around the courtyard doorway at z 3..7.
+    { p1: [-8, 12], p2: [-8, 7], h: 6, tex: "cyber_rust", solid: true },
+    { p1: [-8, 3], p2: [-8, 2], h: 6, tex: "cyber_rust", solid: true },
     { p1: [8, 12], p2: [8, 2], h: 6, tex: "cyber_rust", solid: true },
     // West Doorway leading to West Courtyard
-    { p1: [-8, 2], p2: [-14, 2], h: 6, tex: "cyber_rust", solid: true },
-    { p1: [-8, -2], p2: [-14, -2], h: 6, tex: "cyber_rust", solid: true },
+    { p1: [-8, 7], p2: [-14, 7], h: 6, tex: "cyber_rust", solid: true },
+    { p1: [-8, 3], p2: [-14, 3], h: 6, tex: "cyber_rust", solid: true },
     // Start room opening into hallway (North)
     { p1: [-8, 2], p2: [-3, 2], h: 6, tex: "tech_wall", solid: true },
     { p1: [3, 2], p2: [8, 2], h: 6, tex: "tech_wall", solid: true },
@@ -823,8 +832,9 @@ const MAP01_DATA = {
     { p1: [-14, 10], p2: [-26, 10], h: 8, tex: "city_ruins", solid: true },
     { p1: [-26, 10], p2: [-26, -10], h: 8, tex: "city_ruins", solid: true },
     { p1: [-26, -10], p2: [-14, -10], h: 8, tex: "city_ruins", solid: true },
-    { p1: [-14, -10], p2: [-14, -2], h: 8, tex: "city_ruins", solid: true },
-    { p1: [-14, 2], p2: [-14, 10], h: 8, tex: "city_ruins", solid: true },
+    // East face, split around the same doorway.
+    { p1: [-14, -10], p2: [-14, 3], h: 8, tex: "city_ruins", solid: true },
+    { p1: [-14, 7], p2: [-14, 10], h: 8, tex: "city_ruins", solid: true },
 
     // --- MAIN CORRIDOR (T-Junction) ---
     { p1: [-3, 2], p2: [-3, -12], h: 5.5, tex: "tech_wall", solid: true },
@@ -840,9 +850,15 @@ const MAP01_DATA = {
     { p1: [42, -10], p2: [42, -16], h: 0.5, bottomY: -2.0, tex: "cyber_rust", solid: false },
 
     // --- NORTH TECH ROOM (Computer Room) ---
-    { p1: [-14, -20], p2: [14, -20], h: 7, tex: "tech_wall", solid: true },
+    // South face, split around the corridor mouth at x -3..3. It used to run
+    // the full span and seal the computer room, its imp, its armour and both
+    // secret switches away from the rest of the level.
+    { p1: [-14, -20], p2: [-3, -20], h: 7, tex: "tech_wall", solid: true },
+    { p1: [3, -20], p2: [14, -20], h: 7, tex: "tech_wall", solid: true },
     { p1: [-14, -20], p2: [-14, -38], h: 7, tex: "mainframe", solid: true },
-    { p1: [14, -20], p2: [14, -38], h: 7, tex: "mainframe", solid: true },
+    // East face, split around door_north_secret at z -30..-34.
+    { p1: [14, -20], p2: [14, -30], h: 7, tex: "mainframe", solid: true },
+    { p1: [14, -34], p2: [14, -38], h: 7, tex: "mainframe", solid: true },
     { p1: [-14, -38], p2: [14, -38], h: 7, tex: "tech_wall", solid: true },
     // 2 Giant Central Server Pillars with Switches on backs
     { p1: [-7, -26], p2: [-3, -26], h: 6.5, tex: "mainframe", solid: true },
@@ -868,9 +884,14 @@ const MAP01_DATA = {
     { p1: [12, -4], p2: [22, 2], h: 8, tex: "cyber_rust", solid: true },
     { p1: [22, 2], p2: [36, 2], h: 8, tex: "cyber_rust", solid: true },
     { p1: [36, 2], p2: [42, -6], h: 8, tex: "cyber_rust", solid: true },
-    { p1: [42, -6], p2: [42, -20], h: 8, tex: "cyber_rust", solid: true },
-    { p1: [42, -20], p2: [32, -26], h: 8, tex: "cyber_rust", solid: true },
-    { p1: [32, -26], p2: [18, -26], h: 8, tex: "cyber_rust", solid: true },
+    // The east and south perimeter runs are split around their door openings.
+    // They used to run straight through door_east_yard and door_exit, so both
+    // doors opened into solid wall and the wasteland and the exit chamber were
+    // unreachable from anywhere the player could stand.
+    { p1: [42, -6], p2: [42, -10], h: 8, tex: "cyber_rust", solid: true },
+    { p1: [42, -16], p2: [42, -20], h: 8, tex: "cyber_rust", solid: true },
+    { p1: [42, -20], p2: [36, -26], h: 8, tex: "cyber_rust", solid: true },
+    { p1: [30, -26], p2: [18, -26], h: 8, tex: "cyber_rust", solid: true },
     { p1: [18, -26], p2: [12, -12], h: 8, tex: "cyber_rust", solid: true },
 
     // South Pillars & Elevation Bridges
@@ -1747,6 +1768,13 @@ class CyberDoomEngine {
       this.buildWall(w);
     });
 
+    // The extraction switch is what ends the level, so the automap has to be
+    // able to point at it.  Every level carries exactly one marked exit; if a
+    // map ever ships without one the player is told rather than left hunting.
+    this.exitWalls = this.walls.filter(w => w.isSwitch && w.switchId === 'sw_exit_game');
+    this.briefedExit = false;
+    this.updateAutomapHeader(data);
+
     // Spawn Entities
     data.entities.forEach(ent => {
       this.spawnEntity(ent);
@@ -2367,6 +2395,14 @@ class CyberDoomEngine {
     // the MIDI wiring PR; until then the SoundEngine ambient is the only voice.
     if (window.cyberMidi && !window.cyberMidi.isPlaying) window.cyberMidi.play();
     this.isRunning = true;
+    // Point the player at the way out once per level. Without this the exit is
+    // reachable but still has to be stumbled on.
+    if (!this.briefedExit) {
+      this.briefedExit = true;
+      this.showHudMessage(this.exitWalls && this.exitWalls.length
+        ? "OBJECTIVE: REACH EXTRACTION - MARKED ON AUTOMAP [TAB]"
+        : "OBJECTIVE: LOCATE EXTRACTION");
+    }
   }
 
   pauseRun(title, subtitle) {
@@ -3433,20 +3469,59 @@ class CyberDoomEngine {
     this.mapCtx = this.mapCanvas.getContext('2d');
   }
 
+  // Runs from loadLevel, which fires before setupAutomap on the first level,
+  // so look the header up directly rather than through a cached handle.
+  updateAutomapHeader(data) {
+    const header = document.querySelector('.automap-header');
+    if (!header) return;
+    const name = (data && data.name) ? data.name.toUpperCase() : 'UNKNOWN SECTOR';
+    const tail = this.exitWalls && this.exitWalls.length
+      ? 'EXTRACTION MARKED' : 'NO EXTRACTION ON FILE';
+    header.innerText = `${name} // CYBER-RADAR // ${tail}`;
+  }
+
+  exitCentre() {
+    if (!this.exitWalls || !this.exitWalls.length) return null;
+    const w = this.exitWalls[0];
+    return { x: (w.p1.x + w.p2.x) / 2, z: (w.p1.z + w.p2.z) / 2 };
+  }
+
   toggleAutomap() {
     if (this.automapModal.style.display === 'flex') {
       this.automapModal.style.display = 'none';
+      this.automapOpen = false;
       if (this.isRunning) this.canvas.requestPointerLock();
     } else {
       this.automapModal.style.display = 'flex';
+      this.automapOpen = true;
       this.drawAutomap();
     }
   }
 
-  drawAutomap() {
-    const ctx = this.mapCtx;
+  // The map stays live while it is open: the player can still walk, so drawing
+  // once on open left the marker frozen wherever it was when TAB was pressed.
+  isAutomapOpen() {
+    return this.automapOpen === true && this.automapModal &&
+           this.automapModal.style.display === 'flex';
+  }
+
+  /* The wall blueprint never changes while a level is loaded, but redrawing it
+     is the expensive part: the DV megamap is 14k segments and a full redraw
+     costs ~55ms, which would drop the game to ~18fps now that the map repaints
+     every frame. Render it once to an offscreen canvas and blit that; only the
+     player, enemies and exit pulse are drawn per frame. */
+  automapBase() {
     const w = this.mapCanvas.width;
     const h = this.mapCanvas.height;
+    if (this.mapBase && this.mapBaseLevel === this.levelData &&
+        this.mapBase.width === w && this.mapBase.height === h) {
+      return this.mapBase;
+    }
+
+    const base = document.createElement('canvas');
+    base.width = w;
+    base.height = h;
+    const ctx = base.getContext('2d');
 
     ctx.fillStyle = '#050b11';
     ctx.fillRect(0, 0, w, h);
@@ -3464,11 +3539,12 @@ class CyberDoomEngine {
     const mapW = maxX - minX || 100;
     const mapH = maxZ - minZ || 100;
     const scale = Math.min((w - 40) / mapW, (h - 40) / mapH);
-    const offsetX = (w - mapW * scale) / 2 - minX * scale;
-    const offsetY = (h - mapH * scale) / 2 - minZ * scale;
+    base.offsetX = (w - mapW * scale) / 2 - minX * scale;
+    base.offsetY = (h - mapH * scale) / 2 - minZ * scale;
+    base.scale = scale;
 
-    const toMapX = (worldX) => offsetX + worldX * scale;
-    const toMapY = (worldZ) => offsetY + worldZ * scale;
+    const toMapX = (worldX) => base.offsetX + worldX * scale;
+    const toMapY = (worldZ) => base.offsetY + worldZ * scale;
 
     // Draw Walls
     ctx.lineWidth = 2.5;
@@ -3479,7 +3555,12 @@ class CyberDoomEngine {
       ctx.moveTo(toMapX(wall.p1.x), toMapY(wall.p1.z));
       ctx.lineTo(toMapX(wall.p2.x), toMapY(wall.p2.z));
 
-      if (wall.isDoor) {
+      if (wall.switchId === 'sw_exit_game') {
+        // Drawn again with the marker; keep the line itself loud.
+        ctx.strokeStyle = '#ffee00';
+        ctx.shadowColor = '#ffee00';
+        ctx.lineWidth = 5;
+      } else if (wall.isDoor) {
         ctx.strokeStyle = '#ff9900';
         ctx.shadowColor = '#ff9900';
       } else if (wall.isSwitch) {
@@ -3490,7 +3571,25 @@ class CyberDoomEngine {
         ctx.shadowColor = '#0088ff';
       }
       ctx.stroke();
+      ctx.lineWidth = 2.5;
     });
+
+    this.mapBase = base;
+    this.mapBaseLevel = this.levelData;
+    return base;
+  }
+
+  drawAutomap() {
+    const ctx = this.mapCtx;
+    const h = this.mapCanvas.height;
+
+    const base = this.automapBase();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(base, 0, 0);
+
+    const toMapX = (worldX) => base.offsetX + worldX * base.scale;
+    const toMapY = (worldZ) => base.offsetY + worldZ * base.scale;
 
     // Draw Enemies as glowing red dots
     ctx.shadowBlur = 0;
@@ -3505,6 +3604,44 @@ class CyberDoomEngine {
     const px = toMapX(this.camera.position.x);
     const py = toMapY(this.camera.position.z);
     const pAngle = this.camera.rotation.y;
+
+    // Mark the extraction point, and draw a bearing line to it, so the way out
+    // is findable from the map alone rather than by exhaustive search.
+    const exit = this.exitCentre();
+    if (exit) {
+      const ex = toMapX(exit.x);
+      const ey = toMapY(exit.z);
+      const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 260);
+
+      ctx.setLineDash([5, 6]);
+      ctx.strokeStyle = 'rgba(255, 238, 0, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = `rgba(255, 238, 0, ${pulse.toFixed(3)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 9 + 4 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffee00';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('EXIT', ex, ey - 15);
+
+      const range = Math.hypot(exit.x - this.camera.position.x, exit.z - this.camera.position.z);
+      ctx.textAlign = 'left';
+      ctx.fillText(`EXTRACTION ${range.toFixed(0)}m`, 12, h - 12);
+      ctx.textAlign = 'start';
+    }
 
     ctx.save();
     ctx.translate(px, py);
@@ -3532,6 +3669,10 @@ class CyberDoomEngine {
       this.updateEnemies(delta);
       this.hudFace.draw(this.player.health, delta);
     }
+
+    // Redraw the automap every frame it is visible so the player marker,
+    // heading and enemy dots track movement instead of freezing on open.
+    if (this.isAutomapOpen()) this.drawAutomap();
 
     this.renderer.render(this.scene, this.camera);
   }
