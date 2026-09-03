@@ -242,9 +242,103 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      /* CH-QA-01: plain `center` on an overflowing column clips BOTH ends with no
+         way to scroll to them, which is what put ENTER THE ABYSS under the
+         viewport edge at 1280x800. `safe center` falls back to start-alignment
+         once the content is taller than the overlay. */
+      justify-content: safe center;
       text-align: center;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      /* Nothing is docked over the overlay any more - the menu-side MIDI widget
+         is gone - so the CTA only has to clear the overlay's own padding. */
       padding: 20px;
+    }
+
+    /* Overlay modes. The overlay is the title screen, the pause menu and the
+       end-of-mission card, and they do not want the same content:
+         mode-title  no music controls (music belongs to the level, not the menu)
+         mode-pause  the ONLY track switcher in the game
+         mode-end    neither
+       Driving this off one class is what keeps the track switcher out of the
+       title screen and the end card.
+
+       The briefing card stays up on pause: it is the control reference, which
+       is exactly what a player wants mid-mission, and it measures as fitting.
+       At 1280x800 it adds 289px and RESUME lands at y=745 of 800; at the
+       1046x640 the same window actually leaves for the page it adds 190px and
+       RESUME lands at y=578 of 640. Both fully in the viewport, hit-testable at
+       all nine probe points, with the overlay not overflowing. Only the cheat
+       TIP is dropped - it is a title-screen aside, and the player is already
+       in-game by the time they see this screen. */
+    #overlay-screen:not(.mode-pause) #pause-music { display: none; }
+    #overlay-screen.mode-pause .title-tip { display: none; }
+    #overlay-screen.mode-end #pause-music { display: none; }
+
+    #pause-music {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #00ffcc;
+      border-radius: 4px;
+      padding: 10px 16px;
+      max-width: 760px;
+      font-family: 'Courier New', monospace;
+    }
+    #pause-music .pm-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #pause-music .pm-label {
+      color: #88ccff;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    #pause-music #pause-music-now {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    #pause-music #pause-music-meta {
+      color: #00ffaa;
+      font-size: 10px;
+      font-style: italic;
+    }
+    #pause-music select {
+      background: #081018;
+      border: 1px solid #00ffcc;
+      color: #00ffcc;
+      padding: 4px 6px;
+      font-family: monospace;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+      max-width: 320px;
+    }
+    #pause-music button {
+      background: #0a1b24;
+      border: 1px solid #00ffcc;
+      color: #00ffcc;
+      cursor: pointer;
+      min-width: 30px;
+      height: 26px;
+      line-height: 1;
+      padding: 0 8px;
+      font-size: 12px;
+      border-radius: 3px;
+      flex: 0 0 auto;
+    }
+    #pause-music input[type="range"] {
+      accent-color: #00ffcc;
+      cursor: pointer;
+      width: 96px;
     }
     .title-glitch {
       font-size: 54px;
@@ -307,6 +401,24 @@
     .start-btn:hover {
       transform: scale(1.05);
       box-shadow: 0 0 35px #00ffff;
+    }
+
+    /* CH-QA-01: a 1280x800 desktop leaves Chrome roughly 620-640px of page
+       height. Compact the title screen there so the whole thing fits without
+       scrolling and the CTA stays fully on screen. */
+    @media (max-height: 740px) {
+      .title-glitch { font-size: 36px; letter-spacing: 4px; margin-bottom: 4px; }
+      .subtitle { font-size: 13px; letter-spacing: 2px; margin-bottom: 12px; }
+      .instructions-card {
+        padding: 12px 22px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .instructions-grid { gap: 4px 16px; margin-top: 6px; }
+      .key-badge { font-size: 11px; padding: 1px 5px; }
+      .start-btn { padding: 12px 34px; font-size: 19px; }
+      #pause-music { padding: 8px 12px; gap: 6px; }
     }
 
     /* Mobile Virtual Controls */
@@ -519,7 +631,7 @@
     </div>
 
     <!-- Title / Pause / Victory Screen -->
-    <div id="overlay-screen">
+    <div id="overlay-screen" class="mode-title">
       <div id="overlay-title" class="title-glitch">CYBER-ENTRY</div>
       <div id="overlay-subtitle" class="subtitle">SECTOR 01 : GROUND ZERO [DOOM-II MAP01]</div>
 
@@ -556,10 +668,31 @@
           </label>
         </div>
 
+        <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
+             title screen and on the end-of-mission card by #overlay-screen's
+             mode class. Each level auto-plays its own assigned cue; this is
+             where a player overrides it. -->
+        <div id="pause-music">
+          <div class="pm-row">
+            <span class="pm-label">LEVEL MUSIC:</span>
+            <span id="pause-music-now">--</span>
+            <span id="pause-music-meta"></span>
+          </div>
+          <div class="pm-row">
+            <button id="pause-music-prev" type="button" title="Previous cue for this level">&lt;&lt;</button>
+            <select id="pause-music-select" aria-label="Level music track"></select>
+            <button id="pause-music-next" type="button" title="Next cue for this level">&gt;&gt;</button>
+            <button id="pause-music-mute" type="button" title="Mute music">MUTE</button>
+            <span class="pm-label">VOL</span>
+            <input id="pause-music-vol" type="range" min="0" max="100" value="60" aria-label="Music volume">
+            <span id="pause-music-vol-val" class="pm-label" style="width:30px; text-align:right;">60%</span>
+          </div>
+        </div>
+
         <div style="display:flex; gap:12px;">
           <button id="start-btn" class="start-btn">ENTER THE ABYSS</button>
         </div>
-        <div style="color:#a0aec0; font-size:12px; margin-top:2px;">TIP: Press <span class="key-badge">K</span> or type <span class="key-badge">IDKFA</span> in-game for All Ammo & Weapons cheat!</div>
+        <div class="title-tip" style="color:#a0aec0; font-size:12px; margin-top:2px;">TIP: Press <span class="key-badge">K</span> or type <span class="key-badge">IDKFA</span> in-game for All Ammo & Weapons cheat!</div>
       </div>
     </div>
 
@@ -872,10 +1005,9 @@ class SoundEngine {
     }
   }
 
-  // Suspending the context silences the ambient drone and every one-shot
-  // without tearing down the graph, so resume() above brings the same
-  // oscillators back rather than starting a second set.
-  pause() {
+  /* CH-QA-03: the ambient drone runs forever once started, so pausing has to
+     suspend the context - that is what actually clears the tab speaker icon. */
+  suspend() {
     if (this.ctx && this.ctx.state === 'running') {
       this.ctx.suspend();
     }
@@ -1523,6 +1655,10 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.isVictory = false;
     this.isGameOver = false;
+    // True once a mission has actually been entered. Distinguishes "paused
+    // mid-mission" (stays silent behind the overlay until RESUME) from "still
+    // on the title screen" (restores its own attract theme on refocus).
+    this.missionStarted = false;
 
     // Player Stats
     this.player = {
@@ -1564,6 +1700,9 @@ class CyberDoomEngine {
     this.viewmodels = new WeaponViewmodels(this.camera);
 
     this.loadLevel(MAP01_DATA);
+    // The boot level is Entryway / MAP01, so it takes the MAP01 assignment
+    // (Ground Zero / Cyber-Radar / MAP01 Engine).
+    if (window.cyberMidi) window.cyberMidi.attachLevel(null, MAP01_DATA.name);
     this.setupAutomap();
   }
 
@@ -2014,18 +2153,24 @@ class CyberDoomEngine {
     const overlay = document.getElementById('overlay-screen');
     const startBtn = document.getElementById('start-btn');
 
-    // Start Button Listener
+    // Start Button Listener.
+    // This click is also the browser's autoplay unlock point: it is the first
+    // guaranteed user gesture, and there is no music control on the menu to
+    // stand in for it. enterLevel() resumes the synth context inside the
+    // gesture and starts the level's own assigned cue.
+    //
+    // CH-QA-07: this same button is RESUME on the pause overlay. A resume goes
+    // through the pause gate's own path so there is exactly one thing starting
+    // playback - pointerlockchange calls resumeAllAudio() for the same click,
+    // and resumeForGame() is idempotent, so the two cannot race each other.
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
-      if (this.isTouch) {
-        // requestPointerLock never resolves on mobile Chrome, so isRunning
-        // would stay false forever and no physics frame would ever run.
-        this.enterLandscapeFullscreen();
-        this.resumeRun();
-      } else {
-        this.sound.resume();
-        this.canvas.requestPointerLock();
+      this.sound.resume();
+      if (window.cyberMidi) {
+        if (this.missionStarted) window.cyberMidi.resumeForGame();
+        else window.cyberMidi.enterLevel();
       }
+      this.canvas.requestPointerLock();
     });
 
     // Cheat Code Listener (Key K or typing IDKFA)
@@ -2100,16 +2245,63 @@ class CyberDoomEngine {
       });
     }
 
+    // CH-QA-03: one place that raises the PAUSED overlay, so Escape and
+    // lost-focus take the exact same path. The pause overlay is also the only
+    // place the track switcher appears, so the mode class is set here.
+    const showPauseOverlay = () => {
+      overlay.style.display = 'flex';
+      this.setOverlayMode('pause');
+      document.getElementById('overlay-title').innerText = "PAUSED";
+      document.getElementById('overlay-subtitle').innerText = "CLICK TO RESUME INFILTRATION";
+      startBtn.innerText = "RESUME";
+    };
+
     document.addEventListener('pointerlockchange', () => {
       if (this.isTouch) return;
       if (document.pointerLockElement === this.canvas) {
-        this.resumeRun();
-      } else if (this.isRunning) {
-        // Esc out of the lock. If pauseRun released the lock itself, isRunning is
-        // already false and we keep the more specific reason it set.
-        this.pauseRun("PAUSED", "CLICK TO RESUME INFILTRATION");
+        overlay.style.display = 'none';
+        this.isRunning = true;
+        this.missionStarted = true;
+        this.resumeAllAudio();
+      } else {
+        if (!this.isGameOver && !this.isVictory) {
+          showPauseOverlay();
+          this.isRunning = false;
+          this.pauseAllAudio();
+        }
       }
     });
+
+    // CH-QA-03: alt-tab / clicking another window / hiding the tab parks the
+    // mission behind the PAUSED overlay and silences both audio graphs.
+    const parkForFocusLoss = () => {
+      if (this.isGameOver || this.isVictory) return;
+      // The tab speaker has to go quiet whatever screen we are on, including
+      // the title screen now that it plays the attract theme by itself.
+      this.pauseAllAudio();
+      if (!this.isRunning) return;
+      this.isRunning = false;
+      showPauseOverlay();
+      if (document.pointerLockElement) document.exitPointerLock();
+    };
+
+    // Coming back: a live mission stays behind the PAUSED overlay until the
+    // player clicks RESUME (that is what re-takes pointer lock), so only the
+    // pre-mission title screen restores its own audio here.
+    const restoreAfterFocusGain = () => {
+      if (this.isGameOver || this.isVictory) return;
+      if (this.missionStarted) return;
+      this.resumeAllAudio();
+    };
+
+    window.addEventListener('blur', parkForFocusLoss);
+    window.addEventListener('focus', restoreAfterFocusGain);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) parkForFocusLoss();
+      else restoreAfterFocusGain();
+    });
+
+    this.setupPauseMusicMenu();
 
     // Mouse Look & Actions (Standard FPS axis: Mouse UP -> Look UP, Mouse DOWN -> Look DOWN)
     document.addEventListener('mousemove', (e) => {
@@ -2823,6 +3015,10 @@ class CyberDoomEngine {
         this.particles = [];
         this.loadLevel(mapData);
         this.checkAllWeaponsOption();
+        // Music is bound to the level, so it is re-bound wherever geometry is.
+        // While the title screen is up this only records the assignment; the
+        // cue itself starts when the mission starts.
+        if (window.cyberMidi) window.cyberMidi.attachLevel(filePath, mapData.name);
         document.getElementById('overlay-title').innerText = mapData.name || "LEVEL LOADED";
         document.getElementById('overlay-subtitle').innerText = `SECTORS: ${mapData.sectors ? mapData.sectors.length : 0} | WALLS: ${mapData.walls ? mapData.walls.length : 0} | ENTITIES: ${mapData.entities ? mapData.entities.length : 0}`;
         if (notify) this.showHudMessage("LEVEL LOADED SUCCESSFULLY");
@@ -3088,8 +3284,10 @@ class CyberDoomEngine {
     this.isGameOver = true;
     this.isRunning = false;
     document.exitPointerLock();
+    this.pauseAllAudio();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'flex';
+    this.setOverlayMode('end');
     document.getElementById('overlay-title').innerText = "FATAL ERROR";
     document.getElementById('overlay-title').style.color = "#ff0055";
     document.getElementById('overlay-subtitle').innerText = "YOU WERE TERMINATED BY THE HORDE";
@@ -3103,11 +3301,127 @@ class CyberDoomEngine {
     document.exitPointerLock();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'flex';
+    this.setOverlayMode('end');
     document.getElementById('overlay-title').innerText = "LEVEL 01 CLEARED";
     document.getElementById('overlay-title').style.color = "#00ffcc";
     document.getElementById('overlay-subtitle').innerText = "PORTAL SECURED. EXTRACTION READY.";
     document.getElementById('start-btn').innerText = "REPLAY MISSION";
     document.getElementById('start-btn').onclick = () => window.location.reload();
+  }
+
+  /* ==========================================================================
+     CH-QA-03: PAUSE AUDIO GATE
+     The engine SFX/ambient graph and the MIDI synth are separate audio
+     contexts; the PAUSED overlay has to gate both or the tab keeps showing the
+     speaker icon and the music keeps playing.
+     ========================================================================== */
+  pauseAllAudio() {
+    if (this.sound) this.sound.suspend();
+    if (window.cyberMidi) window.cyberMidi.pauseForGame();
+  }
+
+  resumeAllAudio() {
+    if (this.sound) this.sound.resume();
+    if (window.cyberMidi) window.cyberMidi.resumeForGame();
+  }
+
+  /* ==========================================================================
+     OVERLAY MODES
+     One overlay serves the title screen, the pause menu and the end card. The
+     mode class is what keeps the track switcher confined to the pause menu.
+     ========================================================================== */
+  setOverlayMode(mode) {
+    const overlay = document.getElementById('overlay-screen');
+    if (!overlay) return;
+    overlay.classList.remove('mode-title', 'mode-pause', 'mode-end');
+    overlay.classList.add('mode-' + mode);
+  }
+
+  /* ==========================================================================
+     PAUSE-MENU MUSIC CONTROLS
+     The single place a player changes music. The option list is the level's own
+     assignment first, then the rest of the level-eligible pack; the contextual
+     stings (Intermission Static, Combat Stinger, Extraction Failed, Armor Zero,
+     Secret Alcove) and the title theme are never offered as a level's music.
+     ========================================================================== */
+  setupPauseMusicMenu() {
+    const midi = window.cyberMidi;
+    const pack = window.CYBER_MUSIC;
+    const select = document.getElementById('pause-music-select');
+    const nowEl = document.getElementById('pause-music-now');
+    const metaEl = document.getElementById('pause-music-meta');
+    const prevBtn = document.getElementById('pause-music-prev');
+    const nextBtn = document.getElementById('pause-music-next');
+    const muteBtn = document.getElementById('pause-music-mute');
+    const vol = document.getElementById('pause-music-vol');
+    const volVal = document.getElementById('pause-music-vol-val');
+    if (!midi || !pack || !select) return;
+
+    const optionLabel = (i) => {
+      const t = pack.tracks[i];
+      return `[${t.id}] ${t.title} (${t.mood})`;
+    };
+
+    let renderedFor = null;
+    const renderOptions = (assigned) => {
+      const key = assigned.join(',');
+      if (key === renderedFor) return;
+      renderedFor = key;
+      select.innerHTML = '';
+      const add = (parent, i) => {
+        const o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = optionLabel(i);
+        parent.appendChild(o);
+      };
+      if (assigned.length) {
+        const g = document.createElement('optgroup');
+        g.label = 'THIS LEVEL';
+        assigned.forEach(i => add(g, i));
+        select.appendChild(g);
+      }
+      const rest = pack.tracks
+        .map((t, i) => i)
+        .filter(i => pack.isLevelEligible(pack.tracks[i].id) && assigned.indexOf(i) === -1);
+      if (rest.length) {
+        const g2 = document.createElement('optgroup');
+        g2.label = 'ALL CUES';
+        rest.forEach(i => add(g2, i));
+        select.appendChild(g2);
+      }
+    };
+
+    midi.onChange((s) => {
+      renderOptions(s.levelTrackIndices);
+      if (select.value !== String(s.currentIndex)) select.value = String(s.currentIndex);
+      if (nowEl && s.track) nowEl.textContent = `[${s.track.id}] ${s.track.title}`;
+      if (metaEl && s.track) {
+        // CH-QA-06: the pause gate wins the label outright. A track picked while
+        // the mission is paused is selected, not playing, and the row must not
+        // claim otherwise however the transport bookkeeping happens to sit.
+        const state = s.heldByPause ? 'PAUSED' : (s.isPlaying ? 'PLAYING' : 'READY');
+        metaEl.textContent = `${s.track.mood.toUpperCase()} | ${s.track.bpm} BPM | ${state}`;
+      }
+      if (muteBtn) {
+        muteBtn.textContent = s.isMuted ? 'MUTED' : 'MUTE';
+        muteBtn.style.borderColor = s.isMuted ? '#ff0055' : '#00ffcc';
+        muteBtn.style.color = s.isMuted ? '#ff0055' : '#00ffcc';
+        muteBtn.title = s.isMuted ? 'Unmute music' : 'Mute music';
+      }
+      if (vol) vol.value = String(Math.round(s.volume * 100));
+      if (volVal) volVal.textContent = `${Math.round(s.volume * 100)}%`;
+    });
+
+    select.addEventListener('change', () => midi.selectTrack(parseInt(select.value, 10)));
+    if (prevBtn) prevBtn.addEventListener('click', () => midi.stepTrack(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => midi.stepTrack(1));
+    if (muteBtn) muteBtn.addEventListener('click', () => midi.toggleMute());
+    if (vol) vol.addEventListener('input', () => midi.setVolume(parseInt(vol.value, 10) / 100));
+
+    // Keeps a click inside the music row from bubbling to the overlay and
+    // being read as "resume the mission".
+    const panel = document.getElementById('pause-music');
+    if (panel) panel.addEventListener('click', (e) => e.stopPropagation());
   }
 
   /* ==========================================================================
@@ -3226,7 +3540,8 @@ class CyberDoomEngine {
 // Start Engine on Window Load
 window.onload = function() {
   const engine = new CyberDoomEngine();
-  window.cyberEngine = engine; // QA handle
+  // Exposed so QA can assert pause/audio state without reaching into closures.
+  window.cyberEngine = engine;
   engine.animate();
   if (location.search.indexOf('selftest=1') !== -1) runDpadSelfTest();
 };

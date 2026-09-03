@@ -2,6 +2,11 @@
  * CYBERHELL MIDI PLAYER MODULE
  * Web Audio + SoundFont/Synthesizer playback for all 26 original Cyberhell MIDI cues.
  * Completely isolated from core engine and collision code.
+ *
+ * Music is a property of the LEVEL, not a menu feature. There is no music
+ * selector on the title screen: every level carries an assignment drawn from the
+ * existing 26-cue pack and it starts on its own when the mission starts. The
+ * only place a player changes track is the PAUSE menu.
  */
 
 (function() {
@@ -34,18 +39,215 @@
     { id: 'ch-26', file: 'midi/ch-26-armor-zero.mid', title: 'Armor Zero', mood: 'tense techno', bpm: 134, signal: 'ARMOR 0% pressure' }
   ];
 
+  /* ==========================================================================
+     LEVEL -> TRACK ASSIGNMENT
+     Assignment only. No cue is composed, re-rendered or edited here.
+
+     CONTEXTUAL_CUES are event stings, not level themes: they must never be
+     handed to a level and they are not offered as a level's music in the pause
+     menu. TITLE_CUE is the attract-screen theme and is likewise not a level
+     theme. Everything else in the pack is fair game, and reuse across a pack is
+     expected - 197 levels ship against 20 level-eligible cues.
+     ========================================================================== */
+  const CONTEXTUAL_CUES = ['ch-06', 'ch-23', 'ch-24', 'ch-25', 'ch-26'];
+  const TITLE_CUE = 'ch-19';
+
+  // Doom-II style map slots. Slots whose number the TRACKLIST names outright
+  // (MAP01/02/03/04/05/07/12/13/20/21/30) take that cue; the rest are filled by
+  // mood so a pack reads as a continuous descent.
+  const MAP_SLOT_THEMES = {
+    MAP01: ['ch-01', 'ch-02', 'ch-07'],  // TRACKLIST: MAP01 ENTRYWAY / GROUND ZERO
+    MAP02: ['ch-08'],                    // TRACKLIST: MAP02-scale corridors
+    MAP03: ['ch-09'],                    // TRACKLIST: MAP03 sprawl
+    MAP04: ['ch-10'],                    // TRACKLIST: MAP04 slaughter
+    MAP05: ['ch-11'],                    // TRACKLIST: MAP05
+    MAP06: ['ch-03'],
+    MAP07: ['ch-12'],                    // TRACKLIST: MAP07 small arena
+    MAP08: ['ch-14'],
+    MAP09: ['ch-04'],
+    MAP10: ['ch-20'],
+    MAP11: ['ch-05'],
+    MAP12: ['ch-13'],                    // TRACKLIST: MAP12 megastructure
+    MAP13: ['ch-15'],                    // TRACKLIST: MAP13
+    MAP14: ['ch-14'],
+    MAP15: ['ch-05'],
+    MAP16: ['ch-10'],
+    MAP17: ['ch-09'],
+    MAP18: ['ch-03'],
+    MAP19: ['ch-13'],
+    MAP20: ['ch-16'],                    // TRACKLIST: MAP20-scale
+    MAP21: ['ch-17'],                    // TRACKLIST: MAP21 hellish
+    MAP22: ['ch-11'],
+    MAP23: ['ch-10'],
+    MAP24: ['ch-17'],
+    MAP25: ['ch-11'],
+    MAP26: ['ch-16'],
+    MAP27: ['ch-04'],
+    MAP28: ['ch-17'],
+    MAP29: ['ch-12'],
+    MAP30: ['ch-18'],                    // TRACKLIST: MAP30 tiny boss
+    MAP31: ['ch-20'],
+    MAP32: ['ch-16'],
+    MAP33: ['ch-18']
+  };
+
+  // Episode/mission slots (packs whose levels are numbered EnMn).
+  const EPISODE_SLOT_THEMES = {
+    E1M1: ['ch-01', 'ch-07'],
+    E1M2: ['ch-03'],
+    E1M3: ['ch-14'],
+    E1M4: ['ch-08'],
+    E1M5: ['ch-09'],
+    E1M6: ['ch-13'],
+    E1M7: ['ch-20'],
+    E1M8: ['ch-12'],
+    E1M9: ['ch-02'],
+    E2M1: ['ch-04'],
+    E2M2: ['ch-10'],
+    E2M3: ['ch-14'],
+    E2M4: ['ch-11'],
+    E2M5: ['ch-08'],
+    E2M6: ['ch-17'],
+    E2M7: ['ch-04'],
+    E2M8: ['ch-16'],
+    E2M9: ['ch-05'],
+    E3M1: ['ch-17'],
+    E3M2: ['ch-15'],
+    E3M3: ['ch-11'],
+    E3M4: ['ch-17'],
+    E3M5: ['ch-11'],
+    E3M6: ['ch-16'],
+    E3M7: ['ch-18'],
+    E3M8: ['ch-18'],
+    E3M9: ['ch-05'],
+    E4M1: ['ch-12'],
+    E4M2: ['ch-10'],
+    E4M3: ['ch-09'],
+    E4M4: ['ch-04'],
+    E4M5: ['ch-17'],
+    E4M6: ['ch-16'],
+    E4M7: ['ch-18'],
+    E4M8: ['ch-12'],
+    E4M9: ['ch-13']
+  };
+
+  /* Per-pack rules.
+     style  - which slot table the pack's level numbering reads from
+     lead   - cue put in FRONT of the slot theme for every level in the pack
+     extra  - cue appended to every level in the pack
+     except - slots the pack-wide cue is withheld from */
+  const PACK_RULES = {
+    builtin: { style: 'map' },
+    pack1:   { style: 'map' },
+    // TRACKLIST ch-21 "pack2 techbase (not E1M1)".
+    pack2:   { style: 'episode', extra: 'ch-21', except: ['E1M1'] },
+    // TRACKLIST ch-20 "pack3 techbase".
+    pack3:   { style: 'map', extra: 'ch-20' },
+    pack4:   { style: 'episode' },
+    pack5:   { style: 'map' },
+    pack6:   { style: 'map' },
+    // TRACKLIST ch-22 "DV megamap" - the megamap's own theme leads every level.
+    dv:      { style: 'map', lead: 'ch-22' }
+  };
+
+  // Any level whose pack or slot cannot be read still gets music.
+  const FALLBACK_THEME = ['ch-01', 'ch-14'];
+
+  const indexById = {};
+  CYBER_TRACKS.forEach((t, i) => { indexById[t.id] = i; });
+
+  const isContextual = (id) => CONTEXTUAL_CUES.indexOf(id) !== -1;
+  const isLevelEligible = (id) => !isContextual(id) && id !== TITLE_CUE;
+
+  // 'levelPacks/pack3/json7.json' -> 'pack3'; the boot level -> 'builtin'.
+  function packIdFromFile(file) {
+    if (!file) return 'builtin';
+    const m = /levelPacks\/([A-Za-z0-9_-]+)\//.exec(file);
+    return m ? m[1] : 'builtin';
+  }
+
+  // 'Pack 3 (Final Doom TNT) - Level 7 (MAP08)' -> 'MAP08'. The trailing
+  // parenthesised token is the original map slot and is present in both the
+  // pack manifests and the level JSON itself.
+  function slotFromName(name) {
+    if (!name) return null;
+    const all = String(name).toUpperCase().match(/\b(?:MAP\d{1,2}|E\d M?\d|E\dM\d)\b/g);
+    if (!all || !all.length) return null;
+    return all[all.length - 1].replace(/\s+/g, '');
+  }
+
+  /* Resolve one level to its assigned cue ids. Deterministic: same level always
+     gets the same list, in the same order, so the auto-play track is stable. */
+  function assignmentFor(file, name) {
+    const packId = packIdFromFile(file);
+    const rules = PACK_RULES[packId] || PACK_RULES.builtin;
+    // The boot level is Entryway / MAP01 and carries no slot token in its name.
+    const slot = slotFromName(name) || (packId === 'builtin' ? 'MAP01' : null);
+    const table = rules.style === 'episode' ? EPISODE_SLOT_THEMES : MAP_SLOT_THEMES;
+    const base = (slot && table[slot]) || FALLBACK_THEME;
+
+    const ids = [];
+    const push = (id) => {
+      if (id && isLevelEligible(id) && ids.indexOf(id) === -1) ids.push(id);
+    };
+    const withheld = slot && rules.except && rules.except.indexOf(slot) !== -1;
+    if (rules.lead && !withheld) push(rules.lead);
+    base.forEach(push);
+    if (rules.extra && !withheld) push(rules.extra);
+    if (!ids.length) FALLBACK_THEME.forEach(push);
+
+    return { key: packId + ':' + (slot || 'UNKNOWN'), packId: packId, slot: slot, ids: ids };
+  }
+
   class CyberMidiPlayer {
     constructor() {
       this.synth = null;
-      this.currentIndex = 0;
+      this.tracks = CYBER_TRACKS;
+      this.currentIndex = indexById[TITLE_CUE];
       this.isPlaying = false;
       this.isMuted = false;
       this.isLooping = true;
       this.volume = 0.6;
       this.unlocked = false;
-      this.uiContainer = null;
-      this.tracks = CYBER_TRACKS;
-      
+
+      // 'title' while the attract screen owns the transport, 'level' once a
+      // mission has been entered.
+      this.mode = 'title';
+      // desiredIndex is what SHOULD be sounding. Playback is reconciled to it
+      // by render(); nothing else starts or stops the sequencer.
+      this.desiredIndex = null;
+      this.playingIndex = null;
+
+      // Current level's assignment.
+      this.levelKey = null;
+      this.levelAssignment = null;
+      this.levelTrackIndices = [];
+      // Pause-menu picks are remembered per level so RESUME does not undo them.
+      this.levelChoice = {};
+
+      // While the pause overlay holds the transport, remember whether playback
+      // should come back on resume.
+      this.heldByPause = false;
+      this.listeners = [];
+
+      // Cue bytes, fetched once and kept. A pause-menu pick can then load its
+      // track without the synth or the audio context being touched at all.
+      this.buffers = {};
+      this.pending = {};
+      // Which cue's events are currently parsed into the synth.
+      this.loadedIndex = null;
+      /* CH-QA-07: every async continuation that could start the sequencer
+         carries the generation it was issued under. Anything that changes what
+         SHOULD be sounding - a pick, a pause, a resume - bumps it, so a load or
+         a resume that lost the race can never start a second playback. */
+      this.playGen = 0;
+      /* CH-QA-07: one promise chain owns every suspend()/resume() on the synth
+         context. Chrome blurs the window when the native <select> popup opens,
+         so a pause genuinely lands in the middle of a track pick; unserialized,
+         the two settle in whatever order the browser chooses and can leave the
+         sequencer running against a suspended (frozen) clock. */
+      this.actxOp = Promise.resolve();
+
       this.initSynth();
       this.setupUnlockListener();
     }
@@ -60,337 +262,419 @@
       }
     }
 
+    /* ----------------------------------------------------------------------
+       AUTOPLAY UNLOCK
+       Chrome will not let the synth's AudioContext leave 'suspended' until a
+       user gesture. There is no menu music control to double as that gesture
+       any more, so the unlock rides on whatever the player touches first -
+       normally the ENTER THE ABYSS click, which is also what starts the level.
+       Once unlocked, render() flushes whatever the game asked for while muted.
+       ---------------------------------------------------------------------- */
     setupUnlockListener() {
-      const unlockAudio = () => {
+      const onGesture = () => {
         if (this.unlocked) return;
-        if (this.synth && this.synth.actx) {
-          if (this.synth.actx.state === 'suspended') {
-            this.synth.actx.resume().then(() => {
-              this.unlocked = true;
-              if (this.isPlaying) {
-                this.playTrack(this.currentIndex);
-              }
-            });
-          } else {
-            this.unlocked = true;
-          }
-        }
+        this.ensureUnlocked().then(() => this.render());
       };
-
       ['click', 'keydown', 'pointerdown', 'touchstart'].forEach(evt => {
-        window.addEventListener(evt, unlockAudio, { once: false });
+        window.addEventListener(evt, onGesture, { once: false });
       });
     }
 
-    loadTrack(index) {
-      if (index < 0 || index >= this.tracks.length) return;
-      this.currentIndex = index;
-      const track = this.tracks[index];
+    // Must be called from inside a user gesture to actually take effect: the
+    // resume() is issued synchronously off the activation, which is what
+    // Chrome's autoplay gate wants, and only then handed to the op chain.
+    ensureUnlocked() {
+      const actx = this.synth && this.synth.actx;
+      this.unlocked = true;
+      if (!actx) return Promise.resolve();
+      let p = null;
+      if (actx.state === 'suspended' && typeof actx.resume === 'function') {
+        try { p = actx.resume(); } catch (e) { p = null; }
+      }
+      const settled = (p && typeof p.then === 'function')
+        ? p.then(() => {}, () => {})
+        : Promise.resolve();
+      this.actxOp = this.actxOp.then(() => settled, () => settled);
+      return this.actxOp;
+    }
 
-      if (this.synth) {
-        this.synth.stopMIDI();
-        var xhr = new XMLHttpRequest();
+    /* ----------------------------------------------------------------------
+       SERIALIZED AUDIO CONTEXT TRANSITIONS
+       suspend() and resume() are async and the browser is free to settle them
+       out of order. Queueing them behind one chain means the last transition
+       asked for is the one the context ends in, which is the whole basis of
+       "paused means silent".
+       ---------------------------------------------------------------------- */
+    withContext(fn) {
+      this.actxOp = this.actxOp.then(fn, fn);
+      return this.actxOp;
+    }
+
+    resumeContext() {
+      return this.withContext(() => {
+        const actx = this.synth && this.synth.actx;
+        if (!actx || actx.state !== 'suspended' || typeof actx.resume !== 'function') return;
+        let p = null;
+        try { p = actx.resume(); } catch (e) { return; }
+        return (p && typeof p.then === 'function') ? p.then(() => {}, () => {}) : undefined;
+      });
+    }
+
+    suspendContext() {
+      return this.withContext(() => {
+        const actx = this.synth && this.synth.actx;
+        if (!actx || actx.state !== 'running' || typeof actx.suspend !== 'function') return;
+        let p = null;
+        try { p = actx.suspend(); } catch (e) { return; }
+        return (p && typeof p.then === 'function') ? p.then(() => {}, () => {}) : undefined;
+      });
+    }
+
+    /* ----------------------------------------------------------------------
+       DESIRED-STATE RECONCILIATION
+       ---------------------------------------------------------------------- */
+    setDesired(index) {
+      this.desiredIndex = (typeof index === 'number' && index >= 0 && index < this.tracks.length)
+        ? index : null;
+      if (this.desiredIndex !== null) this.currentIndex = this.desiredIndex;
+      this.render();
+      this.notify();
+    }
+
+    render() {
+      if (this.desiredIndex === null) return;
+      // The pause gate outranks everything: while it is held the tab must be
+      // silent, and resumeForGame() calls render() again on the way back.
+      if (this.heldByPause) return;
+      if (!this.unlocked) return;
+      if (this.isPlaying && this.playingIndex === this.desiredIndex) return;
+      this.loadAndPlay(this.desiredIndex);
+    }
+
+    // Cue bytes only. Safe to call while paused - it touches nothing that makes
+    // sound - which is what lets a paused pick preload its track.
+    fetchTrack(index) {
+      const track = this.tracks[index];
+      if (!track) return Promise.reject(new Error('no such cue'));
+      if (this.buffers[index]) return Promise.resolve(this.buffers[index]);
+      if (this.pending[index]) return this.pending[index];
+
+      const p = new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
         xhr.open('GET', track.file, true);
         xhr.responseType = 'arraybuffer';
-        xhr.onload = (e) => {
-          if (xhr.status === 200) {
-            this.synth.loadMIDI(xhr.response);
-            this.synth.setLoop(this.isLooping ? 1 : 0);
-            this.synth.setMasterVol(this.isMuted ? 0 : this.volume);
-            if (this.isPlaying) {
-              this.synth.playMIDI();
-            }
-            this.updateUI();
-          }
+        xhr.onload = () => {
+          delete this.pending[index];
+          if (xhr.status !== 200 || !xhr.response) { reject(new Error('cue ' + track.id)); return; }
+          this.buffers[index] = xhr.response;
+          resolve(xhr.response);
         };
+        xhr.onerror = () => { delete this.pending[index]; reject(new Error('cue ' + track.id)); };
         xhr.send();
-      }
-      this.updateUI();
+      });
+      this.pending[index] = p;
+      // A preload may have nobody awaiting it; do not let it surface as an
+      // unhandled rejection.
+      p.catch(() => {});
+      return p;
     }
 
-    playTrack(index) {
+    loadAndPlay(index) {
+      const track = this.tracks[index];
+      if (!track || !this.synth) return;
+      const gen = ++this.playGen;
       this.currentIndex = index;
+      this.playingIndex = index;
       this.isPlaying = true;
-      if (this.synth && this.synth.actx && this.synth.actx.state === 'suspended') {
-        this.synth.actx.resume();
-      }
-      this.loadTrack(index);
+
+      this.synth.stopMIDI();
+      this.fetchTrack(index).then((buf) => {
+        // A pick, a pause or a resume issued after this load supersedes it.
+        if (gen !== this.playGen || this.heldByPause || !buf) { this.notify(); return; }
+        this.startSequencer(index, buf, gen);
+      }, () => {
+        // Cue unavailable. Leave the sequencer stopped rather than half-armed.
+        if (gen !== this.playGen) return;
+        this.isPlaying = false;
+        this.playingIndex = null;
+        this.notify();
+      });
+      this.notify();
     }
 
-    play() {
+    /* One stop for one start. loadMIDI() ends in reset() + locateMIDI(0), so
+       the new song's playIndex/playTick are its own and can never be left
+       pointing into the previous cue's event list. */
+    startSequencer(index, buf, gen) {
+      const synth = this.synth;
+      if (!synth) return;
+      synth.stopMIDI();
+      synth.loadMIDI(buf);
+      this.loadedIndex = index;
+      synth.setLoop(this.isLooping ? 1 : 0);
+      synth.setMasterVol(this.isMuted ? 0 : this.volume);
       this.isPlaying = true;
-      if (this.synth && this.synth.actx && this.synth.actx.state === 'suspended') {
-        this.synth.actx.resume();
-      }
-      if (this.synth && this.synth.song) {
+      this.playingIndex = index;
+      this.startWhenRunning(gen);
+      this.notify();
+    }
+
+    /* CH-QA-07: playMIDI() pins playTime to actx.currentTime, and currentTime
+       does not advance while the context is suspended. Starting the sequencer
+       against that frozen clock leaves playing=1 with a stale playTime, and the
+       catch-up the play loop then does is a burst of backdated note scheduling
+       against a live graph. The sequencer therefore only ever starts on a
+       context that is genuinely running; if it is not, the resume path retries. */
+    startWhenRunning(gen) {
+      const go = () => {
+        if (gen !== this.playGen || this.heldByPause || !this.isPlaying) return;
+        if (!this.unlocked) return;
+        const actx = this.synth && this.synth.actx;
+        if (actx && actx.state !== 'running') return;
         this.synth.playMIDI();
+        this.notify();
+      };
+      const actx = this.synth && this.synth.actx;
+      if (actx && actx.state === 'suspended') { this.resumeContext().then(go, go); return; }
+      go();
+    }
+
+    /* ----------------------------------------------------------------------
+       LEVEL BINDING
+       ---------------------------------------------------------------------- */
+    assignmentFor(file, name) {
+      return assignmentFor(file, name);
+    }
+
+    // Called by the engine every time a level's geometry is loaded.
+    attachLevel(file, name) {
+      const a = assignmentFor(file, name);
+      this.levelKey = a.key;
+      this.levelAssignment = a;
+      this.levelTrackIndices = a.ids.map(id => indexById[id]).filter(i => i !== undefined);
+      if (this.mode === 'level') {
+        this.setDesired(this.trackForLevel());
       } else {
-        this.loadTrack(this.currentIndex);
-      }
-      this.updateUI();
-    }
-
-    pause() {
-      this.isPlaying = false;
-      if (this.synth) {
-        this.synth.stopMIDI();
-      }
-      this.updateUI();
-    }
-
-    togglePlay() {
-      if (this.isPlaying) {
-        this.pause();
-      } else {
-        this.play();
+        this.notify();
       }
     }
 
-    next() {
-      let nextIdx = (this.currentIndex + 1) % this.tracks.length;
-      this.playTrack(nextIdx);
+    // The track this level should open with: the player's pause-menu pick for
+    // this level if they made one, otherwise the head of the assignment.
+    trackForLevel() {
+      const remembered = this.levelChoice[this.levelKey];
+      if (typeof remembered === 'number') return remembered;
+      if (this.levelTrackIndices.length) return this.levelTrackIndices[0];
+      return indexById[FALLBACK_THEME[0]];
     }
 
-    prev() {
-      let prevIdx = (this.currentIndex - 1 + this.tracks.length) % this.tracks.length;
-      this.playTrack(prevIdx);
+    // Title / attract screen. Only actually sounds once a gesture unlocks audio.
+    armTitleTheme() {
+      this.mode = 'title';
+      this.setDesired(indexById[TITLE_CUE]);
+    }
+
+    /* ENTER THE ABYSS / mission start. Runs inside the click, so this is both
+       the autoplay unlock point and the auto-start of the level's own music.
+
+       CH-QA-07: the same button says RESUME on the pause overlay. A resume is
+       not a mission start - it belongs to the pause gate - so it is handed to
+       resumeForGame() rather than being allowed to clear heldByPause behind the
+       gate's back and race it for the same AudioContext. */
+    enterLevel() {
+      if (this.mode === 'level') { this.resumeForGame(); return; }
+      this.mode = 'level';
+      this.heldByPause = false;
+      const idx = this.trackForLevel();
+      this.desiredIndex = idx;
+      this.currentIndex = idx;
+      this.ensureUnlocked();
+      // Covers the case where the title screen was already suspended by a
+      // lost-focus pause before the player ever pressed ENTER.
+      this.resumeContext().then(() => this.render(), () => this.render());
+      this.notify();
+    }
+
+    /* ----------------------------------------------------------------------
+       PAUSE MENU TRACK SWITCH - the only place a player changes music.
+       ---------------------------------------------------------------------- */
+    /* CH-QA-06: a pick made while the mission is PAUSED selects, it does not
+       play. The pause gate belongs to the game, not to the music menu, so this
+       must never release it: releasing it put sound on a paused tab, turned the
+       Chrome tab speaker back on and made the overlay report PLAYING while the
+       game was stopped. The pick is recorded and the cue's bytes are fetched so
+       RESUME is instant, but the synth and the AudioContext are left exactly as
+       the pause left them. resumeForGame() is what makes it audible. */
+    selectTrack(index) {
+      if (!(index >= 0 && index < this.tracks.length)) return;
+      if (!isLevelEligible(this.tracks[index].id)) return;
+      if (this.levelKey) this.levelChoice[this.levelKey] = index;
+
+      this.desiredIndex = index;
+      this.currentIndex = index;
+
+      if (this.heldByPause) {
+        // Cancels any load still in flight, so nothing that was already on its
+        // way can start the sequencer behind the gate.
+        ++this.playGen;
+        this.isPlaying = false;
+        this.playingIndex = null;
+        this.fetchTrack(index).then(() => this.notify(), () => this.notify());
+        this.notify();
+        return;
+      }
+
+      this.ensureUnlocked();
+      this.render();
+      this.notify();
+    }
+
+    stepTrack(delta) {
+      const list = this.levelTrackIndices.length ? this.levelTrackIndices : this.levelEligibleIndices();
+      if (!list.length) return;
+      let at = list.indexOf(this.currentIndex);
+      if (at === -1) at = 0;
+      const next = list[(at + delta + list.length) % list.length];
+      this.selectTrack(next);
+    }
+
+    levelEligibleIndices() {
+      const out = [];
+      this.tracks.forEach((t, i) => { if (isLevelEligible(t.id)) out.push(i); });
+      return out;
     }
 
     setVolume(vol) {
       this.volume = Math.max(0, Math.min(1, vol));
-      if (!this.isMuted && this.synth) {
-        this.synth.setMasterVol(this.volume);
-      }
-      this.updateUI();
+      if (!this.isMuted && this.synth) this.synth.setMasterVol(this.volume);
+      this.notify();
     }
 
     toggleMute() {
       this.isMuted = !this.isMuted;
+      if (this.synth) this.synth.setMasterVol(this.isMuted ? 0 : this.volume);
+      this.notify();
+    }
+
+    /* ----------------------------------------------------------------------
+       PAUSE GATE
+       Escape / lost pointer lock / alt-tab / hidden tab stops the sequencer AND
+       suspends the audio context, which is what actually clears the Chrome tab
+       speaker indicator. Resume restores from the same tick, because stopMIDI()
+       keeps playTick.
+       ---------------------------------------------------------------------- */
+    pauseForGame() {
+      if (this.heldByPause) return;
+      this.heldByPause = true;
+      this.isPlaying = false;
+      // Cancels every outstanding continuation that could otherwise start the
+      // sequencer after the gate has closed.
+      ++this.playGen;
       if (this.synth) {
-        this.synth.setMasterVol(this.isMuted ? 0 : this.volume);
+        this.synth.stopMIDI();
+        this.suspendContext();
       }
-      this.updateUI();
+      this.notify();
     }
 
-    toggleLoop() {
-      this.isLooping = !this.isLooping;
-      if (this.synth) {
-        this.synth.setLoop(this.isLooping ? 1 : 0);
-      }
-      this.updateUI();
+    /* CH-QA-07: the single resume path, and it reconciles rather than walking
+       away when the gate is already open. Exactly one playback is started: if
+       the cue is the one the pause stopped, the sequencer picks it up from the
+       tick stopMIDI() left behind; if the player changed track while paused it
+       is loaded and started once, here, and nowhere else. */
+    resumeForGame() {
+      this.heldByPause = false;
+      if (this.desiredIndex === null) { this.notify(); return; }
+
+      const gen = ++this.playGen;
+      const restart = () => {
+        if (gen !== this.playGen || this.heldByPause || !this.unlocked) return;
+        const synth = this.synth;
+        if (!synth) return;
+        // The resume did not take (no user gesture yet, or the tab is still
+        // hidden). Starting the sequencer against a frozen clock is the thing
+        // that backdates playTime, so leave it stopped and wait for the next
+        // resume instead.
+        if (synth.actx && synth.actx.state !== 'running') { this.notify(); return; }
+
+        // Already sounding the cue that is wanted, so there is nothing to
+        // start. One click reaches this twice - the RESUME handler calls in,
+        // and so does pointerlockchange for the same click - and without this
+        // the second call starts a second playback over the first.
+        if (synth.playing && this.isPlaying && this.playingIndex === this.desiredIndex) {
+          this.notify();
+          return;
+        }
+
+        const sameCue = synth.song
+          && this.loadedIndex === this.desiredIndex
+          && this.playingIndex === this.desiredIndex;
+        if (sameCue) {
+          this.isPlaying = true;
+          synth.playMIDI();
+          this.notify();
+          return;
+        }
+        this.loadAndPlay(this.desiredIndex);
+      };
+
+      // playMIDI() schedules against actx.currentTime, which stays frozen until
+      // the context is actually running again, so wait for the serialized
+      // resume to land before anything starts.
+      this.resumeContext().then(restart, restart);
+      this.notify();
     }
 
-    renderUI() {
-      if (document.getElementById('cyber-midi-ui')) return;
-
-      const uiDiv = document.createElement('div');
-      uiDiv.id = 'cyber-midi-ui';
-      uiDiv.style.cssText = `
-        position: fixed;
-        bottom: 16px;
-        right: 16px;
-        z-index: 99999;
-        background: rgba(5, 8, 15, 0.92);
-        border: 1px solid #00ffcc;
-        box-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
-        border-radius: 6px;
-        padding: 12px;
-        width: 330px;
-        font-family: 'Courier New', monospace;
-        color: #00ffcc;
-        font-size: 12px;
-        backdrop-filter: blur(4px);
-        user-select: none;
-      `;
-
-      uiDiv.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00ffcc44; padding-bottom: 6px; margin-bottom: 8px;">
-          <span style="font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 5px #00ffcc;">🎵 CYBERHELL MIDI SYNTH</span>
-          <button id="cyber-midi-minimize" style="background: none; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; padding: 1px 6px; font-size: 10px; border-radius: 3px;">-</button>
-        </div>
-
-        <div id="cyber-midi-content">
-          <!-- MAP01 Quick Selection -->
-          <div style="margin-bottom: 8px;">
-            <div style="font-size: 10px; color: #88ccff; margin-bottom: 4px; font-weight: bold;">MAP01 FIRST CUES:</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-              <button class="cyber-map01-btn" data-idx="0" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; padding: 4px; font-size: 10px; cursor: pointer; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ch-01 Ground Zero</button>
-              <button class="cyber-map01-btn" data-idx="1" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; padding: 4px; font-size: 10px; cursor: pointer; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ch-02 Cyber-Radar</button>
-              <button class="cyber-map01-btn" data-idx="6" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; padding: 4px; font-size: 10px; cursor: pointer; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ch-07 MAP01 Engine</button>
-              <button class="cyber-map01-btn" data-idx="18" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; padding: 4px; font-size: 10px; cursor: pointer; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ch-19 Cyber-Entry</button>
-            </div>
-          </div>
-
-          <!-- All 26 Tracks Dropdown -->
-          <div style="margin-bottom: 8px;">
-            <select id="cyber-midi-select" style="width: 100%; background: #081018; border: 1px solid #00ffcc; color: #00ffcc; padding: 4px; font-family: monospace; font-size: 11px; border-radius: 3px; cursor: pointer;">
-              ${CYBER_TRACKS.map((t, idx) => `<option value="${idx}">[${t.id}] ${t.title} (${t.mood})</option>`).join('')}
-            </select>
-          </div>
-
-          <!-- Track Info -->
-          <div style="background: rgba(0,255,204,0.05); border: 1px dashed #00ffcc55; padding: 6px; margin-bottom: 8px; border-radius: 3px;">
-            <div id="cyber-midi-title" style="font-weight: bold; color: #ffffff; margin-bottom: 2px;">Ground Zero</div>
-            <div id="cyber-midi-meta" style="font-size: 10px; color: #a0e6ff;">Dark Synth | 112 BPM</div>
-            <div id="cyber-midi-signal" style="font-size: 9px; color: #00ffaa; font-style: italic; margin-top: 2px;">MAP01 ENTRYWAY / GROUND ZERO</div>
-          </div>
-
-          <!-- Transport Controls -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="display: flex; gap: 4px;">
-              <button id="cyber-midi-prev" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; padding: 4px 8px; font-size: 11px; border-radius: 3px;">⏮</button>
-              <button id="cyber-midi-play" style="background: #00ffcc; border: 1px solid #00ffcc; color: #000; font-weight: bold; cursor: pointer; padding: 4px 12px; font-size: 11px; border-radius: 3px;">▶ PLAY</button>
-              <button id="cyber-midi-next" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; padding: 4px 8px; font-size: 11px; border-radius: 3px;">⏭</button>
-            </div>
-            <div style="display: flex; gap: 4px; align-items: center;">
-              <button id="cyber-midi-mute" style="background: #0a1b24; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; padding: 4px 8px; font-size: 11px; border-radius: 3px;">🔊</button>
-              <button id="cyber-midi-loop" style="background: #00ffcc; border: 1px solid #00ffcc; color: #000; font-weight: bold; cursor: pointer; padding: 4px 8px; font-size: 10px; border-radius: 3px;">🔁 LOOP</button>
-            </div>
-          </div>
-
-          <!-- Volume Slider -->
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 10px; color: #88ccff;">VOL:</span>
-            <input id="cyber-midi-vol" type="range" min="0" max="100" value="60" style="flex-grow: 1; accent-color: #00ffcc; cursor: pointer;">
-            <span id="cyber-midi-vol-val" style="font-size: 10px; width: 28px; text-align: right;">60%</span>
-          </div>
-        </div>
-      `;
-
-      document.body.appendChild(uiDiv);
-      this.uiContainer = uiDiv;
-
-      // Event listeners for UI controls
-      document.getElementById('cyber-midi-select').addEventListener('change', (e) => {
-        this.playTrack(parseInt(e.target.value, 10));
-      });
-
-      document.querySelectorAll('.cyber-map01-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const idx = parseInt(btn.getAttribute('data-idx'), 10);
-          this.playTrack(idx);
-        });
-      });
-
-      document.getElementById('cyber-midi-play').addEventListener('click', () => {
-        this.togglePlay();
-      });
-
-      document.getElementById('cyber-midi-prev').addEventListener('click', () => {
-        this.prev();
-      });
-
-      document.getElementById('cyber-midi-next').addEventListener('click', () => {
-        this.next();
-      });
-
-      document.getElementById('cyber-midi-mute').addEventListener('click', () => {
-        this.toggleMute();
-      });
-
-      document.getElementById('cyber-midi-loop').addEventListener('click', () => {
-        this.toggleLoop();
-      });
-
-      document.getElementById('cyber-midi-vol').addEventListener('input', (e) => {
-        const val = parseInt(e.target.value, 10) / 100;
-        this.setVolume(val);
-      });
-
-      let isMinimized = false;
-      document.getElementById('cyber-midi-minimize').addEventListener('click', () => {
-        isMinimized = !isMinimized;
-        const content = document.getElementById('cyber-midi-content');
-        const minBtn = document.getElementById('cyber-midi-minimize');
-        if (isMinimized) {
-          content.style.display = 'none';
-          minBtn.textContent = '+';
-          uiDiv.style.width = '200px';
-        } else {
-          content.style.display = 'block';
-          minBtn.textContent = '-';
-          uiDiv.style.width = '330px';
-        }
-      });
-
-      this.updateUI();
+    /* ----------------------------------------------------------------------
+       UI HOOK. The player owns no DOM: the pause menu subscribes and renders.
+       ---------------------------------------------------------------------- */
+    onChange(fn) {
+      if (typeof fn === 'function') {
+        this.listeners.push(fn);
+        fn(this.status());
+      }
     }
 
-    updateUI() {
-      if (!this.uiContainer) return;
-      const track = this.tracks[this.currentIndex];
+    notify() {
+      const s = this.status();
+      this.listeners.forEach(fn => { try { fn(s); } catch (e) { /* UI only */ } });
+    }
 
-      const select = document.getElementById('cyber-midi-select');
-      if (select) select.value = this.currentIndex;
-
-      const titleEl = document.getElementById('cyber-midi-title');
-      if (titleEl) titleEl.textContent = `[${track.id}] ${track.title}`;
-
-      const metaEl = document.getElementById('cyber-midi-meta');
-      if (metaEl) metaEl.textContent = `${track.mood.toUpperCase()} | ${track.bpm} BPM`;
-
-      const sigEl = document.getElementById('cyber-midi-signal');
-      if (sigEl) sigEl.textContent = track.signal;
-
-      const playBtn = document.getElementById('cyber-midi-play');
-      if (playBtn) {
-        if (this.isPlaying) {
-          playBtn.textContent = '⏸ PAUSE';
-          playBtn.style.background = '#ff0055';
-          playBtn.style.color = '#fff';
-          playBtn.style.borderColor = '#ff0055';
-        } else {
-          playBtn.textContent = '▶ PLAY';
-          playBtn.style.background = '#00ffcc';
-          playBtn.style.color = '#000';
-          playBtn.style.borderColor = '#00ffcc';
-        }
-      }
-
-      const muteBtn = document.getElementById('cyber-midi-mute');
-      if (muteBtn) {
-        muteBtn.textContent = this.isMuted ? '🔇' : '🔊';
-        muteBtn.style.borderColor = this.isMuted ? '#ff0055' : '#00ffcc';
-      }
-
-      const loopBtn = document.getElementById('cyber-midi-loop');
-      if (loopBtn) {
-        if (this.isLooping) {
-          loopBtn.style.background = '#00ffcc';
-          loopBtn.style.color = '#000';
-        } else {
-          loopBtn.style.background = '#0a1b24';
-          loopBtn.style.color = '#888';
-        }
-      }
-
-      const volSlider = document.getElementById('cyber-midi-vol');
-      if (volSlider) volSlider.value = Math.round(this.volume * 100);
-
-      const volVal = document.getElementById('cyber-midi-vol-val');
-      if (volVal) volVal.textContent = `${Math.round(this.volume * 100)}%`;
-
-      document.querySelectorAll('.cyber-map01-btn').forEach(btn => {
-        const idx = parseInt(btn.getAttribute('data-idx'), 10);
-        if (idx === this.currentIndex) {
-          btn.style.background = '#00ffcc';
-          btn.style.color = '#000';
-          btn.style.fontWeight = 'bold';
-        } else {
-          btn.style.background = '#0a1b24';
-          btn.style.color = '#00ffcc';
-          btn.style.fontWeight = 'normal';
-        }
-      });
+    status() {
+      const track = this.tracks[this.currentIndex] || null;
+      return {
+        mode: this.mode,
+        track: track,
+        currentIndex: this.currentIndex,
+        isPlaying: this.isPlaying && !this.heldByPause,
+        isMuted: this.isMuted,
+        volume: this.volume,
+        heldByPause: this.heldByPause,
+        desiredIndex: this.desiredIndex,
+        playingIndex: this.playingIndex,
+        loadedIndex: this.loadedIndex,
+        unlocked: this.unlocked,
+        levelKey: this.levelKey,
+        levelTrackIndices: this.levelTrackIndices.slice(),
+        assignment: this.levelAssignment
+      };
     }
   }
 
   window.CyberMidiPlayer = CyberMidiPlayer;
+  // Exposed for assignment audits and for the pause menu's option list.
+  window.CYBER_MUSIC = {
+    tracks: CYBER_TRACKS,
+    contextualCues: CONTEXTUAL_CUES,
+    titleCue: TITLE_CUE,
+    isLevelEligible: isLevelEligible,
+    assignmentFor: assignmentFor,
+    indexById: indexById
+  };
 
   window.addEventListener('DOMContentLoaded', () => {
     window.cyberMidi = new CyberMidiPlayer();
-    window.cyberMidi.renderUI();
-    // Default load first track (Ground Zero, MAP01)
-    window.cyberMidi.loadTrack(0);
+    // Title / attract theme. Silent until the first user gesture unlocks audio.
+    window.cyberMidi.armTitleTheme();
   });
 })();
