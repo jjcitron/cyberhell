@@ -260,10 +260,18 @@
          mode-title  no music controls (music belongs to the level, not the menu)
          mode-pause  the ONLY track switcher in the game
          mode-end    neither
-       Driving this off one class keeps the pause menu from inheriting the title
-       screen's briefing card, which is what buys the room for the music row. */
+       Driving this off one class is what keeps the track switcher out of the
+       title screen and the end card.
+
+       The briefing card stays up on pause: it is the control reference, which
+       is exactly what a player wants mid-mission, and it measures as fitting.
+       At 1280x800 it adds 289px and RESUME lands at y=745 of 800; at the
+       1046x640 the same window actually leaves for the page it adds 190px and
+       RESUME lands at y=578 of 640. Both fully in the viewport, hit-testable at
+       all nine probe points, with the overlay not overflowing. Only the cheat
+       TIP is dropped - it is a title-screen aside, and the player is already
+       in-game by the time they see this screen. */
     #overlay-screen:not(.mode-pause) #pause-music { display: none; }
-    #overlay-screen.mode-pause .instructions-card,
     #overlay-screen.mode-pause .title-tip { display: none; }
     #overlay-screen.mode-end #pause-music { display: none; }
 
@@ -1972,10 +1980,18 @@ class CyberDoomEngine {
     // guaranteed user gesture, and there is no music control on the menu to
     // stand in for it. enterLevel() resumes the synth context inside the
     // gesture and starts the level's own assigned cue.
+    //
+    // CH-QA-07: this same button is RESUME on the pause overlay. A resume goes
+    // through the pause gate's own path so there is exactly one thing starting
+    // playback - pointerlockchange calls resumeAllAudio() for the same click,
+    // and resumeForGame() is idempotent, so the two cannot race each other.
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
       this.sound.resume();
-      if (window.cyberMidi) window.cyberMidi.enterLevel();
+      if (window.cyberMidi) {
+        if (this.missionStarted) window.cyberMidi.resumeForGame();
+        else window.cyberMidi.enterLevel();
+      }
       this.canvas.requestPointerLock();
     });
 
@@ -3008,7 +3024,10 @@ class CyberDoomEngine {
       if (select.value !== String(s.currentIndex)) select.value = String(s.currentIndex);
       if (nowEl && s.track) nowEl.textContent = `[${s.track.id}] ${s.track.title}`;
       if (metaEl && s.track) {
-        const state = s.isPlaying ? 'PLAYING' : (s.heldByPause ? 'PAUSED' : 'READY');
+        // CH-QA-06: the pause gate wins the label outright. A track picked while
+        // the mission is paused is selected, not playing, and the row must not
+        // claim otherwise however the transport bookkeeping happens to sit.
+        const state = s.heldByPause ? 'PAUSED' : (s.isPlaying ? 'PLAYING' : 'READY');
         metaEl.textContent = `${s.track.mood.toUpperCase()} | ${s.track.bpm} BPM | ${state}`;
       }
       if (muteBtn) {

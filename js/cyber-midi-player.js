@@ -230,6 +230,24 @@
       this.heldByPause = false;
       this.listeners = [];
 
+      // Cue bytes, fetched once and kept. A pause-menu pick can then load its
+      // track without the synth or the audio context being touched at all.
+      this.buffers = {};
+      this.pending = {};
+      // Which cue's events are currently parsed into the synth.
+      this.loadedIndex = null;
+      /* CH-QA-07: every async continuation that could start the sequencer
+         carries the generation it was issued under. Anything that changes what
+         SHOULD be sounding - a pick, a pause, a resume - bumps it, so a load or
+         a resume that lost the race can never start a second playback. */
+      this.playGen = 0;
+      /* CH-QA-07: one promise chain owns every suspend()/resume() on the synth
+         context. Chrome blurs the window when the native <select> popup opens,
+         so a pause genuinely lands in the middle of a track pick; unserialized,
+         the two settle in whatever order the browser chooses and can leave the
+         sequencer running against a suspended (frozen) clock. */
+      this.actxOp = Promise.resolve();
+
       this.initSynth();
       this.setupUnlockListener();
     }
@@ -262,21 +280,54 @@
       });
     }
 
-    // Must be called from inside a user gesture to actually take effect.
+    // Must be called from inside a user gesture to actually take effect: the
+    // resume() is issued synchronously off the activation, which is what
+    // Chrome's autoplay gate wants, and only then handed to the op chain.
     ensureUnlocked() {
       const actx = this.synth && this.synth.actx;
-      if (!actx) {
-        this.unlocked = true;
-        return Promise.resolve();
-      }
-      if (actx.state === 'suspended' && typeof actx.resume === 'function') {
-        const p = actx.resume();
-        if (p && typeof p.then === 'function') {
-          return p.then(() => { this.unlocked = true; }, () => { this.unlocked = true; });
-        }
-      }
       this.unlocked = true;
-      return Promise.resolve();
+      if (!actx) return Promise.resolve();
+      let p = null;
+      if (actx.state === 'suspended' && typeof actx.resume === 'function') {
+        try { p = actx.resume(); } catch (e) { p = null; }
+      }
+      const settled = (p && typeof p.then === 'function')
+        ? p.then(() => {}, () => {})
+        : Promise.resolve();
+      this.actxOp = this.actxOp.then(() => settled, () => settled);
+      return this.actxOp;
+    }
+
+    /* ----------------------------------------------------------------------
+       SERIALIZED AUDIO CONTEXT TRANSITIONS
+       suspend() and resume() are async and the browser is free to settle them
+       out of order. Queueing them behind one chain means the last transition
+       asked for is the one the context ends in, which is the whole basis of
+       "paused means silent".
+       ---------------------------------------------------------------------- */
+    withContext(fn) {
+      this.actxOp = this.actxOp.then(fn, fn);
+      return this.actxOp;
+    }
+
+    resumeContext() {
+      return this.withContext(() => {
+        const actx = this.synth && this.synth.actx;
+        if (!actx || actx.state !== 'suspended' || typeof actx.resume !== 'function') return;
+        let p = null;
+        try { p = actx.resume(); } catch (e) { return; }
+        return (p && typeof p.then === 'function') ? p.then(() => {}, () => {}) : undefined;
+      });
+    }
+
+    suspendContext() {
+      return this.withContext(() => {
+        const actx = this.synth && this.synth.actx;
+        if (!actx || actx.state !== 'running' || typeof actx.suspend !== 'function') return;
+        let p = null;
+        try { p = actx.suspend(); } catch (e) { return; }
+        return (p && typeof p.then === 'function') ? p.then(() => {}, () => {}) : undefined;
+      });
     }
 
     /* ----------------------------------------------------------------------
@@ -300,29 +351,92 @@
       this.loadAndPlay(this.desiredIndex);
     }
 
+    // Cue bytes only. Safe to call while paused - it touches nothing that makes
+    // sound - which is what lets a paused pick preload its track.
+    fetchTrack(index) {
+      const track = this.tracks[index];
+      if (!track) return Promise.reject(new Error('no such cue'));
+      if (this.buffers[index]) return Promise.resolve(this.buffers[index]);
+      if (this.pending[index]) return this.pending[index];
+
+      const p = new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', track.file, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = () => {
+          delete this.pending[index];
+          if (xhr.status !== 200 || !xhr.response) { reject(new Error('cue ' + track.id)); return; }
+          this.buffers[index] = xhr.response;
+          resolve(xhr.response);
+        };
+        xhr.onerror = () => { delete this.pending[index]; reject(new Error('cue ' + track.id)); };
+        xhr.send();
+      });
+      this.pending[index] = p;
+      // A preload may have nobody awaiting it; do not let it surface as an
+      // unhandled rejection.
+      p.catch(() => {});
+      return p;
+    }
+
     loadAndPlay(index) {
       const track = this.tracks[index];
       if (!track || !this.synth) return;
+      const gen = ++this.playGen;
       this.currentIndex = index;
       this.playingIndex = index;
       this.isPlaying = true;
 
       this.synth.stopMIDI();
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', track.file, true);
-      xhr.responseType = 'arraybuffer';
-      xhr.onload = () => {
-        if (xhr.status !== 200) return;
-        // A later request may have superseded this one mid-flight.
-        if (this.playingIndex !== index) return;
-        this.synth.loadMIDI(xhr.response);
-        this.synth.setLoop(this.isLooping ? 1 : 0);
-        this.synth.setMasterVol(this.isMuted ? 0 : this.volume);
-        if (this.isPlaying && !this.heldByPause) this.synth.playMIDI();
+      this.fetchTrack(index).then((buf) => {
+        // A pick, a pause or a resume issued after this load supersedes it.
+        if (gen !== this.playGen || this.heldByPause || !buf) { this.notify(); return; }
+        this.startSequencer(index, buf, gen);
+      }, () => {
+        // Cue unavailable. Leave the sequencer stopped rather than half-armed.
+        if (gen !== this.playGen) return;
+        this.isPlaying = false;
+        this.playingIndex = null;
+        this.notify();
+      });
+      this.notify();
+    }
+
+    /* One stop for one start. loadMIDI() ends in reset() + locateMIDI(0), so
+       the new song's playIndex/playTick are its own and can never be left
+       pointing into the previous cue's event list. */
+    startSequencer(index, buf, gen) {
+      const synth = this.synth;
+      if (!synth) return;
+      synth.stopMIDI();
+      synth.loadMIDI(buf);
+      this.loadedIndex = index;
+      synth.setLoop(this.isLooping ? 1 : 0);
+      synth.setMasterVol(this.isMuted ? 0 : this.volume);
+      this.isPlaying = true;
+      this.playingIndex = index;
+      this.startWhenRunning(gen);
+      this.notify();
+    }
+
+    /* CH-QA-07: playMIDI() pins playTime to actx.currentTime, and currentTime
+       does not advance while the context is suspended. Starting the sequencer
+       against that frozen clock leaves playing=1 with a stale playTime, and the
+       catch-up the play loop then does is a burst of backdated note scheduling
+       against a live graph. The sequencer therefore only ever starts on a
+       context that is genuinely running; if it is not, the resume path retries. */
+    startWhenRunning(gen) {
+      const go = () => {
+        if (gen !== this.playGen || this.heldByPause || !this.isPlaying) return;
+        if (!this.unlocked) return;
+        const actx = this.synth && this.synth.actx;
+        if (actx && actx.state !== 'running') return;
+        this.synth.playMIDI();
         this.notify();
       };
-      xhr.send();
-      this.notify();
+      const actx = this.synth && this.synth.actx;
+      if (actx && actx.state === 'suspended') { this.resumeContext().then(go, go); return; }
+      go();
     }
 
     /* ----------------------------------------------------------------------
@@ -360,34 +474,59 @@
       this.setDesired(indexById[TITLE_CUE]);
     }
 
-    // ENTER THE ABYSS / mission start. Runs inside the click, so this is both
-    // the autoplay unlock point and the auto-start of the level's own music.
+    /* ENTER THE ABYSS / mission start. Runs inside the click, so this is both
+       the autoplay unlock point and the auto-start of the level's own music.
+
+       CH-QA-07: the same button says RESUME on the pause overlay. A resume is
+       not a mission start - it belongs to the pause gate - so it is handed to
+       resumeForGame() rather than being allowed to clear heldByPause behind the
+       gate's back and race it for the same AudioContext. */
     enterLevel() {
+      if (this.mode === 'level') { this.resumeForGame(); return; }
       this.mode = 'level';
       this.heldByPause = false;
       const idx = this.trackForLevel();
       this.desiredIndex = idx;
       this.currentIndex = idx;
-      this.ensureUnlocked().then(() => this.render());
+      this.ensureUnlocked();
+      // Covers the case where the title screen was already suspended by a
+      // lost-focus pause before the player ever pressed ENTER.
+      this.resumeContext().then(() => this.render(), () => this.render());
       this.notify();
     }
 
     /* ----------------------------------------------------------------------
        PAUSE MENU TRACK SWITCH - the only place a player changes music.
        ---------------------------------------------------------------------- */
+    /* CH-QA-06: a pick made while the mission is PAUSED selects, it does not
+       play. The pause gate belongs to the game, not to the music menu, so this
+       must never release it: releasing it put sound on a paused tab, turned the
+       Chrome tab speaker back on and made the overlay report PLAYING while the
+       game was stopped. The pick is recorded and the cue's bytes are fetched so
+       RESUME is instant, but the synth and the AudioContext are left exactly as
+       the pause left them. resumeForGame() is what makes it audible. */
     selectTrack(index) {
       if (!(index >= 0 && index < this.tracks.length)) return;
       if (!isLevelEligible(this.tracks[index].id)) return;
       if (this.levelKey) this.levelChoice[this.levelKey] = index;
-      // A deliberate pick releases the pause hold so the change is audible
-      // immediately instead of waiting for RESUME.
-      this.heldByPause = false;
-      this.ensureUnlocked().then(() => {
-        this.desiredIndex = index;
-        this.currentIndex = index;
-        this.render();
+
+      this.desiredIndex = index;
+      this.currentIndex = index;
+
+      if (this.heldByPause) {
+        // Cancels any load still in flight, so nothing that was already on its
+        // way can start the sequencer behind the gate.
+        ++this.playGen;
+        this.isPlaying = false;
+        this.playingIndex = null;
+        this.fetchTrack(index).then(() => this.notify(), () => this.notify());
         this.notify();
-      });
+        return;
+      }
+
+      this.ensureUnlocked();
+      this.render();
+      this.notify();
     }
 
     stepTrack(delta) {
@@ -428,45 +567,62 @@
       if (this.heldByPause) return;
       this.heldByPause = true;
       this.isPlaying = false;
+      // Cancels every outstanding continuation that could otherwise start the
+      // sequencer after the gate has closed.
+      ++this.playGen;
       if (this.synth) {
         this.synth.stopMIDI();
-        const actx = this.synth.actx;
-        if (actx && actx.state === 'running' && typeof actx.suspend === 'function') {
-          actx.suspend();
-        }
+        this.suspendContext();
       }
       this.notify();
     }
 
+    /* CH-QA-07: the single resume path, and it reconciles rather than walking
+       away when the gate is already open. Exactly one playback is started: if
+       the cue is the one the pause stopped, the sequencer picks it up from the
+       tick stopMIDI() left behind; if the player changed track while paused it
+       is loaded and started once, here, and nowhere else. */
     resumeForGame() {
-      if (!this.heldByPause) return;
       this.heldByPause = false;
+      if (this.desiredIndex === null) { this.notify(); return; }
 
+      const gen = ++this.playGen;
       const restart = () => {
-        if (this.desiredIndex === null) { this.notify(); return; }
-        if (this.playingIndex === this.desiredIndex && this.synth && this.synth.song) {
-          this.isPlaying = true;
-          this.synth.playMIDI();
-          this.notify();
-        } else {
-          this.render();
-        }
-      };
+        if (gen !== this.playGen || this.heldByPause || !this.unlocked) return;
+        const synth = this.synth;
+        if (!synth) return;
+        // The resume did not take (no user gesture yet, or the tab is still
+        // hidden). Starting the sequencer against a frozen clock is the thing
+        // that backdates playTime, so leave it stopped and wait for the next
+        // resume instead.
+        if (synth.actx && synth.actx.state !== 'running') { this.notify(); return; }
 
-      const actx = this.synth && this.synth.actx;
-      if (actx && actx.state === 'suspended') {
-        // playMIDI() schedules against actx.currentTime, which stays frozen
-        // until the context is actually running again. Restarting before the
-        // resume settles backdates playTime and makes the sequencer fire a
-        // burst of catch-up notes, so wait for the promise where we get one.
-        const p = actx.resume();
-        if (p && typeof p.then === 'function') {
-          p.then(restart, restart);
+        // Already sounding the cue that is wanted, so there is nothing to
+        // start. One click reaches this twice - the RESUME handler calls in,
+        // and so does pointerlockchange for the same click - and without this
+        // the second call starts a second playback over the first.
+        if (synth.playing && this.isPlaying && this.playingIndex === this.desiredIndex) {
           this.notify();
           return;
         }
-      }
-      restart();
+
+        const sameCue = synth.song
+          && this.loadedIndex === this.desiredIndex
+          && this.playingIndex === this.desiredIndex;
+        if (sameCue) {
+          this.isPlaying = true;
+          synth.playMIDI();
+          this.notify();
+          return;
+        }
+        this.loadAndPlay(this.desiredIndex);
+      };
+
+      // playMIDI() schedules against actx.currentTime, which stays frozen until
+      // the context is actually running again, so wait for the serialized
+      // resume to land before anything starts.
+      this.resumeContext().then(restart, restart);
+      this.notify();
     }
 
     /* ----------------------------------------------------------------------
@@ -494,6 +650,9 @@
         isMuted: this.isMuted,
         volume: this.volume,
         heldByPause: this.heldByPause,
+        desiredIndex: this.desiredIndex,
+        playingIndex: this.playingIndex,
+        loadedIndex: this.loadedIndex,
         unlocked: this.unlocked,
         levelKey: this.levelKey,
         levelTrackIndices: this.levelTrackIndices.slice(),
