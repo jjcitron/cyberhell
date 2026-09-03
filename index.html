@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <style>
     * {
@@ -32,6 +32,7 @@
       width: 100%;
       height: 100%;
       display: block;
+      touch-action: none;
     }
 
     /* Crosshair & Hit Marker */
@@ -332,8 +333,130 @@
       color: #fff;
       touch-action: none;
     }
-    @media (pointer: coarse) {
-      #mobile-controls { display: flex; justify-content: space-between; align-items: center; }
+    /* Thumb D-Pad: one pad element owns every touch inside the cross so a
+       press can never land in a dead gap between separate arm buttons. */
+    #dpad {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      width: 168px;
+      height: 168px;
+      pointer-events: auto;
+      touch-action: none;
+      display: grid;
+      grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr;
+    }
+    .dpad-arm {
+      pointer-events: none;
+      background: rgba(0, 229, 255, 0.18);
+      border: 2px solid rgba(0, 229, 255, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #bffcff;
+      text-shadow: 0 0 6px #00e5ff;
+    }
+    .dpad-arm.on {
+      background: rgba(0, 255, 204, 0.5);
+      border-color: #00ffcc;
+    }
+    .dpad-arm.up    { grid-area: 1 / 2; border-radius: 10px 10px 0 0; border-bottom: none; }
+    .dpad-arm.left  { grid-area: 2 / 1; border-radius: 10px 0 0 10px; border-right: none; }
+    .dpad-arm.right { grid-area: 2 / 3; border-radius: 0 10px 10px 0; border-left: none; }
+    .dpad-arm.down  { grid-area: 3 / 2; border-radius: 0 0 10px 10px; border-top: none; }
+    .dpad-hub {
+      grid-area: 2 / 2;
+      pointer-events: none;
+      background: rgba(0, 229, 255, 0.10);
+      border-top: 2px solid rgba(0, 229, 255, 0.75);
+      border-bottom: 2px solid rgba(0, 229, 255, 0.75);
+    }
+
+    /* Action cluster, right thumb */
+    #m-actions {
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      width: 172px;
+      height: 168px;
+      pointer-events: none;
+    }
+    #m-actions .touch-btn { position: absolute; }
+    #m-btn-fire     { right: 0;    bottom: 0;   width: 82px; height: 82px; font-size: 15px; }
+    #m-btn-jump     { right: 88px; bottom: 14px; width: 64px; height: 64px; font-size: 12px; }
+    #m-btn-interact { right: 6px;  bottom: 90px; width: 64px; height: 64px; font-size: 13px; }
+    #m-btn-weap     { right: 78px; bottom: 92px; width: 58px; height: 58px; font-size: 11px; }
+
+    /* Portrait is not a supported layout. Prompt, do not reflow. */
+    #rotate-nudge {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #050508;
+      z-index: 40;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      font-size: 18px;
+      letter-spacing: 3px;
+      text-align: center;
+      padding: 24px;
+    }
+    @media (pointer: coarse) and (orientation: portrait) {
+      #rotate-nudge { display: flex; }
+    }
+
+    /* ---- Landscape touch layout (landscape only, no portrait reflow) ---- */
+    @media (pointer: coarse) and (orientation: landscape) {
+      /* Controls become a transparent full-screen layer instead of stealing a
+         140px band off the bottom of the play view. */
+      #mobile-controls {
+        display: block;
+        top: 0; left: 0; right: 0; bottom: 0;
+        width: auto;
+        height: auto;
+        padding: 0;
+      }
+
+      /* HUD off the play view: no opaque 90px bar, thin translucent top strip
+         that reads over the world instead of hiding it. */
+      #hud-bar {
+        top: 0;
+        bottom: auto;
+        height: auto;
+        padding: 5px 10px;
+        background: none;
+        border-top: none;
+        box-shadow: none;
+        pointer-events: none;
+        align-items: flex-start;
+      }
+      .hud-block {
+        min-width: 0;
+        padding: 2px 8px;
+        border: none;
+        background: rgba(6, 10, 14, 0.42);
+        box-shadow: none;
+      }
+      .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
+      .hud-val { font-size: 18px; line-height: 19px; }
+      #face-container { display: none; }
+      .weapon-selector { gap: 4px; }
+      .weap-slot { padding: 3px 5px; font-size: 9px; background: rgba(6, 10, 14, 0.42); }
+
+      /* Banner sat at top:24px, straight under the new HUD strip. */
+      #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+
+      /* Start/pause overlay has to fit a ~360px-tall viewport and stay
+         scrollable, or the ENTER/RESUME button is unreachable. */
+      #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
+      .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
+      .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+      .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
+      .instructions-grid { display: none; }
+      .start-btn { padding: 12px 30px; font-size: 17px; }
     }
   </style>
   <!-- Three.js 3D Engine -->
@@ -438,16 +561,28 @@
       </div>
     </div>
 
-    <!-- Mobile Virtual Controls -->
+    <!-- Mobile Virtual Controls (landscape) -->
     <div id="mobile-controls">
-      <div style="display:flex; gap:12px;">
+      <div id="dpad">
+        <div class="dpad-arm up" data-dir="up">&#9650;</div>
+        <div class="dpad-arm left" data-dir="left">&#9664;</div>
+        <div class="dpad-hub"></div>
+        <div class="dpad-arm right" data-dir="right">&#9654;</div>
+        <div class="dpad-arm down" data-dir="down">&#9660;</div>
+      </div>
+      <div id="m-actions">
         <div id="m-btn-interact" class="touch-btn">USE</div>
         <div id="m-btn-jump" class="touch-btn">JUMP</div>
-      </div>
-      <div style="display:flex; gap:12px;">
         <div id="m-btn-weap" class="touch-btn">SWAP</div>
         <div id="m-btn-fire" class="touch-btn" style="background: rgba(255,0,85,0.4); border-color:#ff0055;">FIRE</div>
       </div>
+    </div>
+
+    <!-- Portrait prompt (landscape-only game, no reflow) -->
+    <div id="rotate-nudge">
+      <div style="font-size:44px;">&#8635;</div>
+      <div>ROTATE TO LANDSCAPE</div>
+      <div style="font-size:11px; color:#7f8c9a; letter-spacing:1px;">CYBER-ENTRY RUNS WIDE</div>
     </div>
   </div>
 
@@ -677,6 +812,41 @@ const MAP01_DATA = {
 /* ==========================================================================
    AUDIO SYNTHESIZER (Pure Web Audio API - Zero External Asset Dependencies)
    ========================================================================== */
+/* Pure d-pad hit math: touch offset from pad centre -> movement key set.
+   Kept free of DOM so the ?selftest=1 assertions below can drive it. */
+function dpadKeys(dx, dy, dead) {
+  return {
+    KeyW: dy < -dead,
+    KeyS: dy > dead,
+    KeyA: dx < -dead,
+    KeyD: dx > dead
+  };
+}
+
+function runDpadSelfTest() {
+  const D = 16;
+  const on = (r) => Object.keys(r).filter(k => r[k]).sort().join(',');
+  const cases = [
+    ['centre is a deadzone',        dpadKeys(0, 0, D),        ''],
+    ['inside deadzone edge',        dpadKeys(15, -15, D),     ''],
+    ['up arm centre is up only',    dpadKeys(0, -56, D),      'KeyW'],
+    ['down arm centre is down',     dpadKeys(0, 56, D),       'KeyS'],
+    ['left arm centre is left',     dpadKeys(-56, 0, D),      'KeyA'],
+    ['right arm centre is right',   dpadKeys(56, 0, D),       'KeyD'],
+    ['corner gives a diagonal',     dpadKeys(56, -56, D),     'KeyD,KeyW'],
+    ['thumb slid off pad still up', dpadKeys(4, -400, D),     'KeyW']
+  ];
+  let bad = 0;
+  cases.forEach(([name, got, want]) => {
+    const g = on(got);
+    if (g !== want) { bad++; console.error(`DPAD SELFTEST FAIL: ${name} -> "${g}" want "${want}"`); }
+  });
+  console.log(bad === 0
+    ? `DPAD SELFTEST PASS (${cases.length}/${cases.length})`
+    : `DPAD SELFTEST FAILED ${bad}/${cases.length}`);
+  return bad === 0;
+}
+
 class SoundEngine {
   constructor() {
     this.ctx = null;
@@ -697,6 +867,15 @@ class SoundEngine {
     }
     if (!this.ambientGain && this.ctx) {
       this.startAmbientMusic();
+    }
+  }
+
+  // Suspending the context silences the ambient drone and every one-shot
+  // without tearing down the graph, so resume() above brings the same
+  // oscillators back rather than starting a second set.
+  pause() {
+    if (this.ctx && this.ctx.state === 'running') {
+      this.ctx.suspend();
     }
   }
 
@@ -1368,6 +1547,14 @@ class CyberDoomEngine {
     this.projectiles = [];
     this.particles = [];
 
+    // Touch build: pointer lock does not exist on mobile Chrome, so the whole
+    // start/pause path has to run off taps instead.
+    // Same predicate the CSS uses, deliberately: maxTouchPoints would also be
+    // true on a touchscreen laptop and would rob desktop play of pointer-lock
+    // mouse look, and it would disagree with the media query that shows the pad.
+    this.isTouch = window.matchMedia('(pointer: coarse)').matches;
+    this.pausedByBlur = false;
+
     // Setup Components
     this.initThree();
     this.initControls();
@@ -1828,8 +2015,15 @@ class CyberDoomEngine {
     // Start Button Listener
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
-      this.sound.resume();
-      this.canvas.requestPointerLock();
+      if (this.isTouch) {
+        // requestPointerLock never resolves on mobile Chrome, so isRunning
+        // would stay false forever and no physics frame would ever run.
+        this.enterLandscapeFullscreen();
+        this.resumeRun();
+      } else {
+        this.sound.resume();
+        this.canvas.requestPointerLock();
+      }
     });
 
     // Cheat Code Listener (Key K or typing IDKFA)
@@ -1905,31 +2099,20 @@ class CyberDoomEngine {
     }
 
     document.addEventListener('pointerlockchange', () => {
+      if (this.isTouch) return;
       if (document.pointerLockElement === this.canvas) {
-        overlay.style.display = 'none';
-        this.isRunning = true;
-      } else {
-        if (!this.isGameOver && !this.isVictory) {
-          overlay.style.display = 'flex';
-          document.getElementById('overlay-title').innerText = "PAUSED";
-          document.getElementById('overlay-subtitle').innerText = "CLICK TO RESUME INFILTRATION";
-          startBtn.innerText = "RESUME";
-          this.isRunning = false;
-        }
+        this.resumeRun();
+      } else if (this.isRunning) {
+        // Esc out of the lock. If pauseRun released the lock itself, isRunning is
+        // already false and we keep the more specific reason it set.
+        this.pauseRun("PAUSED", "CLICK TO RESUME INFILTRATION");
       }
     });
 
     // Mouse Look & Actions (Standard FPS axis: Mouse UP -> Look UP, Mouse DOWN -> Look DOWN)
     document.addEventListener('mousemove', (e) => {
       if (!this.isRunning) return;
-      const sens = 0.0022;
-      this.yaw -= e.movementX * sens;
-      this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch - e.movementY * sens));
-
-      this.camera.rotation.set(0, 0, 0);
-      this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = this.yaw;
-      this.camera.rotation.x = this.pitch;
+      this.applyLook(e.movementX, e.movementY, 0.0022);
     });
 
     document.addEventListener('mousedown', (e) => {
@@ -1971,6 +2154,206 @@ class CyberDoomEngine {
       const nextIdx = (list.indexOf(this.player.currentWeapon) + 1) % list.length;
       this.switchWeapon(list[nextIdx]);
     });
+
+    this.initTouchControls();
+    this.initFocusPause();
+  }
+
+  /* ==========================================================================
+     RUN STATE : one pause/resume path shared by pointer lock, the touch start
+     button, lost focus and rotation, so sim, input and audio cannot drift.
+     ========================================================================== */
+  resumeRun() {
+    if (this.isGameOver || this.isVictory) return;
+    this.pausedByBlur = false;
+    document.getElementById('overlay-screen').style.display = 'none';
+    this.clock.getDelta(); // drop the paused interval so physics does not lurch
+    this.sound.resume();
+    // Hand music back to whichever player is present. cyberMidi arrives with
+    // the MIDI wiring PR; until then the SoundEngine ambient is the only voice.
+    if (window.cyberMidi && !window.cyberMidi.isPlaying) window.cyberMidi.play();
+    this.isRunning = true;
+  }
+
+  pauseRun(title, subtitle) {
+    if (this.isGameOver || this.isVictory) return;
+    this.isRunning = false;
+    this.keys = {}; // drop any held d-pad or WASD direction across the pause
+    this.clearDpad();
+    this.sound.pause();
+    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // Mouse events go to the locked element, so an overlay shown while pointer
+    // lock is still held cannot be clicked and RESUME becomes a dead button.
+    if (document.pointerLockElement) document.exitPointerLock();
+    document.getElementById('overlay-screen').style.display = 'flex';
+    document.getElementById('overlay-title').innerText = title || "PAUSED";
+    document.getElementById('overlay-subtitle').innerText = subtitle || "TAP RESUME TO CONTINUE INFILTRATION";
+    document.getElementById('start-btn').innerText = "RESUME";
+  }
+
+  applyLook(dx, dy, sens) {
+    this.yaw -= dx * sens;
+    this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch - dy * sens));
+
+    this.camera.rotation.set(0, 0, 0);
+    this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+  }
+
+  // Best effort. Fullscreen buys back the Chrome address bar that sits over the
+  // play view, and the lock keeps a mid-run rotation from ejecting the player to
+  // the portrait prompt. iOS Safari supports neither; the prompt is the fallback.
+  enterLandscapeFullscreen() {
+    try {
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) {
+        const req = el.requestFullscreen({ navigationUI: 'hide' });
+        if (req && req.catch) req.catch(function () {});
+      }
+      if (screen.orientation && screen.orientation.lock) {
+        const lock = screen.orientation.lock('landscape');
+        if (lock && lock.catch) lock.catch(function () {});
+      }
+    } catch (err) {
+      /* unsupported: the portrait prompt covers it */
+    }
+  }
+
+  /* ==========================================================================
+     TOUCH CONTROLS (thumb d-pad + drag look)
+     ========================================================================== */
+  clearDpad() {
+    if (!this.dpadArms) return;
+    Object.keys(this.dpadArms).forEach(k => this.dpadArms[k].classList.remove('on'));
+  }
+
+  initTouchControls() {
+    const pad = document.getElementById('dpad');
+    if (!pad) return;
+
+    this.dpadArms = {};
+    pad.querySelectorAll('.dpad-arm').forEach(el => { this.dpadArms[el.dataset.dir] = el; });
+
+    const DEAD = 16;      // px from pad centre that counts as neutral
+    const MOVE_KEYS = ['KeyW', 'KeyS', 'KeyA', 'KeyD'];
+    const ARM_OF = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
+    let padId = null;
+
+    const steer = (touch) => {
+      const r = pad.getBoundingClientRect();
+      const set = dpadKeys(
+        touch.clientX - (r.left + r.width / 2),
+        touch.clientY - (r.top + r.height / 2),
+        DEAD
+      );
+      MOVE_KEYS.forEach(code => {
+        this.keys[code] = set[code];
+        this.dpadArms[ARM_OF[code]].classList.toggle('on', set[code]);
+      });
+    };
+
+    const release = () => {
+      padId = null;
+      MOVE_KEYS.forEach(code => { this.keys[code] = false; });
+      this.clearDpad();
+    };
+
+    // The whole pad square is the hit target (arms are pointer-events:none), so
+    // a thumb press cannot fall into a gap between separate arm buttons.
+    pad.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      // Chrome mobile can refuse an AudioContext resume outside a gesture, so
+      // the first thumb press after a background pause re-arms audio.
+      this.sound.resume();
+      if (padId !== null) return;
+      const t = e.changedTouches[0];
+      padId = t.identifier;
+      steer(t);
+    }, { passive: false });
+
+    pad.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (t.identifier === padId) steer(t);
+      }
+    }, { passive: false });
+
+    const endIfOurs = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === padId) { release(); return; }
+      }
+    };
+    pad.addEventListener('touchend', endIfOurs);
+    pad.addEventListener('touchcancel', endIfOurs);
+
+    // Drag anywhere on the open canvas to look. Without this the d-pad can only
+    // walk the player along whatever bearing the camera happened to start on.
+    let lookId = null, lastX = 0, lastY = 0;
+    const LOOK_SENS = 0.005;
+
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (!this.isRunning || lookId !== null) return;
+      const t = e.changedTouches[0];
+      lookId = t.identifier;
+      lastX = t.clientX;
+      lastY = t.clientY;
+    }, { passive: true });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (!this.isRunning) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== lookId) continue;
+        e.preventDefault();
+        this.applyLook(t.clientX - lastX, t.clientY - lastY, LOOK_SENS);
+        lastX = t.clientX;
+        lastY = t.clientY;
+      }
+    }, { passive: false });
+
+    const endLook = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === lookId) { lookId = null; return; }
+      }
+    };
+    this.canvas.addEventListener('touchend', endLook);
+    this.canvas.addEventListener('touchcancel', endLook);
+  }
+
+  /* ==========================================================================
+     LOST FOCUS : pause the sim AND the music. Leaving Chrome, switching apps,
+     locking the phone, hiding the tab, or rotating out of landscape.
+     ========================================================================== */
+  initFocusPause() {
+    const lost = (why) => {
+      if (!this.isRunning) return;
+      this.pauseRun("PAUSED", why);
+      this.pausedByBlur = true;
+    };
+    const regained = () => {
+      // Only touch auto-resumes. On desktop the run needs pointer lock back,
+      // and that cannot be re-acquired without a click.
+      if (this.pausedByBlur && this.isTouch) this.resumeRun();
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) lost("PAUSED IN BACKGROUND");
+      else regained();
+    });
+    window.addEventListener('blur', () => lost("LOST FOCUS"));
+    window.addEventListener('focus', regained);
+    window.addEventListener('pagehide', () => lost("PAUSED IN BACKGROUND"));
+
+    // Landscape-only by design: freeze behind the rotate prompt rather than
+    // letting the run continue underneath a full-screen cover.
+    const portrait = window.matchMedia('(orientation: portrait)');
+    const onOrient = () => {
+      if (!this.isTouch) return;
+      if (portrait.matches) lost("ROTATE BACK TO LANDSCAPE");
+      else regained();
+    };
+    if (portrait.addEventListener) portrait.addEventListener('change', onOrient);
+    else portrait.addListener(onOrient); // older WebKit
   }
 
   switchWeapon(weap) {
@@ -2841,7 +3224,9 @@ class CyberDoomEngine {
 // Start Engine on Window Load
 window.onload = function() {
   const engine = new CyberDoomEngine();
+  window.cyberEngine = engine; // QA handle
   engine.animate();
+  if (location.search.indexOf('selftest=1') !== -1) runDpadSelfTest();
 };
   </script>
 </body>
