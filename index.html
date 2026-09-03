@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
+  <script src="js/webaudio-tinysynth.js"></script>
+  <script src="js/cyber-midi-player.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -467,23 +469,73 @@ const MAP01_DATA = {
   // Interactive Sectors & Room Chambers
   sectors: [
     // 0: Initial Start Chamber (Trapezoid / Courtyard entry)
-    { id: "start_room", floorY: 0, ceilY: 6, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.85 },
+    {
+      id: "start_room", floorY: 0, ceilY: 6, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.85,
+      floors: [
+        { x: 0, z: 7, width: 16, depth: 10 },
+        { x: -11, z: 0, width: 6, depth: 4 },
+        { x: 0, z: 1, width: 6, depth: 2 }
+      ]
+    },
     // 1: Courtyard Outdoors (West of Start - Chainsaw secret)
-    { id: "courtyard_west", floorY: 0, ceilY: 20, isSky: true, floorTex: "toxic_rock", ceilTex: "sky", light: 1.0 },
+    {
+      id: "courtyard_west", floorY: 0, ceilY: 20, isSky: true, floorTex: "toxic_rock", ceilTex: "sky", light: 1.0,
+      floors: [
+        { x: -20, z: 0, width: 12, depth: 20 }
+      ]
+    },
     // 2: Main Central Corridor (Hallways leading to north & south)
-    { id: "corridor_main", floorY: 0, ceilY: 5.5, floorTex: "tech_floor", ceilTex: "tech_panel", light: 0.75 },
+    {
+      id: "corridor_main", floorY: 0, ceilY: 5.5, floorTex: "tech_floor", ceilTex: "tech_panel", light: 0.75,
+      floors: [
+        { x: 0, z: -9, width: 6, depth: 22 },
+        { x: 7.5, z: -8, width: 9, depth: 8 }
+      ]
+    },
     // 3: Northern Computer Lab (Big mainframes, blue grid floor, secret switches)
-    { id: "north_tech", floorY: -0.5, ceilY: 7, floorTex: "blue_grid", ceilTex: "tech_panel", light: 0.95 },
+    {
+      id: "north_tech", floorY: -0.5, ceilY: 7, floorTex: "blue_grid", ceilTex: "tech_panel", light: 0.95,
+      floors: [
+        { x: 0, z: -29, width: 28, depth: 18 },
+        { x: 17, z: -32, width: 6, depth: 4 }
+      ]
+    },
     // 4: Secret Alcoves in North Tech Room
-    { id: "north_secret", floorY: 0, ceilY: 5, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.6 },
+    {
+      id: "north_secret", floorY: 0, ceilY: 5, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.6,
+      floors: [
+        { x: 17, z: -32, width: 6, depth: 4 }
+      ]
+    },
     // 5: Large Southern Room (Dark Chasm / Pillars / Slime channel)
-    { id: "south_room", floorY: -1.5, ceilY: 8, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.65 },
+    {
+      id: "south_room", floorY: -1.5, ceilY: 8, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.65,
+      floors: [
+        { x: 27, z: -12, width: 30, depth: 28 },
+        { x: 34, z: -11, width: 4, depth: 6 }
+      ]
+    },
     // 6: Southern Secret Alcoves & Switch ledges
-    { id: "south_secret", floorY: 0, ceilY: 5.5, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.7 },
+    {
+      id: "south_secret", floorY: 0, ceilY: 5.5, floorTex: "dark_metal", ceilTex: "dark_metal", light: 0.7,
+      floors: [
+        { x: 34, z: -11, width: 4, depth: 6 }
+      ]
+    },
     // 7: East Outdoor Courtyard / Wasteland (Imp battleground & Shotgun)
-    { id: "east_yard", floorY: -2, ceilY: 25, isSky: true, floorTex: "toxic_ooze", ceilTex: "sky", light: 1.1 },
+    {
+      id: "east_yard", floorY: -2, ceilY: 25, isSky: true, floorTex: "toxic_ooze", ceilTex: "sky", light: 1.1,
+      floors: [
+        { x: 51, z: -22, width: 22, depth: 36 }
+      ]
+    },
     // 8: Exit Chamber
-    { id: "exit_room", floorY: -1.5, ceilY: 5, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.7 }
+    {
+      id: "exit_room", floorY: -1.5, ceilY: 5, floorTex: "metal_grate", ceilTex: "tech_panel", light: 0.7,
+      floors: [
+        { x: 33, z: -29, width: 6, depth: 6 }
+      ]
+    }
   ],
 
   // Walls & Doors (LineDefs: x1, z1, x2, z2, height, texture, solid, interactable)
@@ -513,6 +565,11 @@ const MAP01_DATA = {
     { p1: [3, -12], p2: [12, -12], h: 5.5, tex: "tech_wall", solid: true },
     { p1: [-3, -12], p2: [-3, -20], h: 5.5, tex: "tech_wall", solid: true },
     { p1: [3, -12], p2: [3, -20], h: 5.5, tex: "tech_wall", solid: true },
+
+    // --- STEP RISERS (Floor transition step walls) ---
+    { p1: [-3, -20], p2: [3, -20], h: 0.5, bottomY: -0.5, tex: "tech_wall", solid: false },
+    { p1: [12, -4], p2: [12, -12], h: 1.5, bottomY: -1.5, tex: "cyber_rust", solid: false },
+    { p1: [42, -10], p2: [42, -16], h: 0.5, bottomY: -2.0, tex: "cyber_rust", solid: false },
 
     // --- NORTH TECH ROOM (Computer Room) ---
     { p1: [-14, -20], p2: [14, -20], h: 7, tex: "tech_wall", solid: true },
@@ -1325,7 +1382,7 @@ class CyberDoomEngine {
 
   initThree() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 200);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
@@ -1370,7 +1427,13 @@ class CyberDoomEngine {
     });
 
     // Set Spawn
-    this.camera.position.set(data.playerSpawn.pos[0], data.playerSpawn.pos[1], data.playerSpawn.pos[2]);
+    const spawnFloor = this.getFloorAt(data.playerSpawn.pos[0], data.playerSpawn.pos[2]);
+    const spawnY = spawnFloor.inside ? spawnFloor.floorY + this.player.height : data.playerSpawn.pos[1];
+    this.camera.position.set(data.playerSpawn.pos[0], spawnY, data.playerSpawn.pos[2]);
+    // A player may only move across known floor rectangles.  Keeping the last
+    // grounded position gives us a deterministic recovery point if malformed
+    // map data ever presents a gap instead of allowing a fall into the void.
+    this.player.safePosition = new THREE.Vector3(this.camera.position.x, spawnY, this.camera.position.z);
     this.yaw = data.playerSpawn.rot;
     this.pitch = 0;
     this.camera.rotation.set(0, 0, 0);
@@ -1380,42 +1443,50 @@ class CyberDoomEngine {
   }
 
   buildSectorGeometry(sec) {
-    // Generate floor plane based on sector bounds or ID
-    let width = sec.width !== undefined ? sec.width : 60;
-    let depth = sec.depth !== undefined ? sec.depth : 60;
-    let x = sec.x !== undefined ? sec.x : 0;
-    let z = sec.z !== undefined ? sec.z : 0;
-    if (sec.width === undefined) {
-      if (sec.id === "start_room") { width = 20; depth = 20; x = 0; z = 6; }
-      else if (sec.id === "courtyard_west") { width = 16; depth = 24; x = -20; z = 0; }
-      else if (sec.id === "corridor_main") { width = 16; depth = 30; x = 0; z = -8; }
-      else if (sec.id === "north_tech") { width = 32; depth = 24; x = 0; z = -28; }
-      else if (sec.id === "south_room") { width = 36; depth = 36; x = 28; z = -12; }
-      else if (sec.id === "east_yard") { width = 30; depth = 40; x = 50; z = -20; }
-      else if (sec.id === "exit_room") { width = 10; depth = 10; x = 33; z = -29; }
+    let rects = sec.floors;
+    if (!rects || rects.length === 0) {
+      let width = sec.width !== undefined ? sec.width : 60;
+      let depth = sec.depth !== undefined ? sec.depth : 60;
+      let x = sec.x !== undefined ? sec.x : 0;
+      let z = sec.z !== undefined ? sec.z : 0;
+      if (sec.width === undefined) {
+        if (sec.id === "start_room") { width = 20; depth = 20; x = 0; z = 6; }
+        else if (sec.id === "courtyard_west") { width = 16; depth = 24; x = -20; z = 0; }
+        else if (sec.id === "corridor_main") { width = 16; depth = 30; x = 0; z = -8; }
+        else if (sec.id === "north_tech") { width = 32; depth = 24; x = 0; z = -28; }
+        else if (sec.id === "south_room") { width = 36; depth = 36; x = 28; z = -12; }
+        else if (sec.id === "east_yard") { width = 30; depth = 40; x = 50; z = -20; }
+        else if (sec.id === "exit_room") { width = 10; depth = 10; x = 33; z = -29; }
+      }
+      rects = [{ x, z, width, depth }];
     }
 
-    const floorGeo = new THREE.PlaneGeometry(width, depth);
-    const floorTex = TextureFactory.create(sec.floorTex);
-    floorTex.repeat.set(width / 8, depth / 8);
-    floorTex.anisotropy = 4;
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.8 });
-    floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
-    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-    floorMesh.rotation.x = -Math.PI / 2;
-    floorMesh.position.set(x, sec.floorY, z);
-    this.scene.add(floorMesh);
+    sec.resolvedFloors = rects;
 
-    // Ceiling (if not open sky)
-    if (!sec.isSky) {
-      const ceilTex = TextureFactory.create(sec.ceilTex);
-      ceilTex.repeat.set(width / 4, depth / 4);
-      const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 0.8 });
-      const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
-      ceilMesh.rotation.x = Math.PI / 2;
-      ceilMesh.position.set(x, sec.ceilY, z);
-      this.scene.add(ceilMesh);
-    }
+    rects.forEach(rect => {
+      const { x, z, width, depth } = rect;
+      const floorGeo = new THREE.PlaneGeometry(width, depth);
+      const floorTex = TextureFactory.create(sec.floorTex);
+      floorTex.repeat.set(width / 8, depth / 8);
+      floorTex.anisotropy = 4;
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.8 });
+      floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
+      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.position.set(x, sec.floorY, z);
+      this.scene.add(floorMesh);
+
+      // Ceiling (if not open sky)
+      if (!sec.isSky) {
+        const ceilTex = TextureFactory.create(sec.ceilTex);
+        ceilTex.repeat.set(width / 4, depth / 4);
+        const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 0.8 });
+        const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
+        ceilMesh.rotation.x = Math.PI / 2;
+        ceilMesh.position.set(x, sec.ceilY, z);
+        this.scene.add(ceilMesh);
+      }
+    });
   }
 
   buildWall(w) {
@@ -2187,19 +2258,49 @@ class CyberDoomEngine {
     const newZ = this.camera.position.z + this.player.velocity.z * delta;
     const newY = this.camera.position.y + this.player.velocity.y * delta;
 
-    // Cylinder Wall Collision Resolution
+    // Cylinder Wall Collision Resolution.  Resolve in short steps so a slow
+    // frame cannot carry the player through a thin wall or over a floor seam.
     const pRadius = 0.55;
-    const resolved = this.resolveWallCollisions(newX, newZ, pRadius);
+    const horizontalDistance = Math.hypot(newX - this.camera.position.x, newZ - this.camera.position.z);
+    const collisionSteps = Math.max(1, Math.ceil(horizontalDistance / (pRadius * 0.5)));
+    let resolved = { x: this.camera.position.x, z: this.camera.position.z };
+    let leftKnownFloor = false;
+    for (let step = 1; step <= collisionSteps; step++) {
+      const t = step / collisionSteps;
+      const candidateX = THREE.MathUtils.lerp(this.camera.position.x, newX, t);
+      const candidateZ = THREE.MathUtils.lerp(this.camera.position.z, newZ, t);
+      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius);
+      if (!this.getFloorAt(candidate.x, candidate.z).inside) {
+        leftKnownFloor = true;
+        break;
+      }
+      resolved = candidate;
+    }
+
+    if (leftKnownFloor) {
+      this.player.velocity.x = 0;
+      this.player.velocity.z = 0;
+    }
 
     this.camera.position.x = resolved.x;
     this.camera.position.z = resolved.z;
 
     // Sector Floor Clamping
-    const floorY = this.getSectorFloor(this.camera.position.x, this.camera.position.z);
+    const floor = this.getFloorAt(this.camera.position.x, this.camera.position.z);
+    if (!floor.inside) {
+      // This is a last-resort guard for externally loaded maps: never permit
+      // the camera to remain outside a physical floor.
+      this.camera.position.copy(this.player.safePosition);
+      this.player.velocity.set(0, 0, 0);
+      this.player.onGround = true;
+      return;
+    }
+    const floorY = floor.floorY;
     if (newY <= floorY + this.player.height) {
       this.camera.position.y = floorY + this.player.height;
       this.player.velocity.y = 0;
       this.player.onGround = true;
+      this.player.safePosition.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     } else {
       this.camera.position.y = newY;
       this.player.onGround = false;
@@ -2217,16 +2318,16 @@ class CyberDoomEngine {
   }
 
   resolveWallCollisions(x, z, radius) {
-    const pointToSegDist = (px, pz, ax, az, bx, bz) => {
+    const getSegDist = (px, pz, ax, az, bx, bz) => {
       const vx = bx - ax, vz = bz - az;
       const wx = px - ax, wz = pz - az;
       const c1 = wx * vx + wz * vz;
-      if (c1 <= 0) return Math.hypot(px - ax, pz - az);
+      if (c1 <= 0) return { dist: Math.hypot(px - ax, pz - az), projX: ax, projZ: az };
       const c2 = vx * vx + vz * vz;
-      if (c2 <= c1) return Math.hypot(px - bx, pz - bz);
+      if (c2 <= c1) return { dist: Math.hypot(px - bx, pz - bz), projX: bx, projZ: bz };
       const t = c1 / c2;
-      const projx = ax + t * vx, projz = az + t * vz;
-      return Math.hypot(px - projx, pz - projz);
+      const projX = ax + t * vx, projZ = az + t * vz;
+      return { dist: Math.hypot(px - projX, pz - projZ), projX: projX, projZ: projZ };
     };
 
     // Auto open doors/switches if player approaches them
@@ -2237,8 +2338,8 @@ class CyberDoomEngine {
       const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
       const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
 
-      const d = pointToSegDist(x, z, p1x, p1z, p2x, p2z);
-      if (d < 1.35) {
+      const res = getSegDist(x, z, p1x, p1z, p2x, p2z);
+      if (res.dist < 1.35) {
         if (w.isDoor) {
           w.closed = false;
           w.solid = false;
@@ -2255,76 +2356,70 @@ class CyberDoomEngine {
     let resX = x;
     let resZ = z;
 
-    // Push player back from all solid walls
-    this.walls.forEach(w => {
-      if (!w.solid) return;
-      const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
-      const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
-      const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
-      const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
+    // 3 iterations of pushback resolution
+    for (let iter = 0; iter < 3; iter++) {
+      for (const w of this.walls) {
+        if (!w.solid) continue;
+        const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
+        const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
+        const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
+        const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
 
-      const dx = p2x - p1x;
-      const dz = p2z - p1z;
-      const lenSq = dx * dx + dz * dz;
-      if (lenSq === 0) return;
-
-      const t = Math.max(0, Math.min(1, ((resX - p1x) * dx + (resZ - p1z) * dz) / lenSq));
-      const projX = p1x + t * dx;
-      const projZ = p1z + t * dz;
-
-      const distX = resX - projX;
-      const distZ = resZ - projZ;
-      const dist = Math.hypot(distX, distZ);
-
-      if (dist < radius) {
-        const overlap = radius - dist;
-        const normX = dist > 0.0001 ? distX / dist : 0;
-        const normZ = dist > 0.0001 ? distZ / dist : 0;
-        resX += normX * overlap;
-        resZ += normZ * overlap;
+        const res = getSegDist(resX, resZ, p1x, p1z, p2x, p2z);
+        if (res.dist < radius) {
+          const overlap = radius - res.dist;
+          let distX = resX - res.projX;
+          let distZ = resZ - res.projZ;
+          let len = Math.hypot(distX, distZ);
+          if (len <= 0.0001) {
+            const dx = p2x - p1x;
+            const dz = p2z - p1z;
+            const segLen = Math.hypot(dx, dz);
+            if (segLen > 0.0001) {
+              distX = -dz / segLen;
+              distZ = dx / segLen;
+              len = 1.0;
+            }
+          }
+          if (len > 0.0001) {
+            resX += (distX / len) * overlap;
+            resZ += (distZ / len) * overlap;
+          }
+        }
       }
-    });
+    }
 
     return { x: resX, z: resZ };
   }
 
-  getSectorFloor(x, z) {
+  getFloorAt(x, z) {
     if (!this.levelData || !this.levelData.sectors || this.levelData.sectors.length === 0) {
-      return 0.0;
+      return { inside: false, floorY: 0.0 };
     }
 
-    // 1. Check exact sector bounds
+    // Floor rectangles are the collision authority.  Do not use the nearest
+    // rectangle as a floor: that made a visual gap traversable and let the
+    // camera drift beyond the rendered level.
     for (let i = 0; i < this.levelData.sectors.length; i++) {
       const sec = this.levelData.sectors[i];
-      if (sec.x !== undefined && sec.width !== undefined) {
+      const rects = sec.resolvedFloors || sec.floors;
+      if (rects) {
+        for (const r of rects) {
+          const halfW = r.width / 2;
+          const halfD = r.depth / 2;
+          if (x >= r.x - halfW && x <= r.x + halfW && z >= r.z - halfD && z <= r.z + halfD) {
+            return { inside: true, floorY: sec.floorY };
+          }
+        }
+      } else if (sec.x !== undefined && sec.width !== undefined) {
         const halfW = sec.width / 2;
         const halfD = sec.depth / 2;
         if (x >= sec.x - halfW && x <= sec.x + halfW && z >= sec.z - halfD && z <= sec.z + halfD) {
-          return sec.floorY;
+          return { inside: true, floorY: sec.floorY };
         }
       }
     }
-
-    // 2. Point-to-box distance for nearest sector
-    let bestFloor = 0.0;
-    let minRectDist = Infinity;
-
-    for (let i = 0; i < this.levelData.sectors.length; i++) {
-      const sec = this.levelData.sectors[i];
-      if (sec.x !== undefined && sec.width !== undefined) {
-        const halfW = sec.width / 2;
-        const halfD = sec.depth / 2;
-        const dx = Math.max(0, Math.abs(x - sec.x) - halfW);
-        const dz = Math.max(0, Math.abs(z - sec.z) - halfD);
-        const rectDist = Math.hypot(dx, dz);
-        if (rectDist < minRectDist) {
-          minRectDist = rectDist;
-          bestFloor = sec.floorY;
-        }
-      }
-    }
-
-    return bestFloor;
+    return { inside: false, floorY: 0.0 };
   }
 
   loadLevelFromFile(filePath, notify = true) {
