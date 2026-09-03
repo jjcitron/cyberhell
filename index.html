@@ -241,9 +241,26 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      /* CH-QA-01: plain `center` on an overflowing column clips BOTH ends with no
+         way to scroll to them, which is what put ENTER THE ABYSS under the
+         viewport edge at 1280x800. `safe center` falls back to start-alignment
+         once the content is taller than the overlay. */
+      justify-content: safe center;
       text-align: center;
-      padding: 20px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      /* The MIDI widget publishes its own footprint as --midi-reserve-x /
+         --midi-reserve so overlay controls can never end up underneath it:
+         expanded, it claims a right-hand gutter; collapsed to its title bar, it
+         only claims a bottom strip. */
+      padding: 20px calc(20px + var(--midi-reserve-x, 0px)) calc(20px + var(--midi-reserve, 0px)) 20px;
+    }
+    /* Widest interactive row on the overlay is the ~700px PACK/LEVEL cluster.
+       Centred, it clears a 330px panel docked 16px from the right once the
+       viewport passes ~1440px, so the gutter is only needed below that. */
+    @media (min-width: 1460px) {
+      #overlay-screen { padding-right: 20px; }
     }
     .title-glitch {
       font-size: 54px;
@@ -306,6 +323,23 @@
     .start-btn:hover {
       transform: scale(1.05);
       box-shadow: 0 0 35px #00ffff;
+    }
+
+    /* CH-QA-01: a 1280x800 desktop leaves Chrome roughly 620-640px of page
+       height. Compact the title screen there so the whole thing fits without
+       scrolling and the CTA stays well above the MIDI panel. */
+    @media (max-height: 740px) {
+      .title-glitch { font-size: 36px; letter-spacing: 4px; margin-bottom: 4px; }
+      .subtitle { font-size: 13px; letter-spacing: 2px; margin-bottom: 12px; }
+      .instructions-card {
+        padding: 12px 22px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .instructions-grid { gap: 4px 16px; margin-top: 6px; }
+      .key-badge { font-size: 11px; padding: 1px 5px; }
+      .start-btn { padding: 12px 34px; font-size: 19px; }
     }
 
     /* Mobile Virtual Controls */
@@ -699,6 +733,14 @@ class SoundEngine {
     }
     if (!this.ambientGain && this.ctx) {
       this.startAmbientMusic();
+    }
+  }
+
+  /* CH-QA-03: the ambient drone runs forever once started, so pausing has to
+     suspend the context - that is what actually clears the tab speaker icon. */
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') {
+      this.ctx.suspend();
     }
   }
 
@@ -1906,19 +1948,45 @@ class CyberDoomEngine {
       });
     }
 
+    // CH-QA-03: one place that raises the PAUSED overlay, so Escape and
+    // lost-focus take the exact same path.
+    const showPauseOverlay = () => {
+      overlay.style.display = 'flex';
+      document.getElementById('overlay-title').innerText = "PAUSED";
+      document.getElementById('overlay-subtitle').innerText = "CLICK TO RESUME INFILTRATION";
+      startBtn.innerText = "RESUME";
+    };
+
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement === this.canvas) {
         overlay.style.display = 'none';
         this.isRunning = true;
+        this.resumeAllAudio();
       } else {
         if (!this.isGameOver && !this.isVictory) {
-          overlay.style.display = 'flex';
-          document.getElementById('overlay-title').innerText = "PAUSED";
-          document.getElementById('overlay-subtitle').innerText = "CLICK TO RESUME INFILTRATION";
-          startBtn.innerText = "RESUME";
+          showPauseOverlay();
           this.isRunning = false;
+          this.pauseAllAudio();
         }
       }
+    });
+
+    // CH-QA-03: alt-tab / clicking another window / hiding the tab parks the
+    // mission behind the PAUSED overlay and silences both audio graphs.
+    const parkForFocusLoss = () => {
+      if (this.isGameOver || this.isVictory) return;
+      // Only when a mission is actually live - on the title screen the MIDI
+      // widget is being used deliberately and must keep playing.
+      if (!this.isRunning) return;
+      this.isRunning = false;
+      showPauseOverlay();
+      this.pauseAllAudio();
+      if (document.pointerLockElement) document.exitPointerLock();
+    };
+
+    window.addEventListener('blur', parkForFocusLoss);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) parkForFocusLoss();
     });
 
     // Mouse Look & Actions (Standard FPS axis: Mouse UP -> Look UP, Mouse DOWN -> Look DOWN)
@@ -2728,6 +2796,22 @@ class CyberDoomEngine {
   }
 
   /* ==========================================================================
+     CH-QA-03: PAUSE AUDIO GATE
+     The engine SFX/ambient graph and the MIDI synth are separate audio
+     contexts; the PAUSED overlay has to gate both or the tab keeps showing the
+     speaker icon and the music keeps playing.
+     ========================================================================== */
+  pauseAllAudio() {
+    if (this.sound) this.sound.suspend();
+    if (window.cyberMidi) window.cyberMidi.pauseForGame();
+  }
+
+  resumeAllAudio() {
+    if (this.sound) this.sound.resume();
+    if (window.cyberMidi) window.cyberMidi.resumeForGame();
+  }
+
+  /* ==========================================================================
      VECTOR AUTOMAP (TAB Key - Classic Doom Blueprints)
      ========================================================================== */
   setupAutomap() {
@@ -2843,6 +2927,8 @@ class CyberDoomEngine {
 // Start Engine on Window Load
 window.onload = function() {
   const engine = new CyberDoomEngine();
+  // Exposed so QA can assert pause/audio state without reaching into closures.
+  window.cyberEngine = engine;
   engine.animate();
 };
   </script>

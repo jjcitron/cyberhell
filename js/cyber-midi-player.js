@@ -45,6 +45,13 @@
       this.unlocked = false;
       this.uiContainer = null;
       this.tracks = CYBER_TRACKS;
+      // CH-QA-02: collapse state lives on the instance and is mirrored onto the
+      // widget as data-collapsed, so the toggle can always self-heal from the DOM.
+      this.isMinimized = false;
+      // CH-QA-03: while the game pause overlay holds the transport we remember
+      // whether playback should come back on resume.
+      this.heldByPause = false;
+      this.resumeAfterPause = false;
       
       this.initSynth();
       this.setupUnlockListener();
@@ -109,6 +116,7 @@
     }
 
     playTrack(index) {
+      this.releasePauseHold();
       this.currentIndex = index;
       this.isPlaying = true;
       if (this.synth && this.synth.actx && this.synth.actx.state === 'suspended') {
@@ -118,6 +126,7 @@
     }
 
     play() {
+      this.releasePauseHold();
       this.isPlaying = true;
       if (this.synth && this.synth.actx && this.synth.actx.state === 'suspended') {
         this.synth.actx.resume();
@@ -180,6 +189,136 @@
       this.updateUI();
     }
 
+    /* ----------------------------------------------------------------------
+       CH-QA-03: pause hold. The pause overlay (Escape / lost pointer lock /
+       hidden tab) stops the sequencer AND suspends the audio context, which is
+       what actually clears the Chrome tab speaker indicator. Resume restores
+       playback from the same tick, because stopMIDI() keeps playTick.
+       ---------------------------------------------------------------------- */
+    pauseForGame() {
+      if (this.heldByPause) return;
+      this.heldByPause = true;
+      this.resumeAfterPause = this.isPlaying;
+      this.isPlaying = false;
+      if (this.synth) {
+        this.synth.stopMIDI();
+        const actx = this.synth.actx;
+        if (actx && actx.state === 'running' && typeof actx.suspend === 'function') {
+          actx.suspend();
+        }
+      }
+      this.updateUI();
+    }
+
+    resumeForGame() {
+      if (!this.heldByPause) return;
+      const shouldPlay = this.resumeAfterPause;
+      this.heldByPause = false;
+      this.resumeAfterPause = false;
+
+      const restart = () => {
+        if (!shouldPlay) return;
+        this.isPlaying = true;
+        if (this.synth && this.synth.song) {
+          this.synth.playMIDI();
+        } else {
+          this.loadTrack(this.currentIndex);
+        }
+        this.updateUI();
+      };
+
+      const actx = this.synth && this.synth.actx;
+      if (actx && actx.state === 'suspended') {
+        // playMIDI() schedules against actx.currentTime, which stays frozen
+        // until the context is actually running again. Restarting before the
+        // resume settles backdates playTime and makes the sequencer fire a
+        // burst of catch-up notes, so wait for the promise where we get one.
+        const p = actx.resume();
+        if (p && typeof p.then === 'function') {
+          p.then(restart, restart);
+          this.updateUI();
+          return;
+        }
+      }
+      restart();
+      this.updateUI();
+    }
+
+    // A deliberate click on the widget transport overrides the pause hold.
+    releasePauseHold() {
+      this.heldByPause = false;
+      this.resumeAfterPause = false;
+    }
+
+    /* ----------------------------------------------------------------------
+       CH-QA-02: minimize / restore driven off DOM state, not a closure flag.
+       ---------------------------------------------------------------------- */
+    setMinimized(collapsed) {
+      this.isMinimized = !!collapsed;
+      this.applyMinimizedState();
+    }
+
+    toggleMinimized() {
+      // Read the DOM, not just the cached flag, so a desynced widget still
+      // toggles the way the user expects instead of needing a reload.
+      const domCollapsed = this.uiContainer
+        ? this.uiContainer.getAttribute('data-collapsed') === '1'
+        : this.isMinimized;
+      this.setMinimized(!domCollapsed);
+    }
+
+    applyMinimizedState() {
+      const uiDiv = this.uiContainer || document.getElementById('cyber-midi-ui');
+      if (!uiDiv) return;
+      const content = document.getElementById('cyber-midi-content');
+      const minBtn = document.getElementById('cyber-midi-minimize');
+      const header = document.getElementById('cyber-midi-header');
+      const collapsed = this.isMinimized;
+
+      uiDiv.setAttribute('data-collapsed', collapsed ? '1' : '0');
+      uiDiv.style.width = collapsed ? '210px' : '330px';
+      if (content) content.style.display = collapsed ? 'none' : 'block';
+      if (minBtn) {
+        minBtn.textContent = collapsed ? '+' : '\u2013';
+        minBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        minBtn.title = collapsed ? 'Restore MIDI controls' : 'Minimize MIDI panel';
+      }
+      if (header) {
+        // Collapsed, the whole title bar restores the panel. The bare toggle is a
+        // small target that travels down the screen as the panel shrinks, so a
+        // second click at the previous cursor position would hit nothing.
+        header.style.cursor = 'pointer';
+        header.style.borderBottom = collapsed ? '1px solid transparent' : '1px solid #00ffcc44';
+        header.style.paddingBottom = collapsed ? '0' : '6px';
+        header.style.marginBottom = collapsed ? '0' : '8px';
+        header.title = collapsed ? 'Restore MIDI controls' : 'Minimize MIDI panel';
+      }
+      this.updateOverlayReserve();
+    }
+
+    /* ----------------------------------------------------------------------
+       CH-QA-01: publish the widget footprint as --midi-reserve so the start /
+       pause overlay can keep ENTER THE ABYSS clear of it at any viewport size.
+       ---------------------------------------------------------------------- */
+    updateOverlayReserve() {
+      const uiDiv = this.uiContainer || document.getElementById('cyber-midi-ui');
+      if (!uiDiv) return;
+      const visible = getComputedStyle(uiDiv).display !== 'none';
+      const rect = uiDiv.getBoundingClientRect();
+      // 16px is the widget's own bottom/right offset; 24px is clearance, which
+      // also absorbs the 5% hover scale on .start-btn.
+      const GAP = 16 + 24;
+      // Expanded, the panel is tall enough to sit beside the vertically centred
+      // overlay content, so it has to claim a right-hand gutter. Collapsed to
+      // its title bar it only occupies a bottom strip, and claiming the gutter
+      // there would push the title screen off-centre for no reason.
+      const reserveX = visible && !this.isMinimized ? Math.ceil(rect.width) + GAP : 0;
+      const reserveY = visible && this.isMinimized ? Math.ceil(rect.height) + GAP : 0;
+      const root = document.documentElement.style;
+      root.setProperty('--midi-reserve-x', reserveX + 'px');
+      root.setProperty('--midi-reserve', reserveY + 'px');
+    }
+
     renderUI() {
       if (document.getElementById('cyber-midi-ui')) return;
 
@@ -199,14 +338,16 @@
         font-family: 'Courier New', monospace;
         color: #00ffcc;
         font-size: 12px;
-        backdrop-filter: blur(4px);
+        /* No backdrop-filter: over a 0.92-opaque panel it is visually inert, and
+           the extra compositing layer is a known source of stale hit-test
+           regions at non-100% browser zoom - which is where CH-QA-02 was seen. */
         user-select: none;
       `;
 
       uiDiv.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00ffcc44; padding-bottom: 6px; margin-bottom: 8px;">
-          <span style="font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 5px #00ffcc;">🎵 CYBERHELL MIDI SYNTH</span>
-          <button id="cyber-midi-minimize" style="background: none; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; padding: 1px 6px; font-size: 10px; border-radius: 3px;">-</button>
+        <div id="cyber-midi-header" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #00ffcc44; padding-bottom: 6px; margin-bottom: 8px;">
+          <span style="flex: 1 1 auto; min-width: 0; font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 5px #00ffcc;">🎵 CYBERHELL MIDI SYNTH</span>
+          <button id="cyber-midi-minimize" type="button" aria-expanded="true" title="Minimize MIDI panel" style="flex: 0 0 auto; background: none; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; min-width: 26px; height: 24px; line-height: 1; padding: 0 6px; font-size: 15px; font-weight: bold; border-radius: 3px;">–</button>
         </div>
 
         <div id="cyber-midi-content">
@@ -297,28 +438,46 @@
         this.setVolume(val);
       });
 
-      let isMinimized = false;
-      document.getElementById('cyber-midi-minimize').addEventListener('click', () => {
-        isMinimized = !isMinimized;
-        const content = document.getElementById('cyber-midi-content');
-        const minBtn = document.getElementById('cyber-midi-minimize');
-        if (isMinimized) {
-          content.style.display = 'none';
-          minBtn.textContent = '+';
-          uiDiv.style.width = '200px';
-        } else {
-          content.style.display = 'block';
-          minBtn.textContent = '-';
-          uiDiv.style.width = '330px';
+      // CH-QA-02: delegated on the widget root, so the toggle keeps working
+      // even if the header is ever re-rendered, and so the collapsed title bar
+      // is itself a restore target.
+      uiDiv.addEventListener('click', (e) => {
+        const onToggle = e.target.closest && e.target.closest('#cyber-midi-minimize');
+        const onHeader = e.target.closest && e.target.closest('#cyber-midi-header');
+        if (onToggle || (this.isMinimized && onHeader)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleMinimized();
         }
       });
 
+      // CH-QA-01: keep --midi-reserve in step with the widget's real footprint.
+      if (typeof ResizeObserver !== 'undefined') {
+        this._reserveObserver = new ResizeObserver(() => this.updateOverlayReserve());
+        this._reserveObserver.observe(uiDiv);
+      }
+      window.addEventListener('resize', () => this.updateOverlayReserve());
+
+      this.applyMinimizedState();
       this.updateUI();
     }
 
     updateUI() {
       if (!this.uiContainer) return;
       const track = this.tracks[this.currentIndex];
+
+      // CH-QA-02: re-assert the collapse state on every refresh; updateUI() runs
+      // from XHR callbacks and transport changes, and must never leave the panel
+      // half-collapsed with no way back.
+      const uiDiv = this.uiContainer;
+      const contentEl = document.getElementById('cyber-midi-content');
+      if (contentEl) {
+        const want = this.isMinimized ? 'none' : 'block';
+        if (contentEl.style.display !== want) contentEl.style.display = want;
+      }
+      if (uiDiv.getAttribute('data-collapsed') !== (this.isMinimized ? '1' : '0')) {
+        this.applyMinimizedState();
+      }
 
       const select = document.getElementById('cyber-midi-select');
       if (select) select.value = this.currentIndex;
