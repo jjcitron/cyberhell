@@ -114,12 +114,20 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     'depth': max(1.0, d)
                 })
 
+            # Real Doom lets a player auto-climb a floor-height difference up to
+            # 24 map units with no jump, and drop off any height freely. A
+            # two-sided linedef whose sectors differ by more than that is a
+            # ledge you can jump down from but not climb; anything below it is
+            # just a walkable step. Neither should be a full solid wall (that
+            # sealed 36/198 converted maps into pockets at spawn).
+            STEP_LIMIT = 24  # Doom map units
+
             walls_json = []
             for idx, ld in enumerate(linedefs):
                 v1_idx, v2_idx, flags, special, tag, s1_idx, s2_idx = ld
                 p1 = verts[v1_idx]
                 p2 = verts[v2_idx]
-                
+
                 is_single = (s2_idx == 65535)
                 is_door = special in [1, 26, 27, 28, 31, 32, 117, 118]
                 # Exit specials: 11/51 are switch exits, 52/124 walkover exits.
@@ -132,7 +140,10 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 if s1_idx >= len(sidedefs): continue
                 sec1_id = sidedefs[s1_idx][5]
                 sec1 = sectors_raw[sec1_id]
-                
+
+                h_diff = None
+                is_step_up = False
+                is_ledge = False
                 if is_single:
                     bottom_y = sec1[0] * SCALE
                     top_y = sec1[1] * SCALE
@@ -142,11 +153,23 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     if s2_idx >= len(sidedefs): continue
                     sec2_id = sidedefs[s2_idx][5]
                     sec2 = sectors_raw[sec2_id]
-                    bottom_y = min(sec1[0], sec2[0]) * SCALE
-                    top_y = max(sec1[1], sec2[1]) * SCALE
-                    h_diff = abs(sec1[0] - sec2[0])
-                    if h_diff < 32 and not is_door and not is_switch: continue
-                    h = max(8.0, top_y - bottom_y)
+                    if is_door or is_switch:
+                        # Doors/switches still need floor-to-ceiling geometry
+                        # to act as a panel, regardless of any floor step.
+                        bottom_y = min(sec1[0], sec2[0]) * SCALE
+                        top_y = max(sec1[1], sec2[1]) * SCALE
+                        h = max(8.0, top_y - bottom_y)
+                    else:
+                        h_diff = abs(sec1[0] - sec2[0])
+                        if h_diff < 1:
+                            continue  # flat floor, fully open, no geometry needed
+                        # The riser only spans the floor step, not up to the
+                        # ceiling, so the open space above it stays walkable.
+                        bottom_y = min(sec1[0], sec2[0]) * SCALE
+                        top_y = max(sec1[0], sec2[0]) * SCALE
+                        h = max(0.1, top_y - bottom_y)
+                        is_step_up = h_diff <= STEP_LIMIT
+                        is_ledge = not is_step_up
                     raw_tex = sidedefs[s1_idx][3].rstrip(b'\x00').decode('ascii', errors='ignore').upper()
 
                 x1, z1 = round(p1[0] * SCALE, 2), round(-p1[1] * SCALE, 2)
@@ -182,6 +205,22 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     w['switchId'] = 'sw_exit_game' if is_exit else f'sw_{tag or idx}'
                     if is_exit:
                         w['isExit'] = True
+                if is_step_up:
+                    # Climbable in both directions: no jump needed, so it must
+                    # not push the player back at all.
+                    w['solid'] = False
+                    w['stepUp'] = True
+                elif is_ledge:
+                    # Too tall to auto-climb. Not solid in the generic 2D
+                    # sense used by the offline reachability checkers (they
+                    # deliberately ignore height, same as getFloorAt), but the
+                    # engine blocks climbing it from the low side and lets the
+                    # player drop off it from the high side -- see loFloor/
+                    # hiFloor and resolveWallCollisions in index.html.
+                    w['solid'] = False
+                    w['ledge'] = True
+                    w['loFloor'] = round(bottom_y, 2)
+                    w['hiFloor'] = round(top_y, 2)
 
                 walls_json.append(w)
 

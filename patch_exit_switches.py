@@ -240,6 +240,49 @@ class Reach:
 # Exit selection
 # --------------------------------------------------------------------------
 
+def floor_at(level, x, z):
+    """Mirrors the engine's getFloorAt: first sector (in array order) whose
+    bounding-box rect contains (x, z). Sector rects are Doom-polygon
+    approximations and can overlap, so two nearby points can legitimately
+    resolve to different, unrelated sectors -- see standoff_floor_ok below."""
+    for sec in level.get('sectors', []):
+        rects = sec.get('floors') or ([{'x': sec['x'], 'z': sec['z'],
+                                         'width': sec['width'], 'depth': sec['depth']}]
+                                       if sec.get('width') is not None else [])
+        for r in rects:
+            if (abs(x - r['x']) <= r['width'] / 2 and abs(z - r['z']) <= r['depth'] / 2):
+                return sec['floorY']
+    return None
+
+
+FLOOR_TOLERANCE = 2.0  # engine units (~40 Doom map units)
+
+
+def standoff_floor_ok(level, w):
+    """A candidate exit wall is only usable if the floor the player will
+    actually be standing on in front of it matches the sector height that
+    wall was built from. Bounding-box sector overlap can otherwise place the
+    switch's usable standoff point over a wildly different (and wrong)
+    floor -- the player would end up too far below/above the switch for
+    interact()'s raycast to ever hit it, an unusable exit that looks fine to
+    the height-ignorant 2D reachability model."""
+    ax, az, bx, bz = wall_pts(w)
+    dx, dz = bx - ax, bz - az
+    length = math.hypot(dx, dz) or 1.0
+    nx, nz = -dz / length, dx / length
+    mx, mz = (ax + bx) / 2, (az + bz) / 2
+    expected = w.get('bottomY')
+    if expected is None:
+        return True
+    for side in (1, -1):
+        for back in (1.6, 2.4, 3.2):
+            px, pz = mx + nx * side * back, mz + nz * side * back
+            fy = floor_at(level, px, pz)
+            if fy is not None and abs(fy - expected) <= FLOOR_TOLERANCE:
+                return True
+    return False
+
+
 def mark_exit(w):
     w['isSwitch'] = True
     w['switchId'] = EXIT_SWITCH_ID
@@ -264,40 +307,56 @@ def choose_exit(level, wad_exit_lines):
         wad_keys.add((round(a, 2), round(b, 2), round(c, 2), round(d, 2)))
         wad_keys.add((round(c, 2), round(d, 2), round(a, 2), round(b, 2)))
     native = []
+    native_unsafe = []
     for w in walls:
         ax, az, bx, bz = wall_pts(w)
         if (round(ax, 2), round(az, 2), round(bx, 2), round(bz, 2)) not in wad_keys:
             continue
         d, _gap = reach.wall_access(ax, az, bx, bz)
-        if d is not None:
-            native.append(w)
+        if d is None:
+            continue
+        (native if standoff_floor_ok(level, w) else native_unsafe).append(w)
     if native:
         return native, 'native-exit-linedef'
 
     # 2. Fall back to the furthest wall the player can actually walk up to,
-    #    pulled toward where the map's real exit used to be.
+    #    pulled toward where the map's real exit used to be. Ranked twice:
+    #    once requiring a sane standoff floor, once without, so an ambiguous
+    #    bounding-box overlap never leaves a map with no exit at all.
     span = max(1.0, float(reach.dist.max()))
-    best, best_score = None, -1.0
-    for w in walls:
-        if not w.get('solid') or w.get('isDoor'):
-            continue
-        ax, az, bx, bz = wall_pts(w)
-        if math.hypot(bx - ax, bz - az) < 1.0:
-            continue                      # too short to reliably raycast onto
-        d, _gap = reach.wall_access(ax, az, bx, bz)
-        if d is None:
-            continue
-        score = d / span
-        if wad_exit_lines:
-            mx, mz = (ax + bx) / 2, (az + bz) / 2
-            near = min(math.hypot(mx - (a + c) / 2, mz - (b + e) / 2)
-                       for a, b, c, e in wad_exit_lines)
-            score += 0.6 * math.exp(-near / 12.0)   # bias, never a veto
-        if score > best_score:
-            best, best_score = w, score
+
+    def rank(require_safe):
+        best, best_score = None, -1.0
+        for w in walls:
+            if not w.get('solid') or w.get('isDoor'):
+                continue
+            ax, az, bx, bz = wall_pts(w)
+            if math.hypot(bx - ax, bz - az) < 1.0:
+                continue                      # too short to reliably raycast onto
+            if require_safe and not standoff_floor_ok(level, w):
+                continue
+            d, _gap = reach.wall_access(ax, az, bx, bz)
+            if d is None:
+                continue
+            score = d / span
+            if wad_exit_lines:
+                mx, mz = (ax + bx) / 2, (az + bz) / 2
+                near = min(math.hypot(mx - (a + c) / 2, mz - (b + e) / 2)
+                           for a, b, c, e in wad_exit_lines)
+                score += 0.6 * math.exp(-near / 12.0)   # bias, never a veto
+            if score > best_score:
+                best, best_score = w, score
+        return best
+
+    best = rank(require_safe=True)
+    if best is not None:
+        return [best], 'relocated-to-reachable-frontier'
+    if native_unsafe:
+        return native_unsafe, 'native-exit-linedef-ambiguous-floor'
+    best = rank(require_safe=False)
     if best is None:
         return [], 'no-candidate-wall'
-    return [best], 'relocated-to-reachable-frontier'
+    return [best], 'relocated-to-reachable-frontier-ambiguous-floor'
 
 
 def patch_level(json_path, wad_exit_lines):

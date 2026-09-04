@@ -1963,6 +1963,22 @@
   "walls": [
     {
       "p1": [
+        -70.4,
+        38.4
+      ],
+      "p2": [
+        -70.4,
+        41.6
+      ],
+      "bottomY": 0.4,
+      "topY": 1.25,
+      "h": 0.85,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -73.6,
         38.4
       ],
@@ -1971,10 +1987,29 @@
         38.4
       ],
       "bottomY": 1.25,
-      "topY": 11.2,
-      "h": 9.95,
+      "topY": 4.8,
+      "h": 3.55,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 1.25,
+      "hiFloor": 4.8
+    },
+    {
+      "p1": [
+        -73.6,
+        41.6
+      ],
+      "p2": [
+        -73.6,
+        38.4
+      ],
+      "bottomY": 0.4,
+      "topY": 1.25,
+      "h": 0.85,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -1986,10 +2021,13 @@
         40.8
       ],
       "bottomY": 1.25,
-      "topY": 11.2,
-      "h": 9.95,
+      "topY": 4.8,
+      "h": 3.55,
       "tex": "mainframe",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 1.25,
+      "hiFloor": 4.8
     },
     {
       "p1": [
@@ -2001,10 +2039,13 @@
         40.0
       ],
       "bottomY": 1.25,
-      "topY": 11.2,
-      "h": 9.95,
+      "topY": 4.8,
+      "h": 3.55,
       "tex": "mainframe",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 1.25,
+      "hiFloor": 4.8
     },
     {
       "p1": [
@@ -2016,10 +2057,13 @@
         39.2
       ],
       "bottomY": 1.25,
-      "topY": 11.2,
-      "h": 9.95,
+      "topY": 4.8,
+      "h": 3.55,
       "tex": "mainframe",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 1.25,
+      "hiFloor": 4.8
     },
     {
       "p1": [
@@ -2031,10 +2075,29 @@
         40.0
       ],
       "bottomY": 1.25,
-      "topY": 11.2,
-      "h": 9.95,
+      "topY": 4.8,
+      "h": 3.55,
       "tex": "mainframe",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 1.25,
+      "hiFloor": 4.8
+    },
+    {
+      "p1": [
+        -70.4,
+        41.6
+      ],
+      "p2": [
+        -73.6,
+        41.6
+      ],
+      "bottomY": 0.4,
+      "topY": 1.25,
+      "h": 0.85,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -2046,10 +2109,13 @@
         38.4
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": 0.4,
+      "h": 3.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": 0.4
     },
     {
       "p1": [
@@ -2061,10 +2127,13 @@
         42.0
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": 0.4,
+      "h": 3.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": 0.4
     },
     {
       "p1": [
@@ -2076,10 +2145,13 @@
         42.0
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": 0.4,
+      "h": 3.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": 0.4
     },
     {
       "p1": [
@@ -2211,10 +2283,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2316,10 +2391,13 @@
         67.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2331,10 +2409,13 @@
         73.6
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -2346,10 +2427,13 @@
         80.0
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -2376,10 +2460,13 @@
         89.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -2436,10 +2523,13 @@
         73.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2466,10 +2556,13 @@
         54.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -2736,10 +2829,13 @@
         41.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2751,10 +2847,13 @@
         28.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2766,10 +2865,13 @@
         43.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2781,10 +2883,13 @@
         38.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -2849,6 +2954,24 @@
     {
       "p1": [
         -101.6,
+        48.4
+      ],
+      "p2": [
+        -100.0,
+        48.4
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
+    },
+    {
+      "p1": [
+        -101.6,
         48.0
       ],
       "p2": [
@@ -2871,10 +2994,13 @@
         48.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -2946,10 +3072,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -2965,6 +3094,24 @@
       "h": 32.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -100.0,
+        50.8
+      ],
+      "p2": [
+        -101.6,
+        50.8
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3006,10 +3153,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3047,6 +3197,24 @@
         50.8
       ],
       "p2": [
+        -98.4,
+        50.8
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
+    },
+    {
+      "p1": [
+        -96.8,
+        50.8
+      ],
+      "p2": [
         -96.8,
         51.2
       ],
@@ -3074,6 +3242,24 @@
     {
       "p1": [
         -98.4,
+        48.4
+      ],
+      "p2": [
+        -96.8,
+        48.4
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
+    },
+    {
+      "p1": [
+        -98.4,
         48.0
       ],
       "p2": [
@@ -3096,10 +3282,13 @@
         48.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3156,10 +3345,13 @@
         48.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3175,6 +3367,24 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -88.8,
+        48.4
+      ],
+      "p2": [
+        -87.2,
+        48.4
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3220,6 +3430,24 @@
       "h": 8.0,
       "tex": "metal_grate",
       "solid": true
+    },
+    {
+      "p1": [
+        -87.2,
+        50.8
+      ],
+      "p2": [
+        -88.8,
+        50.8
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3261,10 +3489,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3299,6 +3530,24 @@
     {
       "p1": [
         -90.4,
+        50.8
+      ],
+      "p2": [
+        -92.0,
+        50.8
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
+    },
+    {
+      "p1": [
+        -90.4,
         51.2
       ],
       "p2": [
@@ -3336,10 +3585,13 @@
         48.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3355,6 +3607,24 @@
       "h": 32.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -92.0,
+        48.4
+      ],
+      "p2": [
+        -90.4,
+        48.4
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3381,10 +3651,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3426,10 +3699,13 @@
         48.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3445,6 +3721,24 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -95.2,
+        48.4
+      ],
+      "p2": [
+        -93.6,
+        48.4
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3486,10 +3780,13 @@
         51.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 1.25,
+      "h": 14.05,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3505,6 +3802,24 @@
       "h": 32.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -93.6,
+        50.8
+      ],
+      "p2": [
+        -95.2,
+        50.8
+      ],
+      "bottomY": 0.0,
+      "topY": 1.25,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": 0.0,
+      "hiFloor": 1.25
     },
     {
       "p1": [
@@ -3981,10 +4296,13 @@
         38.4
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": 0.0,
+      "h": 3.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -3996,10 +4314,13 @@
         39.6
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": -0.8,
+      "h": 2.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": -0.8
     },
     {
       "p1": [
@@ -4011,13 +4332,13 @@
         42.4
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
-      "tex": "switch_off",
-      "solid": true,
-      "isSwitch": true,
-      "switchId": "sw_exit_game",
-      "isExit": true
+      "topY": -0.8,
+      "h": 2.4,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": -0.8
     },
     {
       "p1": [
@@ -4029,10 +4350,13 @@
         43.2
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": -0.8,
+      "h": 2.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": -0.8
     },
     {
       "p1": [
@@ -4044,10 +4368,13 @@
         43.2
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": -0.8,
+      "h": 2.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": -0.8
     },
     {
       "p1": [
@@ -4059,10 +4386,13 @@
         42.4
       ],
       "bottomY": -3.2,
-      "topY": 6.4,
-      "h": 9.6,
+      "topY": -0.8,
+      "h": 2.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": -0.8
     },
     {
       "p1": [
@@ -4074,505 +4404,783 @@
         39.6
       ],
       "bottomY": -3.2,
+      "topY": 0.0,
+      "h": 3.2,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -3.2,
+      "hiFloor": 0.0
+    },
+    {
+      "p1": [
+        -78.8,
+        39.6
+      ],
+      "p2": [
+        -75.2,
+        39.6
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -78.8,
+        44.0
+      ],
+      "p2": [
+        -78.8,
+        39.6
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -78.0,
+        45.6
+      ],
+      "p2": [
+        -78.8,
+        44.0
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -76.4,
+        47.2
+      ],
+      "p2": [
+        -78.0,
+        45.6
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -74.8,
+        48.0
+      ],
+      "p2": [
+        -76.4,
+        47.2
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -69.2,
+        48.0
+      ],
+      "p2": [
+        -74.8,
+        48.0
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -67.6,
+        47.2
+      ],
+      "p2": [
+        -69.2,
+        48.0
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -66.0,
+        45.6
+      ],
+      "p2": [
+        -67.6,
+        47.2
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -65.2,
+        44.0
+      ],
+      "p2": [
+        -66.0,
+        45.6
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -65.2,
+        39.6
+      ],
+      "p2": [
+        -65.2,
+        44.0
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -68.8,
+        39.6
+      ],
+      "p2": [
+        -65.2,
+        39.6
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -62.4,
+        52.8
+      ],
+      "p2": [
+        -62.4,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": 0.75,
+      "h": 13.55,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.75
+    },
+    {
+      "p1": [
+        -60.8,
+        52.8
+      ],
+      "p2": [
+        -62.4,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": 0.75,
+      "h": 13.55,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.75
+    },
+    {
+      "p1": [
+        -60.8,
+        54.4
+      ],
+      "p2": [
+        -60.8,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": 0.75,
+      "h": 13.55,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.75
+    },
+    {
+      "p1": [
+        -62.4,
+        54.4
+      ],
+      "p2": [
+        -60.8,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": 0.75,
+      "h": 13.55,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.75
+    },
+    {
+      "p1": [
+        -60.8,
+        56.0
+      ],
+      "p2": [
+        -60.8,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": 1.45,
+      "h": 14.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.45
+    },
+    {
+      "p1": [
+        -59.2,
+        56.0
+      ],
+      "p2": [
+        -60.8,
+        56.0
+      ],
+      "bottomY": -12.8,
+      "topY": 1.45,
+      "h": 14.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.45
+    },
+    {
+      "p1": [
+        -59.2,
+        57.6
+      ],
+      "p2": [
+        -59.2,
+        56.0
+      ],
+      "bottomY": -12.8,
+      "topY": 1.45,
+      "h": 14.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.45
+    },
+    {
+      "p1": [
+        -60.8,
+        57.6
+      ],
+      "p2": [
+        -59.2,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": 1.45,
+      "h": 14.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 1.45
+    },
+    {
+      "p1": [
+        -57.6,
+        59.2
+      ],
+      "p2": [
+        -57.6,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 2.15,
+      "h": 14.95,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.15
+    },
+    {
+      "p1": [
+        -56.0,
+        59.2
+      ],
+      "p2": [
+        -57.6,
+        59.2
+      ],
+      "bottomY": -12.8,
+      "topY": 2.15,
+      "h": 14.95,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.15
+    },
+    {
+      "p1": [
+        -56.0,
+        60.8
+      ],
+      "p2": [
+        -56.0,
+        59.2
+      ],
+      "bottomY": -12.8,
+      "topY": 2.15,
+      "h": 14.95,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.15
+    },
+    {
+      "p1": [
+        -57.6,
+        60.8
+      ],
+      "p2": [
+        -56.0,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 2.15,
+      "h": 14.95,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.15
+    },
+    {
+      "p1": [
+        -54.4,
+        60.8
+      ],
+      "p2": [
+        -54.4,
+        62.4
+      ],
+      "bottomY": -12.8,
+      "topY": 2.85,
+      "h": 15.65,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.85
+    },
+    {
+      "p1": [
+        -52.8,
+        60.8
+      ],
+      "p2": [
+        -54.4,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 2.85,
+      "h": 15.65,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.85
+    },
+    {
+      "p1": [
+        -52.8,
+        62.4
+      ],
+      "p2": [
+        -52.8,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 2.85,
+      "h": 15.65,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.85
+    },
+    {
+      "p1": [
+        -54.4,
+        62.4
+      ],
+      "p2": [
+        -52.8,
+        62.4
+      ],
+      "bottomY": -12.8,
+      "topY": 2.85,
+      "h": 15.65,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 2.85
+    },
+    {
+      "p1": [
+        -51.2,
+        60.8
+      ],
+      "p2": [
+        -51.2,
+        62.4
+      ],
+      "bottomY": -12.8,
+      "topY": 3.6,
+      "h": 16.4,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.6
+    },
+    {
+      "p1": [
+        -49.6,
+        60.8
+      ],
+      "p2": [
+        -51.2,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 3.6,
+      "h": 16.4,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.6
+    },
+    {
+      "p1": [
+        -49.6,
+        62.4
+      ],
+      "p2": [
+        -49.6,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 3.6,
+      "h": 16.4,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.6
+    },
+    {
+      "p1": [
+        -51.2,
+        62.4
+      ],
+      "p2": [
+        -49.6,
+        62.4
+      ],
+      "bottomY": -12.8,
+      "topY": 3.6,
+      "h": 16.4,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.6
+    },
+    {
+      "p1": [
+        -48.0,
+        59.2
+      ],
+      "p2": [
+        -48.0,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 4.3,
+      "h": 17.1,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 4.3
+    },
+    {
+      "p1": [
+        -46.4,
+        59.2
+      ],
+      "p2": [
+        -48.0,
+        59.2
+      ],
+      "bottomY": -12.8,
+      "topY": 4.3,
+      "h": 17.1,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 4.3
+    },
+    {
+      "p1": [
+        -46.4,
+        60.8
+      ],
+      "p2": [
+        -46.4,
+        59.2
+      ],
+      "bottomY": -12.8,
+      "topY": 4.3,
+      "h": 17.1,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 4.3
+    },
+    {
+      "p1": [
+        -48.0,
+        60.8
+      ],
+      "p2": [
+        -46.4,
+        60.8
+      ],
+      "bottomY": -12.8,
+      "topY": 4.3,
+      "h": 17.1,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 4.3
+    },
+    {
+      "p1": [
+        -44.8,
+        56.0
+      ],
+      "p2": [
+        -44.8,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": 5.0,
+      "h": 17.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.0
+    },
+    {
+      "p1": [
+        -43.2,
+        56.0
+      ],
+      "p2": [
+        -44.8,
+        56.0
+      ],
+      "bottomY": -12.8,
+      "topY": 5.0,
+      "h": 17.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.0
+    },
+    {
+      "p1": [
+        -43.2,
+        57.6
+      ],
+      "p2": [
+        -43.2,
+        56.0
+      ],
+      "bottomY": -12.8,
+      "topY": 5.0,
+      "h": 17.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.0
+    },
+    {
+      "p1": [
+        -44.8,
+        57.6
+      ],
+      "p2": [
+        -43.2,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": 5.0,
+      "h": 17.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.0
+    },
+    {
+      "p1": [
+        -43.2,
+        52.8
+      ],
+      "p2": [
+        -43.2,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": 5.7,
+      "h": 18.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.7
+    },
+    {
+      "p1": [
+        -41.6,
+        52.8
+      ],
+      "p2": [
+        -43.2,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": 5.7,
+      "h": 18.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.7
+    },
+    {
+      "p1": [
+        -41.6,
+        54.4
+      ],
+      "p2": [
+        -41.6,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": 5.7,
+      "h": 18.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.7
+    },
+    {
+      "p1": [
+        -43.2,
+        54.4
+      ],
+      "p2": [
+        -41.6,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": 5.7,
+      "h": 18.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 5.7
+    },
+    {
+      "p1": [
+        -44.8,
+        51.2
+      ],
+      "p2": [
+        -41.6,
+        51.2
+      ],
+      "bottomY": -12.8,
       "topY": 6.4,
-      "h": 9.6,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -62.4,
-        52.8
-      ],
-      "p2": [
-        -62.4,
-        54.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -60.8,
-        52.8
-      ],
-      "p2": [
-        -62.4,
-        52.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -60.8,
-        54.4
-      ],
-      "p2": [
-        -60.8,
-        52.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -62.4,
-        54.4
-      ],
-      "p2": [
-        -60.8,
-        54.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -60.8,
-        56.0
-      ],
-      "p2": [
-        -60.8,
-        57.6
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -59.2,
-        56.0
-      ],
-      "p2": [
-        -60.8,
-        56.0
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -59.2,
-        57.6
-      ],
-      "p2": [
-        -59.2,
-        56.0
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -60.8,
-        57.6
-      ],
-      "p2": [
-        -59.2,
-        57.6
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -57.6,
-        59.2
-      ],
-      "p2": [
-        -57.6,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -56.0,
-        59.2
-      ],
-      "p2": [
-        -57.6,
-        59.2
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -56.0,
-        60.8
-      ],
-      "p2": [
-        -56.0,
-        59.2
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -57.6,
-        60.8
-      ],
-      "p2": [
-        -56.0,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -54.4,
-        60.8
-      ],
-      "p2": [
-        -54.4,
-        62.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -52.8,
-        60.8
-      ],
-      "p2": [
-        -54.4,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -52.8,
-        62.4
-      ],
-      "p2": [
-        -52.8,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -54.4,
-        62.4
-      ],
-      "p2": [
-        -52.8,
-        62.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -51.2,
-        60.8
-      ],
-      "p2": [
-        -51.2,
-        62.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -49.6,
-        60.8
-      ],
-      "p2": [
-        -51.2,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -49.6,
-        62.4
-      ],
-      "p2": [
-        -49.6,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -51.2,
-        62.4
-      ],
-      "p2": [
-        -49.6,
-        62.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -48.0,
-        59.2
-      ],
-      "p2": [
-        -48.0,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -46.4,
-        59.2
-      ],
-      "p2": [
-        -48.0,
-        59.2
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -46.4,
-        60.8
-      ],
-      "p2": [
-        -46.4,
-        59.2
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -48.0,
-        60.8
-      ],
-      "p2": [
-        -46.4,
-        60.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -44.8,
-        56.0
-      ],
-      "p2": [
-        -44.8,
-        57.6
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -43.2,
-        56.0
-      ],
-      "p2": [
-        -44.8,
-        56.0
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -43.2,
-        57.6
-      ],
-      "p2": [
-        -43.2,
-        56.0
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -44.8,
-        57.6
-      ],
-      "p2": [
-        -43.2,
-        57.6
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -43.2,
-        52.8
-      ],
-      "p2": [
-        -43.2,
-        54.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -41.6,
-        52.8
-      ],
-      "p2": [
-        -43.2,
-        52.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -41.6,
-        54.4
-      ],
-      "p2": [
-        -41.6,
-        52.8
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -43.2,
-        54.4
-      ],
-      "p2": [
-        -41.6,
-        54.4
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
-    },
-    {
-      "p1": [
-        -44.8,
-        51.2
-      ],
-      "p2": [
-        -41.6,
-        51.2
-      ],
-      "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
-      "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -4681,6 +5289,24 @@
     },
     {
       "p1": [
+        -57.6,
+        51.2
+      ],
+      "p2": [
+        -56.8,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
         -46.4,
         51.2
       ],
@@ -4693,6 +5319,114 @@
       "h": 32.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -56.8,
+        52.8
+      ],
+      "p2": [
+        -55.2,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -47.2,
+        52.8
+      ],
+      "p2": [
+        -46.4,
+        51.2
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -55.2,
+        54.4
+      ],
+      "p2": [
+        -53.6,
+        55.2
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -48.8,
+        54.4
+      ],
+      "p2": [
+        -47.2,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -50.4,
+        55.2
+      ],
+      "p2": [
+        -48.8,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -53.6,
+        55.2
+      ],
+      "p2": [
+        -50.4,
+        55.2
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
     },
     {
       "p1": [
@@ -4726,6 +5460,132 @@
     },
     {
       "p1": [
+        -56.0,
+        52.8
+      ],
+      "p2": [
+        -56.8,
+        51.2
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -55.2,
+        53.6
+      ],
+      "p2": [
+        -56.0,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -53.6,
+        54.4
+      ],
+      "p2": [
+        -55.2,
+        53.6
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -50.4,
+        54.4
+      ],
+      "p2": [
+        -53.6,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -48.8,
+        53.6
+      ],
+      "p2": [
+        -50.4,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -48.0,
+        52.8
+      ],
+      "p2": [
+        -48.8,
+        53.6
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
+        -47.2,
+        51.2
+      ],
+      "p2": [
+        -48.0,
+        52.8
+      ],
+      "bottomY": -12.8,
+      "topY": -11.55,
+      "h": 1.25,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.55
+    },
+    {
+      "p1": [
         -47.2,
         49.6
       ],
@@ -4861,6 +5721,198 @@
     },
     {
       "p1": [
+        -52.8,
+        48.0
+      ],
+      "p2": [
+        -52.8,
+        49.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -51.2,
+        48.0
+      ],
+      "p2": [
+        -52.8,
+        48.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -51.2,
+        49.6
+      ],
+      "p2": [
+        -51.2,
+        48.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -52.8,
+        49.6
+      ],
+      "p2": [
+        -51.2,
+        49.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -89.6,
+        54.4
+      ],
+      "p2": [
+        -89.6,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -86.4,
+        54.4
+      ],
+      "p2": [
+        -89.6,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -86.4,
+        57.6
+      ],
+      "p2": [
+        -86.4,
+        54.4
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -89.6,
+        57.6
+      ],
+      "p2": [
+        -86.4,
+        57.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -90.4,
+        53.6
+      ],
+      "p2": [
+        -90.4,
+        58.4
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -85.6,
+        53.6
+      ],
+      "p2": [
+        -90.4,
+        53.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -85.6,
+        58.4
+      ],
+      "p2": [
+        -85.6,
+        53.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -90.4,
+        58.4
+      ],
+      "p2": [
+        -85.6,
+        58.4
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -45.6,
         60.8
       ],
@@ -4869,10 +5921,13 @@
         60.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": -6.4,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -6.4
     },
     {
       "p1": [
@@ -4884,10 +5939,13 @@
         60.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": -6.4,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -6.4
     },
     {
       "p1": [
@@ -4899,10 +5957,13 @@
         58.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": -6.4,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -6.4
     },
     {
       "p1": [
@@ -4914,10 +5975,13 @@
         58.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": -6.4,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -6.4
     },
     {
       "p1": [
@@ -4929,10 +5993,13 @@
         75.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -4944,10 +6011,13 @@
         78.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -4959,10 +6029,13 @@
         81.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -4974,10 +6047,13 @@
         84.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -4989,10 +6065,13 @@
         86.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5004,10 +6083,13 @@
         84.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5019,10 +6101,13 @@
         81.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5034,10 +6119,13 @@
         75.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5049,10 +6137,13 @@
         72.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5064,10 +6155,13 @@
         68.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5079,10 +6173,13 @@
         67.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5094,10 +6191,253 @@
         68.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
+    },
+    {
+      "p1": [
+        -70.4,
+        68.8
+      ],
+      "p2": [
+        -67.2,
+        70.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -73.6,
+        68.8
+      ],
+      "p2": [
+        -70.4,
+        68.8
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -76.8,
+        70.4
+      ],
+      "p2": [
+        -73.6,
+        68.8
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -78.4,
+        72.0
+      ],
+      "p2": [
+        -76.8,
+        70.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -80.0,
+        75.2
+      ],
+      "p2": [
+        -78.4,
+        72.0
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -80.0,
+        78.4
+      ],
+      "p2": [
+        -80.0,
+        75.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -78.4,
+        81.6
+      ],
+      "p2": [
+        -80.0,
+        78.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -76.8,
+        83.2
+      ],
+      "p2": [
+        -78.4,
+        81.6
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -73.6,
+        84.8
+      ],
+      "p2": [
+        -76.8,
+        83.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -70.4,
+        84.8
+      ],
+      "p2": [
+        -73.6,
+        84.8
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -67.2,
+        83.2
+      ],
+      "p2": [
+        -70.4,
+        84.8
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -65.6,
+        81.6
+      ],
+      "p2": [
+        -67.2,
+        83.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -64.0,
+        78.4
+      ],
+      "p2": [
+        -65.6,
+        81.6
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -65.6,
+        72.0
+      ],
+      "p2": [
+        -64.0,
+        75.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -67.2,
+        70.4
+      ],
+      "p2": [
+        -65.6,
+        72.0
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -5146,6 +6486,22 @@
     },
     {
       "p1": [
+        -64.0,
+        75.2
+      ],
+      "p2": [
+        -64.0,
+        78.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -59.2,
         75.2
       ],
@@ -5154,10 +6510,13 @@
         75.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5169,10 +6528,13 @@
         75.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5184,10 +6546,13 @@
         78.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5244,10 +6609,13 @@
         86.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5349,10 +6717,13 @@
         96.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -5379,10 +6750,13 @@
         89.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -5409,10 +6783,13 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 7.2,
+      "h": 20.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 7.2
     },
     {
       "p1": [
@@ -5424,10 +6801,13 @@
         105.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 7.2,
+      "h": 20.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 7.2
     },
     {
       "p1": [
@@ -5454,10 +6834,29 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 7.2,
+      "h": 20.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 7.2
+    },
+    {
+      "p1": [
+        -70.4,
+        105.6
+      ],
+      "p2": [
+        -73.6,
+        105.6
+      ],
+      "bottomY": 6.4,
+      "topY": 7.2,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -5469,10 +6868,13 @@
         93.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5484,10 +6886,13 @@
         93.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5499,10 +6904,13 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5514,10 +6922,13 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5529,10 +6940,13 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5544,10 +6958,13 @@
         92.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5559,10 +6976,13 @@
         93.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
     },
     {
       "p1": [
@@ -5574,10 +6994,397 @@
         93.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 8.2,
+      "h": 21.0,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 8.2
+    },
+    {
+      "p1": [
+        -100.0,
+        77.6
+      ],
+      "p2": [
+        -99.6,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.2,
+        77.6
+      ],
+      "p2": [
+        -95.2,
+        77.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.2,
+        72.8
+      ],
+      "p2": [
+        -95.6,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -100.0,
+        72.8
+      ],
+      "p2": [
+        -100.0,
+        73.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -99.6,
+        77.6
+      ],
+      "p2": [
+        -95.6,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -100.0,
+        77.2
+      ],
+      "p2": [
+        -100.0,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.6,
+        77.6
+      ],
+      "p2": [
+        -95.2,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.2,
+        77.2
+      ],
+      "p2": [
+        -95.2,
+        73.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -99.6,
+        72.8
+      ],
+      "p2": [
+        -100.0,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -100.0,
+        73.2
+      ],
+      "p2": [
+        -100.0,
+        77.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.6,
+        72.8
+      ],
+      "p2": [
+        -99.6,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -95.2,
+        73.2
+      ],
+      "p2": [
+        -95.2,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.4,
+        72.8
+      ],
+      "p2": [
+        -48.4,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.8,
+        73.2
+      ],
+      "p2": [
+        -48.8,
+        77.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.0,
+        77.2
+      ],
+      "p2": [
+        -44.0,
+        73.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.4,
+        77.6
+      ],
+      "p2": [
+        -44.4,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.0,
+        73.2
+      ],
+      "p2": [
+        -44.0,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.4,
+        72.8
+      ],
+      "p2": [
+        -48.8,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.4,
+        77.6
+      ],
+      "p2": [
+        -44.0,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.8,
+        77.2
+      ],
+      "p2": [
+        -48.8,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.8,
+        72.8
+      ],
+      "p2": [
+        -48.8,
+        73.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.0,
+        72.8
+      ],
+      "p2": [
+        -44.4,
+        72.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -44.0,
+        77.6
+      ],
+      "p2": [
+        -44.0,
+        77.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -48.8,
+        77.6
+      ],
+      "p2": [
+        -48.4,
+        77.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -5641,6 +7448,54 @@
     },
     {
       "p1": [
+        -35.2,
+        48.0
+      ],
+      "p2": [
+        -32.0,
+        48.0
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -35.2,
+        44.8
+      ],
+      "p2": [
+        -35.2,
+        48.0
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -32.0,
+        44.8
+      ],
+      "p2": [
+        -35.2,
+        44.8
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -54.4,
         115.2
       ],
@@ -6271,6 +8126,70 @@
     },
     {
       "p1": [
+        -59.4,
+        75.4
+      ],
+      "p2": [
+        -59.4,
+        78.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -62.2,
+        75.4
+      ],
+      "p2": [
+        -59.4,
+        75.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -62.2,
+        78.2
+      ],
+      "p2": [
+        -62.2,
+        75.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -59.4,
+        78.2
+      ],
+      "p2": [
+        -62.2,
+        78.2
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -62.8,
         75.2
       ],
@@ -6279,10 +8198,13 @@
         72.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -6294,10 +8216,13 @@
         78.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.9,
+      "h": 19.7,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.9
     },
     {
       "p1": [
@@ -6346,6 +8271,22 @@
     },
     {
       "p1": [
+        -92.8,
+        94.4
+      ],
+      "p2": [
+        -92.8,
+        91.2
+      ],
+      "bottomY": 6.9,
+      "topY": 7.7,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -93.6,
         94.4
       ],
@@ -6433,6 +8374,22 @@
       "h": 8.0,
       "tex": "door_blast",
       "solid": true
+    },
+    {
+      "p1": [
+        -94.0,
+        91.2
+      ],
+      "p2": [
+        -94.0,
+        94.4
+      ],
+      "bottomY": 6.9,
+      "topY": 7.7,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -6534,10 +8491,13 @@
         96.0
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -6549,10 +8509,13 @@
         89.6
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -6564,10 +8527,13 @@
         83.2
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -6609,10 +8575,13 @@
         160.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -6624,10 +8593,13 @@
         123.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -6669,10 +8641,13 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -6684,10 +8659,29 @@
         108.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
+    },
+    {
+      "p1": [
+        -102.4,
+        102.4
+      ],
+      "p2": [
+        -96.0,
+        102.4
+      ],
+      "bottomY": 6.4,
+      "topY": 6.9,
+      "h": 0.5,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -6879,10 +8873,13 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -6894,10 +8891,13 @@
         108.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -6909,10 +8909,13 @@
         150.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -6924,10 +8927,13 @@
         156.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -6939,10 +8945,13 @@
         160.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -6954,10 +8963,31 @@
         156.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
+    },
+    {
+      "p1": [
+        -160.0,
+        156.8
+      ],
+      "p2": [
+        -166.4,
+        150.4
+      ],
+      "bottomY": -12.8,
+      "topY": -11.5,
+      "h": 1.3,
+      "tex": "city_ruins",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": -11.5
     },
     {
       "p1": [
@@ -6973,6 +9003,22 @@
       "h": 32.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -166.4,
+        89.6
+      ],
+      "p2": [
+        -160.0,
+        83.2
+      ],
+      "bottomY": -12.8,
+      "topY": -12.0,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -7059,10 +9105,13 @@
         83.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -7081,6 +9130,90 @@
     },
     {
       "p1": [
+        -137.6,
+        124.8
+      ],
+      "p2": [
+        -140.8,
+        124.8
+      ],
+      "bottomY": 6.4,
+      "topY": 7.4,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -140.0,
+        126.4
+      ],
+      "p2": [
+        -139.2,
+        127.2
+      ],
+      "bottomY": 7.4,
+      "topY": 11.8,
+      "h": 8.0,
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_reset"
+    },
+    {
+      "p1": [
+        -139.2,
+        125.6
+      ],
+      "p2": [
+        -140.0,
+        126.4
+      ],
+      "bottomY": 7.4,
+      "topY": 11.8,
+      "h": 8.0,
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_reset"
+    },
+    {
+      "p1": [
+        -138.4,
+        126.4
+      ],
+      "p2": [
+        -139.2,
+        125.6
+      ],
+      "bottomY": 7.4,
+      "topY": 11.8,
+      "h": 8.0,
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_reset"
+    },
+    {
+      "p1": [
+        -139.2,
+        127.2
+      ],
+      "p2": [
+        -138.4,
+        126.4
+      ],
+      "bottomY": 7.4,
+      "topY": 11.8,
+      "h": 8.0,
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_reset"
+    },
+    {
+      "p1": [
         -140.0,
         123.2
       ],
@@ -7089,10 +9222,13 @@
         124.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7104,10 +9240,13 @@
         123.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7119,10 +9258,13 @@
         124.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7134,10 +9276,13 @@
         124.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7149,10 +9294,13 @@
         128.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7164,10 +9312,13 @@
         129.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7179,10 +9330,13 @@
         132.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7194,10 +9348,13 @@
         128.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7209,10 +9366,13 @@
         128.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7224,10 +9384,13 @@
         126.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7239,10 +9402,61 @@
         124.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
+    },
+    {
+      "p1": [
+        -137.6,
+        128.0
+      ],
+      "p2": [
+        -137.6,
+        124.8
+      ],
+      "bottomY": 6.4,
+      "topY": 7.4,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -140.8,
+        128.0
+      ],
+      "p2": [
+        -137.6,
+        128.0
+      ],
+      "bottomY": 6.4,
+      "topY": 7.4,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -140.8,
+        124.8
+      ],
+      "p2": [
+        -140.8,
+        128.0
+      ],
+      "bottomY": 6.4,
+      "topY": 7.4,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -7329,10 +9543,13 @@
         144.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -7359,10 +9576,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7374,10 +9594,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7389,10 +9612,13 @@
         137.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7404,10 +9630,13 @@
         134.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7419,10 +9648,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7434,10 +9666,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -7629,10 +9864,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7644,10 +9882,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7659,10 +9900,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7674,10 +9918,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7689,10 +9936,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7704,10 +9954,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7719,10 +9972,13 @@
         131.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7734,10 +9990,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7839,10 +10098,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -7854,10 +10116,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7869,10 +10134,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7884,10 +10152,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7899,10 +10170,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -7914,10 +10188,13 @@
         140.8
       ],
       "bottomY": 6.4,
-      "topY": 19.2,
-      "h": 12.8,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -7929,10 +10206,13 @@
         140.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -7944,10 +10224,13 @@
         115.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 3.2,
+      "h": 16.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.2
     },
     {
       "p1": [
@@ -7959,10 +10242,13 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 3.2,
+      "h": 16.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.2
     },
     {
       "p1": [
@@ -7974,10 +10260,13 @@
         115.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 3.2,
+      "h": 16.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 3.2
     },
     {
       "p1": [
@@ -7989,10 +10278,13 @@
         112.0
       ],
       "bottomY": 3.2,
-      "topY": 19.2,
-      "h": 16.0,
+      "topY": 6.4,
+      "h": 3.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 3.2,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8004,10 +10296,141 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
+    },
+    {
+      "p1": [
+        -133.6,
+        148.0
+      ],
+      "p2": [
+        -138.4,
+        148.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -133.6,
+        152.8
+      ],
+      "p2": [
+        -133.6,
+        148.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -138.4,
+        152.8
+      ],
+      "p2": [
+        -133.6,
+        152.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -138.4,
+        148.0
+      ],
+      "p2": [
+        -138.4,
+        152.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -133.6,
+        92.0
+      ],
+      "p2": [
+        -133.6,
+        96.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -133.6,
+        96.8
+      ],
+      "p2": [
+        -128.8,
+        96.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -128.8,
+        96.8
+      ],
+      "p2": [
+        -128.8,
+        92.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -128.8,
+        92.0
+      ],
+      "p2": [
+        -133.6,
+        92.0
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -8019,10 +10442,13 @@
         109.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8034,10 +10460,13 @@
         122.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8049,10 +10478,13 @@
         122.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8064,10 +10496,13 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8079,10 +10514,13 @@
         112.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8094,10 +10532,13 @@
         109.6
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8154,10 +10595,13 @@
         86.4
       ],
       "bottomY": -12.8,
-      "topY": 25.6,
-      "h": 38.4,
+      "topY": 19.2,
+      "h": 32.0,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 19.2
     },
     {
       "p1": [
@@ -8281,6 +10725,70 @@
     },
     {
       "p1": [
+        -108.8,
+        92.8
+      ],
+      "p2": [
+        -108.8,
+        94.4
+      ],
+      "bottomY": 19.2,
+      "topY": 19.7,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -107.2,
+        92.8
+      ],
+      "p2": [
+        -108.8,
+        92.8
+      ],
+      "bottomY": 19.2,
+      "topY": 19.7,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -107.2,
+        94.4
+      ],
+      "p2": [
+        -107.2,
+        92.8
+      ],
+      "bottomY": 19.2,
+      "topY": 19.7,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -108.8,
+        94.4
+      ],
+      "p2": [
+        -107.2,
+        94.4
+      ],
+      "bottomY": 19.2,
+      "topY": 19.7,
+      "h": 0.5,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -83.2,
         123.2
       ],
@@ -8289,10 +10797,13 @@
         130.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8304,10 +10815,13 @@
         123.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8319,10 +10833,13 @@
         123.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8334,10 +10851,13 @@
         130.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8349,10 +10869,13 @@
         112.8
       ],
       "bottomY": -16.0,
-      "topY": 19.2,
-      "h": 35.2,
+      "topY": -12.8,
+      "h": 3.2,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -16.0,
+      "hiFloor": -12.8
     },
     {
       "p1": [
@@ -8364,10 +10887,13 @@
         112.8
       ],
       "bottomY": -16.0,
-      "topY": 19.2,
-      "h": 35.2,
+      "topY": -12.8,
+      "h": 3.2,
       "tex": "switch_off",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -16.0,
+      "hiFloor": -12.8
     },
     {
       "p1": [
@@ -8379,10 +10905,13 @@
         112.8
       ],
       "bottomY": -15.4,
-      "topY": 19.2,
-      "h": 34.6,
+      "topY": -12.8,
+      "h": 2.6,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -15.4,
+      "hiFloor": -12.8
     },
     {
       "p1": [
@@ -8394,10 +10923,29 @@
         116.0
       ],
       "bottomY": -16.0,
-      "topY": 19.2,
-      "h": 35.2,
+      "topY": -12.8,
+      "h": 3.2,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -16.0,
+      "hiFloor": -12.8
+    },
+    {
+      "p1": [
+        -93.6,
+        112.8
+      ],
+      "p2": [
+        -93.6,
+        116.0
+      ],
+      "bottomY": -16.0,
+      "topY": -15.4,
+      "h": 0.6,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -8409,10 +10957,13 @@
         112.8
       ],
       "bottomY": -14.75,
-      "topY": 19.2,
-      "h": 33.95,
+      "topY": -12.8,
+      "h": 1.95,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -14.75,
+      "hiFloor": -12.8
     },
     {
       "p1": [
@@ -8424,10 +10975,47 @@
         116.0
       ],
       "bottomY": -15.4,
-      "topY": 19.2,
-      "h": 34.6,
+      "topY": -12.8,
+      "h": 2.6,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -15.4,
+      "hiFloor": -12.8
+    },
+    {
+      "p1": [
+        -92.8,
+        112.8
+      ],
+      "p2": [
+        -92.8,
+        116.0
+      ],
+      "bottomY": -15.4,
+      "topY": -14.75,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -92.0,
+        112.8
+      ],
+      "p2": [
+        -91.2,
+        112.8
+      ],
+      "bottomY": -14.1,
+      "topY": -12.8,
+      "h": 1.3,
+      "tex": "tech_wall",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -14.1,
+      "hiFloor": -12.8
     },
     {
       "p1": [
@@ -8439,10 +11027,111 @@
         116.0
       ],
       "bottomY": -14.75,
-      "topY": 19.2,
-      "h": 33.95,
+      "topY": -12.8,
+      "h": 1.95,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -14.75,
+      "hiFloor": -12.8
+    },
+    {
+      "p1": [
+        -92.0,
+        112.8
+      ],
+      "p2": [
+        -92.0,
+        116.0
+      ],
+      "bottomY": -14.75,
+      "topY": -14.1,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -91.2,
+        112.8
+      ],
+      "p2": [
+        -90.4,
+        112.8
+      ],
+      "bottomY": -13.45,
+      "topY": -12.8,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -91.2,
+        116.0
+      ],
+      "p2": [
+        -92.0,
+        116.0
+      ],
+      "bottomY": -14.1,
+      "topY": -12.8,
+      "h": 1.3,
+      "tex": "tech_wall",
+      "solid": false,
+      "ledge": true,
+      "loFloor": -14.1,
+      "hiFloor": -12.8
+    },
+    {
+      "p1": [
+        -91.2,
+        112.8
+      ],
+      "p2": [
+        -91.2,
+        116.0
+      ],
+      "bottomY": -14.1,
+      "topY": -13.45,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -90.4,
+        116.0
+      ],
+      "p2": [
+        -91.2,
+        116.0
+      ],
+      "bottomY": -13.45,
+      "topY": -12.8,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -90.4,
+        112.8
+      ],
+      "p2": [
+        -90.4,
+        116.0
+      ],
+      "bottomY": -13.45,
+      "topY": -12.8,
+      "h": 0.65,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -8514,10 +11203,13 @@
         132.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8529,10 +11221,13 @@
         132.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -8626,6 +11321,134 @@
     },
     {
       "p1": [
+        -109.6,
+        125.6
+      ],
+      "p2": [
+        -104.8,
+        125.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -104.8,
+        125.6
+      ],
+      "p2": [
+        -104.8,
+        120.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -104.8,
+        120.8
+      ],
+      "p2": [
+        -109.6,
+        120.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -109.6,
+        120.8
+      ],
+      "p2": [
+        -109.6,
+        125.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -108.8,
+        124.8
+      ],
+      "p2": [
+        -105.6,
+        124.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -105.6,
+        124.8
+      ],
+      "p2": [
+        -105.6,
+        121.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -105.6,
+        121.6
+      ],
+      "p2": [
+        -108.8,
+        121.6
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -108.8,
+        121.6
+      ],
+      "p2": [
+        -108.8,
+        124.8
+      ],
+      "bottomY": -12.8,
+      "topY": -12.3,
+      "h": 0.5,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -96.0,
         164.8
       ],
@@ -8687,6 +11510,22 @@
     {
       "p1": [
         -152.8,
+        164.8
+      ],
+      "p2": [
+        -148.0,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -152.8,
         163.2
       ],
       "p2": [
@@ -8698,6 +11537,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -148.0,
+        163.2
+      ],
+      "p2": [
+        -152.8,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -8941,6 +11796,22 @@
     },
     {
       "p1": [
+        -146.4,
+        164.8
+      ],
+      "p2": [
+        -141.6,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -141.6,
         164.8
       ],
@@ -8956,6 +11827,22 @@
     },
     {
       "p1": [
+        -141.6,
+        163.2
+      ],
+      "p2": [
+        -146.4,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -140.0,
         163.2
       ],
@@ -8968,6 +11855,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -140.0,
+        164.8
+      ],
+      "p2": [
+        -135.2,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -8986,6 +11889,22 @@
     },
     {
       "p1": [
+        -135.2,
+        163.2
+      ],
+      "p2": [
+        -140.0,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -133.6,
         163.2
       ],
@@ -8998,6 +11917,38 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -133.6,
+        164.8
+      ],
+      "p2": [
+        -116.0,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -116.0,
+        163.2
+      ],
+      "p2": [
+        -133.6,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -9031,6 +11982,22 @@
     },
     {
       "p1": [
+        -114.4,
+        164.8
+      ],
+      "p2": [
+        -109.6,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -109.6,
         164.8
       ],
@@ -9046,6 +12013,22 @@
     },
     {
       "p1": [
+        -109.6,
+        163.2
+      ],
+      "p2": [
+        -114.4,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -108.0,
         163.2
       ],
@@ -9058,6 +12041,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -108.0,
+        164.8
+      ],
+      "p2": [
+        -103.2,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -9076,6 +12075,22 @@
     },
     {
       "p1": [
+        -103.2,
+        163.2
+      ],
+      "p2": [
+        -108.0,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -101.6,
         163.2
       ],
@@ -9088,6 +12103,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -101.6,
+        164.8
+      ],
+      "p2": [
+        -96.8,
+        164.8
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -9106,6 +12137,22 @@
     },
     {
       "p1": [
+        -96.8,
+        163.2
+      ],
+      "p2": [
+        -101.6,
+        163.2
+      ],
+      "bottomY": 12.8,
+      "topY": 13.5,
+      "h": 0.7,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -152.0,
         166.4
       ],
@@ -9114,10 +12161,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9129,10 +12179,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9144,10 +12197,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9159,10 +12215,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9174,10 +12233,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9189,10 +12251,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9204,10 +12269,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9219,10 +12287,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9234,10 +12305,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9249,10 +12323,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9264,10 +12341,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9279,10 +12359,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9294,10 +12377,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9309,10 +12395,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9324,10 +12413,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9339,10 +12431,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9354,10 +12449,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9369,10 +12467,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9384,10 +12485,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9399,10 +12503,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9414,10 +12521,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9429,10 +12539,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9444,10 +12557,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9459,10 +12575,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9474,10 +12593,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9489,10 +12611,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9504,10 +12629,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9519,10 +12647,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9534,10 +12665,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9549,10 +12683,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9564,10 +12701,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9579,10 +12719,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9594,10 +12737,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9609,10 +12755,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9624,10 +12773,13 @@
         166.4
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9639,10 +12791,13 @@
         169.6
       ],
       "bottomY": 6.4,
-      "topY": 17.6,
-      "h": 11.2,
+      "topY": 12.8,
+      "h": 6.4,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9654,10 +12809,13 @@
         96.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 6.4,
+      "h": 19.2,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 6.4
     },
     {
       "p1": [
@@ -9669,10 +12827,13 @@
         116.8
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 12.8,
+      "h": 25.6,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9685,9 +12846,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9700,9 +12864,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9775,9 +12942,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9790,9 +12960,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -9949,6 +13122,70 @@
     },
     {
       "p1": [
+        -78.4,
+        120.0
+      ],
+      "p2": [
+        -78.4,
+        121.6
+      ],
+      "bottomY": -12.8,
+      "topY": -11.8,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -76.8,
+        120.0
+      ],
+      "p2": [
+        -78.4,
+        120.0
+      ],
+      "bottomY": -12.8,
+      "topY": -11.8,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -76.8,
+        121.6
+      ],
+      "p2": [
+        -76.8,
+        120.0
+      ],
+      "bottomY": -12.8,
+      "topY": -11.8,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -78.4,
+        121.6
+      ],
+      "p2": [
+        -76.8,
+        121.6
+      ],
+      "bottomY": -12.8,
+      "topY": -11.8,
+      "h": 1.0,
+      "tex": "mainframe",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -153.6,
         163.2
       ],
@@ -9972,10 +13209,13 @@
         156.8
       ],
       "bottomY": -11.5,
-      "topY": 17.6,
-      "h": 29.1,
+      "topY": 12.8,
+      "h": 24.3,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -11.5,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10047,10 +13287,13 @@
         156.8
       ],
       "bottomY": -11.5,
-      "topY": 17.6,
-      "h": 29.1,
+      "topY": 12.8,
+      "h": 24.3,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -11.5,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10062,10 +13305,13 @@
         160.0
       ],
       "bottomY": -11.5,
-      "topY": 17.6,
-      "h": 29.1,
+      "topY": 12.8,
+      "h": 24.3,
       "tex": "tech_wall",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -11.5,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10123,9 +13369,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10138,9 +13387,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10153,9 +13405,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10168,9 +13423,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10198,9 +13456,12 @@
       ],
       "bottomY": 6.4,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 6.4,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.4,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -10624,6 +13885,70 @@
     },
     {
       "p1": [
+        -185.6,
+        121.6
+      ],
+      "p2": [
+        -182.4,
+        121.6
+      ],
+      "bottomY": 6.4,
+      "topY": 7.2,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -185.6,
+        118.4
+      ],
+      "p2": [
+        -185.6,
+        121.6
+      ],
+      "bottomY": 6.4,
+      "topY": 7.2,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -182.4,
+        118.4
+      ],
+      "p2": [
+        -185.6,
+        118.4
+      ],
+      "bottomY": 6.4,
+      "topY": 7.2,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -182.4,
+        121.6
+      ],
+      "p2": [
+        -182.4,
+        118.4
+      ],
+      "bottomY": 6.4,
+      "topY": 7.2,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -137.6,
         80.0
       ],
@@ -10651,6 +13976,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -142.4,
+        78.4
+      ],
+      "p2": [
+        -139.2,
+        78.4
+      ],
+      "bottomY": -0.8,
+      "topY": 0.0,
+      "h": 0.8,
+      "tex": "tech_wall",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -10692,10 +14033,13 @@
         86.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -10707,10 +14051,13 @@
         83.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -10722,10 +14069,13 @@
         83.2
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -10737,10 +14087,13 @@
         86.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -10752,10 +14105,13 @@
         86.4
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
     },
     {
       "p1": [
@@ -10767,10 +14123,29 @@
         86.0
       ],
       "bottomY": -12.8,
-      "topY": 19.2,
-      "h": 32.0,
+      "topY": 0.0,
+      "h": 12.8,
       "tex": "city_ruins",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": -12.8,
+      "hiFloor": 0.0
+    },
+    {
+      "p1": [
+        -164.8,
+        83.2
+      ],
+      "p2": [
+        -161.6,
+        83.2
+      ],
+      "bottomY": -12.0,
+      "topY": -11.2,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -10835,6 +14210,22 @@
     {
       "p1": [
         -164.8,
+        78.4
+      ],
+      "p2": [
+        -161.6,
+        78.4
+      ],
+      "bottomY": -12.0,
+      "topY": -11.2,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -164.8,
         82.4
       ],
       "p2": [
@@ -10906,6 +14297,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -161.6,
+        82.0
+      ],
+      "p2": [
+        -164.8,
+        82.0
+      ],
+      "bottomY": -12.0,
+      "topY": -11.2,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -11149,6 +14556,134 @@
     },
     {
       "p1": [
+        -164.8,
+        75.2
+      ],
+      "p2": [
+        -161.6,
+        75.2
+      ],
+      "bottomY": -10.4,
+      "topY": -9.6,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -163.2,
+        70.4
+      ],
+      "p2": [
+        -160.0,
+        72.0
+      ],
+      "bottomY": -9.6,
+      "topY": -8.8,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -158.4,
+        65.6
+      ],
+      "p2": [
+        -156.8,
+        68.8
+      ],
+      "bottomY": -8.0,
+      "topY": -7.2,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -153.6,
+        64.0
+      ],
+      "p2": [
+        -153.6,
+        67.2
+      ],
+      "bottomY": -7.2,
+      "topY": -6.4,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -150.4,
+        64.0
+      ],
+      "p2": [
+        -150.4,
+        67.2
+      ],
+      "bottomY": -5.6,
+      "topY": -4.8,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -145.6,
+        65.6
+      ],
+      "p2": [
+        -147.2,
+        68.8
+      ],
+      "bottomY": -4.8,
+      "topY": -4.0,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -140.8,
+        70.4
+      ],
+      "p2": [
+        -144.0,
+        72.0
+      ],
+      "bottomY": -3.2,
+      "topY": -2.4,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
+        -139.2,
+        75.2
+      ],
+      "p2": [
+        -142.4,
+        75.2
+      ],
+      "bottomY": -2.4,
+      "topY": -1.6,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -160.0,
         67.2
       ],
@@ -11176,6 +14711,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -160.0,
+        67.2
+      ],
+      "p2": [
+        -158.4,
+        70.4
+      ],
+      "bottomY": -8.8,
+      "topY": -8.0,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -11239,6 +14790,22 @@
     },
     {
       "p1": [
+        -144.0,
+        67.2
+      ],
+      "p2": [
+        -145.6,
+        70.4
+      ],
+      "bottomY": -4.0,
+      "topY": -3.2,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -139.2,
         76.8
       ],
@@ -11266,6 +14833,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -139.2,
+        76.8
+      ],
+      "p2": [
+        -142.4,
+        76.8
+      ],
+      "bottomY": -1.6,
+      "topY": -0.8,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -11299,6 +14882,22 @@
     },
     {
       "p1": [
+        -164.8,
+        76.8
+      ],
+      "p2": [
+        -161.6,
+        76.8
+      ],
+      "bottomY": -11.2,
+      "topY": -10.4,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
+    },
+    {
+      "p1": [
         -152.0,
         64.0
       ],
@@ -11326,6 +14925,22 @@
       "h": 8.0,
       "tex": "city_ruins",
       "solid": true
+    },
+    {
+      "p1": [
+        -152.0,
+        64.0
+      ],
+      "p2": [
+        -152.0,
+        67.2
+      ],
+      "bottomY": -6.4,
+      "topY": -5.6,
+      "h": 0.8,
+      "tex": "city_ruins",
+      "solid": false,
+      "stepUp": true
     },
     {
       "p1": [
@@ -11564,8 +15179,11 @@
       "bottomY": -11.5,
       "topY": -5.9,
       "h": 8.0,
-      "tex": "city_ruins",
-      "solid": true
+      "tex": "switch_off",
+      "solid": true,
+      "isSwitch": true,
+      "switchId": "sw_exit_game",
+      "isExit": true
     },
     {
       "p1": [
@@ -11623,9 +15241,12 @@
       ],
       "bottomY": 6.9,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 5.9,
       "tex": "switch_off",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.9,
+      "hiFloor": 12.8
     },
     {
       "p1": [
@@ -11758,9 +15379,12 @@
       ],
       "bottomY": 6.9,
       "topY": 12.8,
-      "h": 8.0,
+      "h": 5.9,
       "tex": "switch_off",
-      "solid": true
+      "solid": false,
+      "ledge": true,
+      "loFloor": 6.9,
+      "hiFloor": 12.8
     }
   ],
   "entities": [

@@ -6,6 +6,8 @@
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
+  <script src="js/cyber-enemies.js"></script>
+  <script src="js/cyber-weapons.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -136,6 +138,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 0 20px;
+      gap: 12px;
       z-index: 11;
       font-family: 'Impact', 'Arial Black', sans-serif;
     }
@@ -189,6 +192,11 @@
     .weapon-selector {
       display: flex;
       gap: 8px;
+      /* Six slots no longer fit one row on narrow desktops, so wrap to two
+         rows and let the labels shrink before the bar overflows. */
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 0;
     }
     .weap-slot {
       padding: 6px 10px;
@@ -200,6 +208,8 @@
       border-radius: 3px;
       font-weight: bold;
     }
+    .weap-slot:not(.owned) { opacity: 0.4; }
+    .weap-slot.owned { color: #8fa6bd; }
     .weap-slot.active {
       color: #00ffff;
       border-color: #00ffff;
@@ -574,7 +584,8 @@
     }
   </style>
   <!-- Three.js 3D Engine -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Vendored r128: no CDN dependency at runtime, and headless QA can load it offline. -->
+  <script src="js/three.min.js"></script>
 </head>
 <body>
   <div id="game-container">
@@ -594,7 +605,7 @@
     <div id="hud-bar">
       <!-- Ammo Block -->
       <div class="hud-block">
-        <div class="hud-label">AMMO</div>
+        <div id="hud-ammo-label" class="hud-label">BULLETS</div>
         <div id="hud-ammo" class="hud-val">50</div>
       </div>
 
@@ -617,9 +628,12 @@
 
       <!-- Weapon Selector -->
       <div class="weapon-selector">
-        <div id="slot-1" class="weap-slot">1 CHAINSAW</div>
-        <div id="slot-2" class="weap-slot active">2 PISTOL</div>
-        <div id="slot-3" class="weap-slot">3 SHOTGUN</div>
+        <div id="slot-1" class="weap-slot">1 SAW</div>
+        <div id="slot-2" class="weap-slot active owned">2 PISTOL</div>
+        <div id="slot-3" class="weap-slot">3 MACHINEGUN</div>
+        <div id="slot-4" class="weap-slot">4 SHOTGUN</div>
+        <div id="slot-5" class="weap-slot">5 RIFLE</div>
+        <div id="slot-6" class="weap-slot">6 REPEATER</div>
       </div>
     </div>
 
@@ -643,7 +657,7 @@
           <div><span class="key-badge">LEFT CLICK</span> Fire Weapon</div>
           <div><span class="key-badge">RIGHT CLICK / E</span> Open Doors & Switches</div>
           <div><span class="key-badge">SPACE</span> Jump / Mantle</div>
-          <div><span class="key-badge">1 / 2 / 3 / SCROLL</span> Select Weapon</div>
+          <div><span class="key-badge">1 - 6 / SCROLL</span> Select Weapon</div>
           <div><span class="key-badge">TAB / M</span> Tactical Automap</div>
           <div><span class="key-badge">R</span> Restart Level</div>
         </div>
@@ -1231,6 +1245,125 @@ class SoundEngine {
     noiseSource.start(t);
   }
 
+  /* ---- Weapon cues added for the three-ammo weapon set ---- */
+
+  playMachinegun() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const noise = this.createNoiseBuffer(0.09);
+    const src = this.ctx.createBufferSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    src.buffer = noise;
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1700, t);
+    filter.Q.value = 0.9;
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.09);
+    src.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+    src.start(t);
+
+    // Low thump under the crack so sustained fire has weight.
+    const osc = this.ctx.createOscillator();
+    const og = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.07);
+    og.gain.setValueAtTime(0.18, t);
+    og.gain.exponentialRampToValueAtTime(0.01, t + 0.07);
+    osc.connect(og); og.connect(this.ctx.destination);
+    osc.start(t); osc.stop(t + 0.08);
+  }
+
+  playEnergyRifle() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const sub = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1300, t);
+    osc.frequency.exponentialRampToValueAtTime(160, t + 0.32);
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(90, t);
+    gain.gain.setValueAtTime(0.42, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.34);
+    osc.connect(gain); sub.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); sub.start(t);
+    osc.stop(t + 0.34); sub.stop(t + 0.34);
+  }
+
+  playEnergyRepeater() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(900 + Math.random() * 200, t);
+    osc.frequency.exponentialRampToValueAtTime(2200, t + 0.05);
+    gain.gain.setValueAtTime(0.14, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.07);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); osc.stop(t + 0.07);
+  }
+
+  /* Continuous chainsaw motor: a gated saw oscillator plus looping noise.
+     startSawLoop() is idempotent and is called every tick the blade runs; a
+     watchdog stops it if the ticks stop (pause, death, weapon swap).
+     ponytail: watchdog instead of wiring into every pause path. */
+  startSawLoop(rev) {
+    if (!this.ctx) return;
+    this._sawLastTick = performance.now();
+    if (!this._sawWatch) {
+      this._sawWatch = setInterval(() => {
+        if (this._saw && performance.now() - this._sawLastTick > 250) this.stopSawLoop();
+      }, 120);
+    }
+    const targetFreq = rev ? 210 : 120;
+    if (this._saw) {
+      this._saw.osc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.05);
+      this._saw.gain.gain.setTargetAtTime(rev ? 0.22 : 0.13, this.ctx.currentTime, 0.05);
+      return;
+    }
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(targetFreq, t);
+
+    const noiseSrc = this.ctx.createBufferSource();
+    noiseSrc.buffer = this.createNoiseBuffer(1.0);
+    noiseSrc.loop = true;
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.value = 0.06;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1400;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(rev ? 0.22 : 0.13, t + 0.08);
+
+    osc.connect(filter);
+    noiseSrc.connect(noiseGain); noiseGain.connect(filter);
+    filter.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); noiseSrc.start(t);
+    this._saw = { osc, noiseSrc, gain };
+  }
+
+  stopSawLoop() {
+    if (!this._saw || !this.ctx) return;
+    const { osc, noiseSrc, gain } = this._saw;
+    this._saw = null;
+    const t = this.ctx.currentTime;
+    try {
+      gain.gain.cancelScheduledValues(t);
+      gain.gain.setValueAtTime(gain.gain.value, t);
+      gain.gain.linearRampToValueAtTime(0.0001, t + 0.12);
+      osc.stop(t + 0.15);
+      noiseSrc.stop(t + 0.15);
+    } catch (e) { /* already stopped */ }
+  }
+
   createNoiseBuffer(duration) {
     const bufferSize = this.ctx.sampleRate * duration;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
@@ -1441,142 +1574,9 @@ class TextureFactory {
 }
 
 /* ==========================================================================
-   FPS WEAPON VIEWMODELS (3D Primitives attached to camera)
+   FPS WEAPON VIEWMODELS + WEAPONS TABLE -> js/cyber-weapons.js
+   (class WeaponViewmodels, WEAPONS, AMMO_CAP, AMMO_START, WEAPON_ORDER)
    ========================================================================== */
-class WeaponViewmodels {
-  constructor(camera) {
-    this.camera = camera;
-    this.holder = new THREE.Group();
-    this.camera.add(this.holder);
-
-    this.weapons = {};
-    this.currentKey = "pistol";
-    this.recoilOffset = 0;
-    this.bobTimer = 0;
-
-    this.buildWeapons();
-  }
-
-  buildWeapons() {
-    // 1. CHAINSAW (Cyber Ripper)
-    const sawGroup = new THREE.Group();
-    const sawBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.25, 0.25, 0.6),
-      new THREE.MeshStandardMaterial({ color: 0xff3300, roughness: 0.3 })
-    );
-    const sawBlade = new THREE.Mesh(
-      new THREE.BoxGeometry(0.04, 0.18, 0.7),
-      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 })
-    );
-    sawBlade.position.set(0, 0, -0.6);
-    const sawTeeth = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.22, 0.7),
-      new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true })
-    );
-    sawTeeth.position.set(0, 0, -0.6);
-    sawGroup.add(sawBody, sawBlade, sawTeeth);
-    sawGroup.position.set(0.15, -0.25, -0.65);
-    this.weapons['chainsaw'] = { mesh: sawGroup, teeth: sawTeeth };
-    this.holder.add(sawGroup);
-    sawGroup.visible = false;
-
-    // 2. PISTOL (Cyber 9mm Laser)
-    const pistolGroup = new THREE.Group();
-    const slide = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.1, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x1a2530, metalness: 0.9, roughness: 0.2 })
-    );
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.02, 0.42, 8),
-      new THREE.MeshStandardMaterial({ color: 0x00ffee, emissive: 0x00ffff, emissiveIntensity: 0.4 })
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.03, -0.02);
-    const grip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.07, 0.22, 0.12),
-      new THREE.MeshStandardMaterial({ color: 0x0d1117 })
-    );
-    grip.rotation.x = -0.3;
-    grip.position.set(0, -0.12, 0.1);
-    pistolGroup.add(slide, barrel, grip);
-    pistolGroup.position.set(0.2, -0.2, -0.5);
-    this.weapons['pistol'] = { mesh: pistolGroup, slide: slide };
-    this.holder.add(pistolGroup);
-    pistolGroup.visible = true;
-
-    // 3. SHOTGUN (Trench Scattergun)
-    const shotGroup = new THREE.Group();
-    const shotBarrel1 = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.03, 0.75, 12),
-      new THREE.MeshStandardMaterial({ color: 0x111622, metalness: 0.85 })
-    );
-    shotBarrel1.rotation.x = Math.PI / 2;
-    shotBarrel1.position.set(0.025, 0.04, -0.3);
-    const shotBarrel2 = shotBarrel1.clone();
-    shotBarrel2.position.set(-0.025, 0.04, -0.3);
-
-    const pump = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.09, 0.22),
-      new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.4 })
-    );
-    pump.position.set(0, 0.01, -0.28);
-
-    const shotBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.14, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x222b38 })
-    );
-    shotBody.position.set(0, -0.04, 0.1);
-
-    shotGroup.add(shotBarrel1, shotBarrel2, pump, shotBody);
-    shotGroup.position.set(0.18, -0.22, -0.6);
-    this.weapons['shotgun'] = { mesh: shotGroup, pump: pump };
-    this.holder.add(shotGroup);
-    shotGroup.visible = false;
-
-    // Muzzle Flash Dynamic Light
-    this.muzzleLight = new THREE.PointLight(0x00ffff, 0, 10);
-    this.muzzleLight.position.set(0.2, -0.1, -0.8);
-    this.holder.add(this.muzzleLight);
-  }
-
-  setWeapon(key) {
-    if (!this.weapons[key]) return;
-    this.currentKey = key;
-    Object.keys(this.weapons).forEach(k => {
-      this.weapons[k].mesh.visible = (k === key);
-    });
-  }
-
-  triggerRecoil(intensity = 1.0) {
-    this.recoilOffset = 0.15 * intensity;
-    this.muzzleLight.intensity = 5 * intensity;
-    setTimeout(() => { this.muzzleLight.intensity = 0; }, 60);
-  }
-
-  update(delta, isMoving) {
-    // Sway & Movement Bob
-    if (isMoving) {
-      this.bobTimer += delta * 10;
-    } else {
-      this.bobTimer += delta * 2;
-    }
-    const bobX = Math.cos(this.bobTimer) * 0.015;
-    const bobY = Math.sin(this.bobTimer * 2) * 0.015;
-
-    this.recoilOffset = THREE.MathUtils.lerp(this.recoilOffset, 0, delta * 12);
-
-    const cur = this.weapons[this.currentKey];
-    if (cur) {
-      cur.mesh.position.y = -0.22 + bobY - this.recoilOffset * 0.5;
-      cur.mesh.position.z = -0.55 + bobX + this.recoilOffset;
-
-      // Chainsaw animation
-      if (this.currentKey === 'chainsaw' && cur.teeth) {
-        cur.teeth.position.y = (Math.random() - 0.5) * 0.03;
-      }
-    }
-  }
-}
 
 /* ==========================================================================
    INTERACTIVE HUD CYBORG FACE (Animated Canvas Portrait)
@@ -1664,6 +1664,40 @@ class HudFace {
 }
 
 /* ==========================================================================
+   PROJECTILE KIND TABLE & SHARED GLOW TEXTURE (lighting/projectile agent)
+   engine.spawnProjectile({ from, dir, speed, kind, owner, damage, radius })
+   ========================================================================== */
+const PROJECTILE_KINDS = {
+  fireball:     { color: 0xff5500, halo: 0xff8800, light: 0xff5500, dmg: 14, speed: 12, radius: 0.32, life: 4.0 },
+  plasma:       { color: 0xff22ee, halo: 0xff66ff, light: 0xff22ee, dmg: 16, speed: 16, radius: 0.30, life: 3.5, stretch: true },
+  laser:        { color: 0x22ffff, halo: 0x66ffff, light: 0x33ffff, dmg: 12, speed: 42, radius: 0.16, life: 2.0, stretch: true, thin: true },
+  energy_bolt:  { color: 0x00ffff, halo: 0x00ffff, light: 0x00ffff, dmg: 22, speed: 34, radius: 0.22, life: 2.5, ring: true },
+  energy_burst: { color: 0x44ffff, halo: 0x88ffff, light: 0x55ffff, dmg: 6,  speed: 44, radius: 0.14, life: 1.5 }
+};
+
+function getGlowTexture() {
+  if (getGlowTexture._t) return getGlowTexture._t;
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 32);
+  getGlowTexture._t = new THREE.CanvasTexture(c);
+  return getGlowTexture._t;
+}
+
+// Doom lets a player auto-climb a floor step up to 24 map units with no
+// jump; the WAD->engine scale is 0.05 (see convert_all_wads.py), so that is
+// 1.2 engine units. Levels tag those risers `stepUp` (non-solid) and taller
+// ones `ledge` (climb-blocking, drop-through) -- see resolveWallCollisions
+// and the floor-clamp step in updatePhysics below.
+const STEP_UP_MAX = 1.2;
+
+/* ==========================================================================
    MAIN 3D ENGINE CORE
    ========================================================================== */
 class CyberDoomEngine {
@@ -1685,9 +1719,15 @@ class CyberDoomEngine {
     this.player = {
       health: 100,
       armor: 0,
-      ammo: { bullets: 50, shells: 0 },
-      hasChainsaw: false,
-      hasShotgun: false,
+      ammo: Object.assign({}, AMMO_START),
+      // Owned weapons keyed by the same names the level converter emits.
+      // hasChainsaw / hasShotgun stay as accessors so any caller outside the
+      // weapon code keeps working against the old two-boolean shape.
+      weapons: { chainsaw: false, pistol: true, machinegun: false, shotgun: false, energy_rifle: false, energy_repeater: false },
+      get hasChainsaw() { return this.weapons.chainsaw; },
+      set hasChainsaw(v) { this.weapons.chainsaw = !!v; },
+      get hasShotgun() { return this.weapons.shotgun; },
+      set hasShotgun(v) { this.weapons.shotgun = !!v; },
       currentWeapon: "pistol",
       height: 1.5,
       velocity: new THREE.Vector3(),
@@ -1718,7 +1758,17 @@ class CyberDoomEngine {
     this.initThree();
     this.initControls();
     this.hudFace = new HudFace('face-canvas');
-    this.viewmodels = new WeaponViewmodels(this.camera);
+    this.viewmodels = new WeaponViewmodels(this.camera, this);
+    // Firing state shared by mouse, touch and the auto-fire tick.
+    this.isFiring = false;
+    // Cooldowns run on accumulated sim time, not wall clock, so they cannot
+    // drain while the game is paused and they stay in step with the tick.
+    this.gameTime = 0;
+    this.nextFireTime = 0;
+    this.sustainedFire = 0;
+    this.sawDrainAccum = 0;
+    this.sawBiteAccum = 0;
+    this.updateHUD();
 
     this.loadLevel(MAP01_DATA);
     // The boot level is Entryway / MAP01, so it takes the MAP01 assignment
@@ -1736,7 +1786,10 @@ class CyberDoomEngine {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = false; // Fast retro rendering
+    // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
+    // where the extra shadow-map pass isn't worth the frame cost.
+    this.renderer.shadowMap.enabled = !this.isTouch;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -1750,12 +1803,41 @@ class CyberDoomEngine {
     this.scene.fog = new THREE.FogExp2(data.fogColor, data.fogDensity);
     this.renderer.setClearColor(data.skyColor);
 
-    // Ambient & Directional Lights
-    const ambient = new THREE.AmbientLight(data.ambientLight, 1.8);
+    // The scene was fully cleared before this runs (fresh boot, or
+    // loadLevelFromFile wiping scene.children) -- old pooled lights are gone
+    // with it, so rebuild lazily on next acquire instead of reusing stale refs.
+    this._projLightPool = null;
+    this._flashLightPool = null;
+    this._flashes = [];
+    this._levelDynLights = [];
+
+    // Ambient & hemisphere fill (a flat 1.8 ambient washed out all shading --
+    // dropped it and compensate with a sky/ground hemisphere so floors and
+    // walls still read, while the sun and neon accents actually do work).
+    const ambient = new THREE.AmbientLight(data.ambientLight, 0.55);
     this.scene.add(ambient);
+    const hemi = new THREE.HemisphereLight(0x8fa0ff, 0x140a08, 0.55);
+    this.scene.add(hemi);
 
     const sun = new THREE.DirectionalLight(data.sunLight.color, data.sunLight.intensity);
     sun.position.set(...data.sunLight.pos);
+    // Direction only -- position gets re-centered on the player every frame
+    // (see updateProjectiles) so the shadow frustum can stay tight.
+    this.sunDir = new THREE.Vector3(...data.sunLight.pos).normalize();
+    if (this.renderer.shadowMap.enabled) {
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 160;
+      sun.shadow.camera.left = -40;
+      sun.shadow.camera.right = 40;
+      sun.shadow.camera.top = 40;
+      sun.shadow.camera.bottom = -40;
+      sun.shadow.bias = -0.0015;
+      sun.target = new THREE.Object3D();
+      this.scene.add(sun.target);
+    }
+    this.sunLight = sun;
     this.scene.add(sun);
 
     // Build Sectors (Floors & Ceilings)
@@ -1774,6 +1856,34 @@ class CyberDoomEngine {
     this.exitWalls = this.walls.filter(w => w.isSwitch && w.switchId === 'sw_exit_game');
     this.briefedExit = false;
     this.updateAutomapHeader(data);
+
+    // Neon accent point lights (spawn, exit, a spread of sector centroids).
+    // Capped at 5 so it leaves headroom in the ~10 dynamic-light budget for
+    // live projectiles and impact flashes (see _countActiveDynLights).
+    const NEON = [0x00eaff, 0xff00c8, 0xff2244, 0x8f2bff];
+    let neonI = 0;
+    const addNeon = (x, y, z, color) => {
+      if (!x && x !== 0) return;
+      if (this._levelDynLights.length >= 5) return;
+      const l = new THREE.PointLight(color, 1.6, 15, 2);
+      l.position.set(x, y, z);
+      this.scene.add(l);
+      this._levelDynLights.push(l);
+    };
+    addNeon(data.playerSpawn.pos[0], data.playerSpawn.pos[1] + 1.4, data.playerSpawn.pos[2], NEON[neonI++ % NEON.length]);
+    if (this.exitWalls.length) {
+      const ew = this.exitWalls[0];
+      addNeon((ew.p1.x + ew.p2.x) / 2, 2.2, (ew.p1.z + ew.p2.z) / 2, NEON[neonI++ % NEON.length]);
+    }
+    const sectorStep = Math.max(1, Math.floor(data.sectors.length / 3));
+    for (let i = 0; i < data.sectors.length && this._levelDynLights.length < 5; i += sectorStep) {
+      const sec = data.sectors[i];
+      const rect = (sec.resolvedFloors && sec.resolvedFloors[0]) || sec;
+      if (rect && rect.x !== undefined) {
+        const y = Math.min(sec.floorY + 3.5, (sec.ceilY !== undefined ? sec.ceilY : sec.floorY + 6) - 0.5);
+        addNeon(rect.x, y, rect.z, NEON[neonI++ % NEON.length]);
+      }
+    }
 
     // Spawn Entities
     data.entities.forEach(ent => {
@@ -1828,6 +1938,7 @@ class CyberDoomEngine {
       const floorMesh = new THREE.Mesh(floorGeo, floorMat);
       floorMesh.rotation.x = -Math.PI / 2;
       floorMesh.position.set(x, sec.floorY, z);
+      floorMesh.receiveShadow = true;
       this.scene.add(floorMesh);
 
       // Ceiling (if not open sky)
@@ -1838,6 +1949,7 @@ class CyberDoomEngine {
         const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
         ceilMesh.rotation.x = Math.PI / 2;
         ceilMesh.position.set(x, sec.ceilY, z);
+        ceilMesh.receiveShadow = true;
         this.scene.add(ceilMesh);
       }
     });
@@ -1866,6 +1978,8 @@ class CyberDoomEngine {
 
     wallMesh.position.set(midX, centerY, midZ);
     wallMesh.rotation.y = -angle;
+    wallMesh.castShadow = true;
+    wallMesh.receiveShadow = true;
 
     this.scene.add(wallMesh);
 
@@ -1892,6 +2006,17 @@ class CyberDoomEngine {
     this.walls.push(wallObj);
   }
 
+  // Public hook for other regions (enemies/pickups) that build meshes outside
+  // the lighting agent's own code: call this right after adding a group to
+  // the scene to make its meshes cast/receive shadows. No-op on touch, where
+  // shadow mapping is off entirely.
+  enableShadowsOn(object3d) {
+    if (!this.renderer.shadowMap.enabled) return;
+    object3d.traverse(o => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+    });
+  }
+
   spawnEntity(ent) {
     if (ent.type === 'weapon' || ent.type.startsWith('ammo') || ent.type === 'health_stim' || ent.type === 'armor') {
       this.createPickup(ent);
@@ -1907,10 +2032,16 @@ class CyberDoomEngine {
     let mesh;
 
     if (ent.type === 'weapon') {
-      mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8, 0.3, 0.3),
-        new THREE.MeshStandardMaterial({ color: ent.name === 'chainsaw' ? 0xff3300 : 0x00ffff, emissive: 0x0088aa, emissiveIntensity: 0.5 })
+      // The floor pickup is the viewmodel itself, scaled up, so a machine gun
+      // reads as a machine gun from across the room.
+      mesh = this.viewmodels.buildPickupMesh(ent.name);
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(0.55, 0.04, 6, 18),
+        new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00aacc, emissiveIntensity: 0.9 })
       );
+      halo.rotation.x = Math.PI / 2;
+      halo.position.y = -0.3;
+      mesh.add(halo);
     } else if (ent.type === 'health_stim') {
       mesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.4, 0.4, 0.4),
@@ -1921,6 +2052,21 @@ class CyberDoomEngine {
         new THREE.OctahedronGeometry(0.35),
         new THREE.MeshStandardMaterial({ color: 0x0088ff, emissive: 0x0044ff, emissiveIntensity: 0.6 })
       );
+    } else if (ent.type === 'ammo_energy') {
+      // Glowing cyan energy cell.
+      mesh = new THREE.Group();
+      const cell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, 0.42, 10),
+        new THREE.MeshStandardMaterial({ color: 0x00ffee, emissive: 0x00ffff, emissiveIntensity: 1.2, transparent: true, opacity: 0.85 })
+      );
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.19, 0.19, 0.07, 10),
+        new THREE.MeshStandardMaterial({ color: 0x1a2530, metalness: 0.9, roughness: 0.3 })
+      );
+      cap.position.y = 0.22;
+      const cap2 = cap.clone();
+      cap2.position.y = -0.22;
+      mesh.add(cell, cap, cap2);
     } else {
       // Ammo Box
       mesh = new THREE.Mesh(
@@ -1932,6 +2078,7 @@ class CyberDoomEngine {
     group.add(mesh);
     group.position.set(ent.pos[0], ent.pos[1], ent.pos[2]);
     this.scene.add(group);
+    this.enableShadowsOn(group);
 
     this.pickups.push({ data: ent, group: group });
   }
@@ -1948,6 +2095,13 @@ class CyberDoomEngine {
   }
 
   buildCustomEnemyMesh(typeId, ent) {
+    // Detailed geometry lives in js/cyber-enemies.js. If that script failed to
+    // load we still want a monster on screen, so fall back to the old boxes.
+    if (window.CyberEnemies) return window.CyberEnemies.build(typeId, ent, THREE);
+    return this.buildBoxEnemyMesh(typeId, ent);
+  }
+
+  buildBoxEnemyMesh(typeId, ent) {
     const group = new THREE.Group();
     const eType = parseInt(typeId) || (ent.type === 'soldier' ? 3004 : 3001);
 
@@ -2124,10 +2278,14 @@ class CyberDoomEngine {
     group.position.set(ent.pos[0], ent.pos[1], ent.pos[2]);
     group.rotation.y = ent.rot || 0;
     this.scene.add(group);
+    this.enableShadowsOn(group);
+    // enableShadowsOn is blanket; the Spectre's ghost meshes must not throw a solid shadow.
+    group.traverse(o => { if (o.isMesh && o.material && o.material.transparent) o.castShadow = false; });
 
     const isBoss = [16, 7].includes(parseInt(ent.enemyType));
     const hpMap = { 3004: 30, 9: 40, 65: 70, 3001: 60, 3002: 120, 58: 120, 3005: 150, 69: 300, 3003: 500, 66: 220, 67: 400, 68: 350, 64: 450, 16: 1000, 7: 1200 };
-    const enemyHp = hpMap[ent.enemyType] || 50;
+    const st = window.CyberEnemies ? window.CyberEnemies.stats(ent.enemyType) : null;
+    const enemyHp = (st && st.hp) || hpMap[ent.enemyType] || 50;
 
     this.enemies.push({
       type: ent.type,
@@ -2137,7 +2295,9 @@ class CyberDoomEngine {
       state: 'IDLE',
       attackCooldown: 0,
       walkT: Math.random()*Math.PI*2,
-      speed: isBoss ? 2.5 : 3.5,
+      speed: (st && st.speed) || (isBoss ? 2.5 : 3.5),
+      limbs: group.userData.limbs || null,
+      stats: st,
       radius: 0.6
     });
   }
@@ -2153,10 +2313,9 @@ class CyberDoomEngine {
     document.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
 
-      // Weapon Hotkeys
-      if (e.code === 'Digit1') this.switchWeapon('chainsaw');
-      if (e.code === 'Digit2') this.switchWeapon('pistol');
-      if (e.code === 'Digit3') this.switchWeapon('shotgun');
+      // Weapon Hotkeys 1-6, in WEAPON_ORDER.
+      const slot = /^Digit([1-6])$/.exec(e.code);
+      if (slot) this.switchWeapon(WEAPON_ORDER[Number(slot[1]) - 1]);
 
       // Interaction
       if (e.code === 'KeyE') this.interact();
@@ -2340,6 +2499,7 @@ class CyberDoomEngine {
     document.addEventListener('mousedown', (e) => {
       if (!this.isRunning) return;
       if (e.button === 0) {
+        this.isFiring = true;
         this.fireWeapon();
       } else if (e.button === 2) {
         e.preventDefault();
@@ -2347,14 +2507,16 @@ class CyberDoomEngine {
       }
     });
 
+    // Hold-to-fire release. Listened for on window so a mouseup outside the
+    // canvas (or while the pointer lock drops) cannot leave the trigger stuck.
+    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.isFiring = false; });
+    window.addEventListener('blur', () => { this.isFiring = false; });
+
     // Wheel Weapon Swap
     document.addEventListener('wheel', (e) => {
       if (!this.isRunning) return;
-      const weaps = ['chainsaw', 'pistol', 'shotgun'].filter(w => {
-        if (w === 'chainsaw') return this.player.hasChainsaw;
-        if (w === 'shotgun') return this.player.hasShotgun;
-        return true;
-      });
+      const weaps = this.ownedWeapons();
+      if (weaps.length < 2) return;
       let idx = weaps.indexOf(this.player.currentWeapon);
       if (e.deltaY > 0) idx = (idx + 1) % weaps.length;
       else idx = (idx - 1 + weaps.length) % weaps.length;
@@ -2365,14 +2527,16 @@ class CyberDoomEngine {
     window.addEventListener('contextmenu', e => e.preventDefault());
 
     // Mobile Virtual Touch
-    document.getElementById('m-btn-fire')?.addEventListener('touchstart', (e) => { e.preventDefault(); this.fireWeapon(); });
+    const fireBtn = document.getElementById('m-btn-fire');
+    fireBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); this.isFiring = true; this.fireWeapon(); });
+    fireBtn?.addEventListener('touchend', (e) => { e.preventDefault(); this.isFiring = false; });
+    fireBtn?.addEventListener('touchcancel', () => { this.isFiring = false; });
     document.getElementById('m-btn-interact')?.addEventListener('touchstart', (e) => { e.preventDefault(); this.interact(); });
     document.getElementById('m-btn-jump')?.addEventListener('touchstart', (e) => { e.preventDefault(); this.jump(); });
     document.getElementById('m-btn-weap')?.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const list = ['pistol'];
-      if (this.player.hasChainsaw) list.push('chainsaw');
-      if (this.player.hasShotgun) list.push('shotgun');
+      const list = this.ownedWeapons();
+      if (!list.length) return;
       const nextIdx = (list.indexOf(this.player.currentWeapon) + 1) % list.length;
       this.switchWeapon(list[nextIdx]);
     });
@@ -2586,23 +2750,42 @@ class CyberDoomEngine {
     else portrait.addListener(onOrient); // older WebKit
   }
 
+  /* Weapons the player actually carries, in slot order. */
+  ownedWeapons() {
+    return WEAPON_ORDER.filter(w => this.player.weapons[w]);
+  }
+
+  giveWeapon(name) {
+    if (!WEAPONS[name]) return false;
+    const isNew = !this.player.weapons[name];
+    this.player.weapons[name] = true;
+    return isNew;
+  }
+
+  /* Adds to a pool, clamped to its cap. Returns what was actually gained. */
+  addAmmo(pool, amount) {
+    const cap = AMMO_CAP[pool];
+    if (cap == null) return 0;
+    const before = this.player.ammo[pool] || 0;
+    this.player.ammo[pool] = Math.min(cap, before + (amount || 0));
+    return this.player.ammo[pool] - before;
+  }
+
   switchWeapon(weap) {
-    if (weap === 'chainsaw' && !this.player.hasChainsaw) {
-      this.showHudMessage("CHAINSAW NOT FOUND!");
+    if (!WEAPONS[weap]) return;
+    if (!this.player.weapons[weap]) {
+      this.showHudMessage(`${WEAPONS[weap].label} NOT FOUND!`);
       return;
     }
-    if (weap === 'shotgun' && !this.player.hasShotgun) {
-      this.showHudMessage("SHOTGUN NOT FOUND!");
-      return;
+    if (this.player.currentWeapon === 'chainsaw' && weap !== 'chainsaw') {
+      this.sound.stopSawLoop();
+      this.viewmodels.sawRunning = false;
     }
     this.player.currentWeapon = weap;
     this.viewmodels.setWeapon(weap);
     this.sound.playMechanicalClick();
-
-    document.querySelectorAll('.weap-slot').forEach(el => el.classList.remove('active'));
-    if (weap === 'chainsaw') document.getElementById('slot-1').classList.add('active');
-    if (weap === 'pistol') document.getElementById('slot-2').classList.add('active');
-    if (weap === 'shotgun') document.getElementById('slot-3').classList.add('active');
+    this.nextFireTime = 0;
+    this.sustainedFire = 0;
 
     this.updateHUD();
   }
@@ -2617,40 +2800,90 @@ class CyberDoomEngine {
   /* ==========================================================================
      WEAPON FIRING & COMBAT SYSTEM
      ========================================================================== */
+  /* One firing path for every weapon: the WEAPONS row supplies the ammo pool,
+     cost, cooldown and effect. Adding a weapon is adding a row. */
   fireWeapon() {
-    const weap = this.player.currentWeapon;
+    const def = WEAPONS[this.player.currentWeapon];
+    if (!def) return;
 
-    if (weap === 'chainsaw') {
-      this.sound.playChainsawBuzz();
-      this.viewmodels.triggerRecoil(0.6);
-      this.raycastMelee(3.2, 45);
-    } else if (weap === 'pistol') {
-      if (this.player.ammo.bullets <= 0) {
-        this.showHudMessage("OUT OF BULLETS!");
-        this.sound.playMechanicalClick();
-        return;
-      }
-      this.player.ammo.bullets--;
-      this.sound.playPistol();
-      this.viewmodels.triggerRecoil(1.0);
-      this.raycastHitscan(15, 0.02);
-    } else if (weap === 'shotgun') {
-      if (this.player.ammo.shells <= 0) {
-        this.showHudMessage("OUT OF SHELLS!");
-        this.sound.playMechanicalClick();
-        return;
-      }
-      this.player.ammo.shells--;
-      this.sound.playShotgun();
-      this.viewmodels.triggerRecoil(2.2);
+    const now = this.gameTime;
+    if (now < this.nextFireTime) return;
 
-      // 7 scatter pellets
-      for (let i = 0; i < 7; i++) {
-        this.raycastHitscan(14, 0.09);
-      }
+    if (def.cost > 0 && this.player.ammo[def.ammo] < def.cost) {
+      this.showHudMessage(`OUT OF ${AMMO_LABEL[def.ammo]}!`);
+      this.sound.playMechanicalClick();
+      this.nextFireTime = now + 0.4;
+      return;
     }
 
+    // Schedule the next shot from the previous deadline while fire is
+    // sustained, so a 12/s weapon does not lose a shot per frame to rounding.
+    this.nextFireTime = (now - this.nextFireTime < def.cooldown)
+      ? this.nextFireTime + def.cooldown
+      : now + def.cooldown;
+    if (def.cost > 0) this.player.ammo[def.ammo] -= def.cost;
+    def.fire(this);
     this.updateHUD();
+  }
+
+  /* Per-frame weapon logic: auto-fire while the trigger is held, and the
+     always-on Cyber Ripper. Driven from WeaponViewmodels.update(), which the
+     physics step already calls once per running frame. */
+  updateWeaponTick(delta) {
+    this.gameTime += delta;
+    const key = this.player.currentWeapon;
+    const def = WEAPONS[key];
+    if (!def) return;
+
+    // Sustained-fire timer feeds the machine gun's spread bloom.
+    if (this.isFiring) this.sustainedFire += delta;
+    else this.sustainedFire = 0;
+
+    if (this.isFiring && def.auto && key !== 'chainsaw') this.fireWeapon();
+
+    if (key === 'chainsaw') this.updateChainsaw(delta);
+    else if (this.viewmodels.sawRunning) {
+      this.viewmodels.sawRunning = false;
+      this.sound.stopSawLoop();
+    }
+  }
+
+  /* Cyber Ripper: runs the moment it is selected and has a cell left. Holding
+     fire revs it -- faster chain, +50% damage, double drain. */
+  updateChainsaw(delta) {
+    const vm = this.viewmodels;
+    const energy = this.player.ammo.energy;
+    vm.sawEnergyFrac = Math.min(1, energy / AMMO_CAP.energy);
+
+    if (energy <= 0) {
+      if (vm.sawRunning) { vm.sawRunning = false; this.sound.stopSawLoop(); }
+      vm.sawRev = false;
+      return;
+    }
+
+    const rev = !!this.isFiring;
+    vm.sawRunning = true;
+    vm.sawRev = rev;
+    this.sound.startSawLoop(rev);
+
+    // Drain: 1 energy per 0.5s idling, per 0.25s revved.
+    const drainPeriod = rev ? 0.25 : 0.5;
+    this.sawDrainAccum += delta;
+    let drained = false;
+    while (this.sawDrainAccum >= drainPeriod && this.player.ammo.energy > 0) {
+      this.sawDrainAccum -= drainPeriod;
+      this.player.ammo.energy--;
+      drained = true;
+    }
+    if (drained) this.updateHUD();
+
+    // Bite: everything in a forward cone within 2.6m, every 0.15s.
+    this.sawBiteAccum += delta;
+    if (this.sawBiteAccum >= 0.15) {
+      this.sawBiteAccum = 0;
+      const hits = this.raycastMelee(2.6, rev ? 13.5 : 9, 0.35);
+      if (hits > 0) this.viewmodels.triggerRecoil(rev ? 0.7 : 0.45);
+    }
   }
 
   raycastHitscan(damage, spread) {
@@ -2670,6 +2903,7 @@ class CyberDoomEngine {
       if (hitBarrel) {
         hitBarrel.hp -= damage;
         this.showHitmarker();
+        this.flashAt(barrelHits[0].point, this.muzzleFlashColor());
         if (hitBarrel.hp <= 0) this.explodeBarrel(hitBarrel);
       }
       return;
@@ -2690,37 +2924,45 @@ class CyberDoomEngine {
       }
 
       const enemy = this.enemies.find(e => e.group === hitMesh);
-      if (enemy && enemy.state !== 'DEAD') {
-        enemy.hp -= damage;
-        this.showHitmarker();
-        this.sound.playMonsterHurt();
-        this.spawnBlood(hits[0].point);
-
-        if (enemy.hp <= 0) {
-          this.killEnemy(enemy);
-        } else {
-          enemy.state = 'CHASE';
-        }
+      if (enemy) {
+        this.flashAt(hits[0].point, this.muzzleFlashColor());
+        this.damageEnemy(enemy, damage, hits[0].point);
       }
     }
   }
 
-  raycastMelee(range, damage) {
+  /* Impact light colour follows the current weapon's ammo: energy reads cyan,
+     bullets and shells read warm. */
+  muzzleFlashColor() {
+    const def = WEAPONS[this.player.currentWeapon];
+    return def && def.ammo === 'energy' ? 0x66ffff : 0xffcc66;
+  }
+
+  /* minDot: optional forward-cone filter (0 = 90 deg half-angle, 1 = dead
+     ahead). Omitted, the old spherical behaviour is unchanged. Returns the
+     number of enemies hit. */
+  raycastMelee(range, damage, minDot) {
     const pPos = this.camera.position;
+    const facing = minDot != null
+      ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0).normalize()
+      : null;
+    let hits = 0;
     this.enemies.filter(e => e.state !== 'DEAD').forEach(e => {
       const dist = pPos.distanceTo(e.group.position);
-      if (dist < range) {
-        e.hp -= damage;
-        this.showHitmarker();
-        this.sound.playMonsterHurt();
-        this.spawnBlood(e.group.position);
-        if (e.hp <= 0) this.killEnemy(e);
+      if (dist >= range) return;
+      if (facing) {
+        const to = e.group.position.clone().sub(pPos).setY(0);
+        if (to.lengthSq() > 1e-6 && to.normalize().dot(facing) < minDot) return;
       }
+      hits++;
+      this.damageEnemy(e, damage, e.group.position);
     });
+    return hits;
   }
 
   killEnemy(enemy) {
     enemy.state = 'DEAD';
+    this.flashAt(enemy.group.position, 0xff4422);
     // Death collapse animation
     enemy.group.rotation.x = Math.PI / 2;
     enemy.group.position.y = 0.2;
@@ -2907,8 +3149,17 @@ class CyberDoomEngine {
       return;
     }
     const floorY = floor.floorY;
-    if (newY <= floorY + this.player.height) {
-      this.camera.position.y = floorY + this.player.height;
+    const targetY = floorY + this.player.height;
+    if (newY <= targetY) {
+      // A small rise onto an adjacent step (<=STEP_UP_MAX, i.e. Doom's 24-unit
+      // auto-climb) eases in over a few frames instead of teleporting the
+      // camera. Landing after a fall (or any bigger rise) still snaps.
+      const rise = targetY - this.camera.position.y;
+      if (this.player.onGround && rise > 0.01 && rise <= STEP_UP_MAX) {
+        this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY, Math.min(1, delta * 20));
+      } else {
+        this.camera.position.y = targetY;
+      }
       this.player.velocity.y = 0;
       this.player.onGround = true;
       this.player.safePosition.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
@@ -2966,6 +3217,18 @@ class CyberDoomEngine {
 
     let resX = x;
     let resZ = z;
+
+    // ponytail: ledge risers (w.ledge, floor gap > STEP_UP_MAX) were tried as
+    // one-way collision (block climbing from the low side, open from the
+    // high side, gated on foot height). That broke real finishability: the
+    // offline reachability model (tests/reachability.js, used to place every
+    // exit) is deliberately height/direction-ignorant, so its routes cross
+    // ledges from whichever side is shortest and the QA browser walk then
+    // deadlocked on 3/4 sampled converted maps approaching from the "wrong"
+    // side. Ledges are therefore non-solid like ordinary steps -- climbable
+    // and droppable both ways, just rendered taller and eased more slowly
+    // (see the rise check in updatePhysics). Upgrade to true one-way ledges
+    // only alongside a direction-aware offline pathfinder + exit re-placement.
 
     // 3 iterations of pushback resolution
     for (let iter = 0; iter < 3; iter++) {
@@ -3050,6 +3313,15 @@ class CyberDoomEngine {
         this.projectiles = [];
         this.particles = [];
         this.loadLevel(mapData);
+        // buildWall doesn't carry ledge-riser data onto the runtime wall
+        // objects it builds; attach it here (mapData.walls and this.walls
+        // stay 1:1 since loadLevel pushes exactly one wall object per entry).
+        if (mapData.walls) {
+          mapData.walls.forEach((w, i) => {
+            const rw = this.walls[i];
+            if (rw && w.ledge) { rw.ledge = true; rw.hiFloor = w.hiFloor; }
+          });
+        }
         this.checkAllWeaponsOption();
         // Music is bound to the level, so it is re-bound wherever geometry is.
         // While the title screen is up this only records the assignment; the
@@ -3062,22 +3334,22 @@ class CyberDoomEngine {
       .catch(err => console.warn("Failed to load map file:", err));
   }
 
+  /* All six weapons and every pool filled to its cap. */
+  grantFullArsenal() {
+    WEAPON_ORDER.forEach(w => { this.player.weapons[w] = true; });
+    Object.keys(AMMO_CAP).forEach(a => { this.player.ammo[a] = AMMO_CAP[a]; });
+  }
+
   checkAllWeaponsOption() {
     const chk = document.getElementById('all-weapons-chk');
     if (chk && chk.checked) {
-      this.player.hasChainsaw = true;
-      this.player.hasShotgun = true;
-      this.player.ammo.bullets = 200;
-      this.player.ammo.shells = 100;
+      this.grantFullArsenal();
       this.switchWeapon(this.player.currentWeapon);
     }
   }
 
   applyAllAmmoCheat() {
-    this.player.hasChainsaw = true;
-    this.player.hasShotgun = true;
-    this.player.ammo.bullets = 200;
-    this.player.ammo.shells = 100;
+    this.grantFullArsenal();
     this.player.health = 100;
     this.player.armor = 100;
     this.switchWeapon(this.player.currentWeapon);
@@ -3097,16 +3369,13 @@ class CyberDoomEngine {
         let collected = false;
 
         if (d.type === 'weapon') {
-          if (d.name === 'chainsaw') {
-            this.player.hasChainsaw = true;
-            this.switchWeapon('chainsaw');
-            this.showHudMessage("FOUND A CYBER CHAINSAW!");
-            collected = true;
-          } else if (d.name === 'shotgun') {
-            this.player.hasShotgun = true;
-            this.player.ammo.shells += 8;
-            this.switchWeapon('shotgun');
-            this.showHudMessage("FOUND PUMP SHOTGUN!");
+          if (WEAPONS[d.name]) {
+            const isNew = this.giveWeapon(d.name);
+            // Weapons come with a starter load of their own ammo.
+            const starter = WEAPON_PICKUP_AMMO[d.name];
+            if (starter) this.addAmmo(starter[0], starter[1]);
+            if (isNew) this.switchWeapon(d.name);
+            this.showHudMessage(`${WEAPON_PICKUP_NAME[d.name]} ACQUIRED!`);
             collected = true;
           }
         } else if (d.type === 'health_stim') {
@@ -3121,14 +3390,13 @@ class CyberDoomEngine {
             this.showHudMessage(`ARMOR +${d.amount}`);
             collected = true;
           }
-        } else if (d.type === 'ammo_bullets') {
-          this.player.ammo.bullets += d.amount;
-          this.showHudMessage(`BULLETS +${d.amount}`);
-          collected = true;
-        } else if (d.type === 'ammo_shells') {
-          this.player.ammo.shells += d.amount;
-          this.showHudMessage(`SHELLS +${d.amount}`);
-          collected = true;
+        } else if (d.type === 'ammo_bullets' || d.type === 'ammo_shells' || d.type === 'ammo_energy') {
+          const pool = d.type.slice(5);
+          const gained = this.addAmmo(pool, d.amount || AMMO_PICKUP_DEFAULT[pool]);
+          if (gained > 0) {
+            this.showHudMessage(`${AMMO_LABEL[pool]} +${gained}`);
+            collected = true;
+          }
         }
 
         if (collected) {
@@ -3209,43 +3477,281 @@ class CyberDoomEngine {
         this.damagePlayer(8);
       }
     } else if (enemy.type === 'monster') {
-      // Spawn Imp Fireball
+      // Fireball by default; a per-type attack stat (set by the enemies
+      // agent on enemy.stats.attack) can upgrade this to a plasma or laser
+      // bolt without touching the AI/state-machine code above.
+      const kind = (enemy.stats && (enemy.stats.attack === 'laser' || enemy.stats.attack === 'plasma'))
+        ? enemy.stats.attack
+        : 'fireball';
       this.sound.playMonsterFireball();
-      const fbGeo = new THREE.SphereGeometry(0.25, 8, 8);
-      const fbMat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
-      const fbMesh = new THREE.Mesh(fbGeo, fbMat);
-      fbMesh.position.copy(enemy.group.position);
-      fbMesh.position.y += 1.0;
-      this.scene.add(fbMesh);
-
-      const dir = new THREE.Vector3().subVectors(this.camera.position, fbMesh.position).normalize();
-      this.projectiles.push({
-        mesh: fbMesh,
-        dir: dir,
-        speed: 12.0,
-        life: 4.0
-      });
+      const from = enemy.group.position.clone();
+      from.y += 1.0;
+      const dir = new THREE.Vector3().subVectors(this.camera.position, from).normalize();
+      this.spawnProjectile({ from, dir, kind, owner: 'enemy' });
     }
   }
 
+  /* -------------------------------------------------------------------
+     PROJECTILE API (engine.spawnProjectile) -- consumed by weapons for
+     player shots and by enemyAttack above for enemy attacks.
+     kind: fireball | plasma | laser | energy_bolt | energy_burst
+     ------------------------------------------------------------------- */
+  spawnProjectile({ from, dir, speed, kind = 'fireball', owner = 'enemy', damage, radius, life }) {
+    const cfg = PROJECTILE_KINDS[kind] || PROJECTILE_KINDS.fireball;
+    const group = new THREE.Group();
+    const size = cfg.radius;
+
+    const coreGeo = cfg.thin
+      ? new THREE.CylinderGeometry(size * 0.4, size * 0.4, size * 6, 6)
+      : new THREE.IcosahedronGeometry(size, cfg.stretch ? 2 : 1);
+    const core = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({ color: cfg.color }));
+    if (cfg.thin) core.rotation.x = Math.PI / 2;
+    group.add(core);
+
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(size * 1.8, 8, 8),
+      new THREE.MeshBasicMaterial({ color: cfg.halo, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    group.add(halo);
+
+    let ring = null;
+    if (cfg.ring) {
+      ring = new THREE.Mesh(
+        new THREE.TorusGeometry(size * 1.7, size * 0.15, 6, 14),
+        new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      group.add(ring);
+    }
+
+    group.position.copy(from);
+    const normDir = dir.clone().normalize();
+    if (cfg.stretch) {
+      group.lookAt(group.position.clone().add(normDir));
+      core.scale.set(1, 1, cfg.thin ? 1 : 2.4);
+      halo.scale.set(1, 1, 1.6);
+    }
+    this.scene.add(group);
+
+    const light = this._acquireProjectileLight(cfg.light);
+    const trail = this._makeTrail(cfg.color);
+
+    const proj = {
+      group, core, halo, ring, light, trail,
+      trailHistory: [],
+      dir: normDir,
+      speed: speed != null ? speed : cfg.speed,
+      kind,
+      owner,
+      damage: damage != null ? damage : cfg.dmg,
+      radius: radius != null ? radius : cfg.radius,
+      life: life != null ? life : cfg.life,
+      maxLife: life != null ? life : cfg.life,
+      age: 0
+    };
+    this.projectiles.push(proj);
+    return proj;
+  }
+
+  // Shared damage/kill path for anything that hits an enemy without going
+  // through the hitscan raycast (weapons region) -- currently player
+  // projectiles. Mirrors what raycastHitscan does on a hit.
+  damageEnemy(enemy, amount, hitPoint) {
+    if (!enemy || enemy.state === 'DEAD') return;
+    enemy.hp -= amount;
+    this.showHitmarker();
+    this.sound.playMonsterHurt();
+    this.spawnBlood(hitPoint || enemy.group.position);
+    // Whiten the enemy's emissive accents for a beat so the hit reads on the body itself.
+    if (window.CyberEnemies && enemy.group) window.CyberEnemies.flash(enemy.group);
+    if (enemy.hp <= 0) this.killEnemy(enemy);
+    else enemy.state = 'CHASE';
+  }
+
   updateProjectiles(delta) {
+    // Shadow-casting sun re-centers on the player every tick so a tight
+    // orthographic frustum can follow across maps far bigger than it is.
+    if (this.sunLight && this.sunLight.castShadow) {
+      const pp = this.camera.position;
+      this.sunLight.position.set(pp.x + this.sunDir.x * 60, pp.y + this.sunDir.y * 60, pp.z + this.sunDir.z * 60);
+      if (this.sunLight.target) {
+        this.sunLight.target.position.copy(pp);
+        this.sunLight.target.updateMatrixWorld();
+      }
+    }
+
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
-      p.mesh.position.addScaledVector(p.dir, p.speed * delta);
+      p.age += delta;
+
+      p.trailHistory.unshift(p.group.position.clone());
+      if (p.trailHistory.length > p.trail.length + 1) p.trailHistory.pop();
+
+      p.group.position.addScaledVector(p.dir, p.speed * delta);
       p.life -= delta;
 
-      // Hit Player?
-      if (p.mesh.position.distanceTo(this.camera.position) < 0.9) {
-        this.damagePlayer(18);
-        this.scene.remove(p.mesh);
-        this.projectiles.splice(i, 1);
-        continue;
+      // Per-frame animation: pulse/rotate the core & halo, spin the ring.
+      const t = p.age * 8;
+      const pulse = 1 + Math.sin(t) * 0.15;
+      p.core.scale.setScalar(p.kind === 'plasma' || p.kind === 'laser' ? 1 : pulse);
+      p.halo.scale.setScalar(pulse * 1.1);
+      p.halo.material.opacity = 0.25 + Math.sin(t * 1.3) * 0.15;
+      if (p.ring) p.ring.rotation.z += delta * 6;
+      if (p.kind === 'fireball') p.group.rotation.z += delta * 3;
+
+      // Fading trail: sprites sit at recorded past positions.
+      for (let ti = 0; ti < p.trail.length; ti++) {
+        const hp = p.trailHistory[ti + 1];
+        const f = 1 - (ti + 1) / (p.trail.length + 1);
+        if (hp) {
+          p.trail[ti].position.copy(hp);
+          p.trail[ti].material.opacity = f * 0.55;
+          p.trail[ti].scale.setScalar(p.radius * 3 * f + 0.06);
+        } else {
+          p.trail[ti].material.opacity = 0;
+        }
       }
 
-      // Expire or hit wall
-      if (p.life <= 0) {
-        this.scene.remove(p.mesh);
+      if (p.light) {
+        p.light.position.copy(p.group.position);
+        p.light.intensity = Math.max(0, p.life / p.maxLife) * p.light.userData.baseIntensity;
+      }
+
+      let hit = false;
+      let hitPoint = null;
+
+      if (p.owner === 'player') {
+        for (const enemy of this.enemies) {
+          if (enemy.state === 'DEAD') continue;
+          const ePos = enemy.group.position;
+          const dx = p.group.position.x - ePos.x;
+          const dz = p.group.position.z - ePos.z;
+          const dy = p.group.position.y - (ePos.y + 1.0);
+          if (Math.hypot(dx, dz) < (p.radius + 0.8) && Math.abs(dy) < 1.3) {
+            hitPoint = p.group.position.clone();
+            this.damageEnemy(enemy, p.damage, hitPoint);
+            hit = true;
+            break;
+          }
+        }
+      } else if (p.group.position.distanceTo(this.camera.position) < 0.9 + p.radius) {
+        hitPoint = p.group.position.clone();
+        this.damagePlayer(p.damage);
+        hit = true;
+      }
+
+      if (!hit) {
+        const floor = this.getFloorAt(p.group.position.x, p.group.position.z);
+        if (!floor.inside || p.life <= 0) {
+          hitPoint = p.group.position.clone();
+          hit = true;
+        }
+      }
+
+      if (hit) {
+        this._flash(hitPoint || p.group.position, PROJECTILE_KINDS[p.kind].color);
+        this._releaseProjectile(p);
         this.projectiles.splice(i, 1);
+      }
+    }
+
+    this._updateFlashes(delta);
+  }
+
+  _makeTrail(color) {
+    const tex = getGlowTexture();
+    const trail = [];
+    for (let i = 0; i < 4; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const spr = new THREE.Sprite(mat);
+      spr.scale.setScalar(0.3);
+      this.scene.add(spr);
+      trail.push(spr);
+    }
+    return trail;
+  }
+
+  _releaseProjectile(p) {
+    this.scene.remove(p.group);
+    p.core.geometry.dispose(); p.core.material.dispose();
+    p.halo.geometry.dispose(); p.halo.material.dispose();
+    if (p.ring) { p.ring.geometry.dispose(); p.ring.material.dispose(); }
+    if (p.light) { p.light.visible = false; p.light.intensity = 0; }
+    p.trail.forEach(s => { this.scene.remove(s); s.material.dispose(); });
+  }
+
+  // Total dynamic point lights currently live in the scene: static per-level
+  // neons + acquired projectile lights + acquired flash lights. Kept near a
+  // hard cap of 10 so no map can light-spam the renderer.
+  _countActiveDynLights() {
+    let n = this._levelDynLights ? this._levelDynLights.length : 0;
+    if (this._projLightPool) n += this._projLightPool.filter(l => l.visible).length;
+    if (this._flashLightPool) n += this._flashLightPool.filter(l => l.visible).length;
+    return n;
+  }
+
+  _acquireProjectileLight(color) {
+    if (!this._projLightPool) {
+      this._projLightPool = [];
+      for (let i = 0; i < 8; i++) {
+        const l = new THREE.PointLight(0xffffff, 0, 11, 2);
+        l.visible = false;
+        this.scene.add(l);
+        this._projLightPool.push(l);
+      }
+    }
+    if (this._countActiveDynLights() >= 10) return null; // beyond the pool: renders without a light
+    const free = this._projLightPool.find(l => !l.visible);
+    if (!free) return null;
+    free.visible = true;
+    free.color.set(color);
+    free.userData.baseIntensity = 2.4;
+    free.intensity = free.userData.baseIntensity;
+    return free;
+  }
+
+  // One pooled flash for hitscan impacts / enemy deaths / projectile impacts.
+  // Exposed as flashAt() for the weapons & enemies regions to call directly
+  // (e.g. raycastHitscan's hit point, killEnemy) since that hit-position data
+  // lives outside this region.
+  flashAt(pos, color = 0xffffff) { this._flash(pos, color, 0.16); }
+
+  _flash(pos, color, life = 0.16) {
+    if (!this._flashLightPool) {
+      this._flashLightPool = [];
+      for (let i = 0; i < 2; i++) {
+        const l = new THREE.PointLight(0xffffff, 0, 8, 2);
+        l.visible = false;
+        this.scene.add(l);
+        this._flashLightPool.push(l);
+      }
+    }
+    let light = null;
+    if (this._countActiveDynLights() < 10) {
+      light = this._flashLightPool.find(l => !l.visible);
+      if (light) { light.visible = true; light.color.set(color); light.intensity = 3.0; light.position.copy(pos); }
+    }
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: getGlowTexture(), color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    spr.position.copy(pos);
+    spr.scale.setScalar(0.4);
+    this.scene.add(spr);
+    this._flashes.push({ light, sprite: spr, life, maxLife: life });
+  }
+
+  _updateFlashes(delta) {
+    for (let i = this._flashes.length - 1; i >= 0; i--) {
+      const f = this._flashes[i];
+      f.life -= delta;
+      const t = Math.max(0, f.life / f.maxLife);
+      if (f.light) f.light.intensity = 3.0 * t;
+      f.sprite.material.opacity = t;
+      f.sprite.scale.setScalar(0.4 + (1 - t) * 0.8);
+      if (f.life <= 0) {
+        if (f.light) { f.light.visible = false; f.light.intensity = 0; }
+        this.scene.remove(f.sprite);
+        f.sprite.material.dispose();
+        this._flashes.splice(i, 1);
       }
     }
   }
@@ -3312,8 +3818,18 @@ class CyberDoomEngine {
 
     document.getElementById('hud-armor').innerText = `${this.player.armor}%`;
 
-    const ammoVal = this.player.currentWeapon === 'shotgun' ? this.player.ammo.shells : (this.player.currentWeapon === 'pistol' ? this.player.ammo.bullets : '∞');
-    document.getElementById('hud-ammo').innerText = ammoVal;
+    // Ammo block follows the current weapon's pool (the saw runs on energy).
+    const def = WEAPONS[this.player.currentWeapon] || WEAPONS.pistol;
+    document.getElementById('hud-ammo-label').innerText = AMMO_LABEL[def.ammo];
+    document.getElementById('hud-ammo').innerText = this.player.ammo[def.ammo];
+
+    // Weapon selector: owned slots lit, current one highlighted.
+    WEAPON_ORDER.forEach((name, i) => {
+      const el = document.getElementById(`slot-${i + 1}`);
+      if (!el) return;
+      el.classList.toggle('owned', !!this.player.weapons[name]);
+      el.classList.toggle('active', this.player.currentWeapon === name);
+    });
   }
 
   triggerGameOver() {

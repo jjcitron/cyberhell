@@ -243,4 +243,53 @@ function pathToExit(level) {
   return pts;
 }
 
-module.exports = { analyze, pathToExit, exitWalls, Grid, floorRects, blockingWalls, wallPoints, segDist, CELL, P_RADIUS, USE_RANGE };
+/* Floor-coverage metrics: how much of the map's walkable floor is actually
+   reachable from spawn, and how big any disconnected pockets are.
+   Step/ledge risers are already non-solid in the level data (see
+   convert_all_wads.py), so this reuses the same 2D flood fill as analyze() --
+   deliberately height-ignorant, same simplification the exit patcher uses. */
+function floorMetrics(level) {
+  const grid = new Grid(level);
+  let totalCells = 0;
+  for (let k = 0; k < grid.free.length; k++) if (grid.free[k]) totalCells++;
+
+  const cellArea = CELL * CELL;
+  const sp = level.playerSpawn && level.playerSpawn.pos;
+  const start = sp && grid.snap(sp[0], sp[2]);
+  if (!start) {
+    return {
+      spawnOnFloor: false, totalFloorArea: +(totalCells * cellArea).toFixed(1),
+      reachableArea: 0, reachableFraction: 0, pockets: []
+    };
+  }
+
+  const visited = new Uint8Array(grid.w * grid.h);
+  const components = [];
+  let reachableCount = 0;
+  for (let j = 0; j < grid.h; j++) {
+    for (let i = 0; i < grid.w; i++) {
+      const k = j * grid.w + i;
+      if (!grid.free[k] || visited[k]) continue;
+      const { seen, count } = grid.flood(i, j);
+      for (let idx = 0; idx < seen.length; idx++) if (seen[idx]) visited[idx] = 1;
+      const isSpawnComponent = !!seen[start[1] * grid.w + start[0]];
+      if (isSpawnComponent) reachableCount = count;
+      components.push({ cells: count, isSpawnComponent });
+    }
+  }
+
+  const pockets = components
+    .filter(c => !c.isSpawnComponent)
+    .map(c => +(c.cells * cellArea).toFixed(1))
+    .sort((a, b) => b - a);
+
+  return {
+    spawnOnFloor: true,
+    totalFloorArea: +(totalCells * cellArea).toFixed(1),
+    reachableArea: +(reachableCount * cellArea).toFixed(1),
+    reachableFraction: totalCells ? reachableCount / totalCells : 0,
+    pockets
+  };
+}
+
+module.exports = { analyze, pathToExit, exitWalls, Grid, floorRects, blockingWalls, wallPoints, segDist, floorMetrics, CELL, P_RADIUS, USE_RANGE };
