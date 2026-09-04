@@ -138,6 +138,37 @@ def loop_area(loop):
     return acc / 2.0
 
 
+def push_out_of_walls(x, z, walls, r=0.6, iters=3):
+    """Nudge a thing out of any solid wall it was placed inside. Doom things
+    are point-sized so WADs happily put them flush against (or inside) a wall;
+    an engine that gives them a radius then has an enemy stuck in geometry
+    with no way out. Same push-out the engine runs, done once at import."""
+    for _ in range(iters):
+        moved = False
+        for w in walls:
+            if not w.get('solid'):
+                continue
+            ax, az = w['p1']
+            bx, bz = w['p2']
+            vx, vz = bx - ax, bz - az
+            seg2 = vx * vx + vz * vz
+            t = 0.0 if seg2 < 1e-9 else max(0.0, min(1.0, ((x - ax) * vx + (z - az) * vz) / seg2))
+            px, pz = ax + t * vx, az + t * vz
+            dx, dz = x - px, z - pz
+            d = math.hypot(dx, dz)
+            if d >= r:
+                continue
+            if d < 1e-6:                      # dead centre: use the normal
+                n = math.hypot(vx, vz) or 1.0
+                dx, dz, d = -vz / n, vx / n, 1.0
+            x += dx / d * (r - d)
+            z += dz / d * (r - d)
+            moved = True
+        if not moved:
+            break
+    return round(x, 2), round(z, 2)
+
+
 def point_in_polys(x, z, polys):
     """Even-odd test over every loop of a sector (holes cancel out)."""
     inside = False
@@ -438,15 +469,25 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     if spawn_floor is None:
                         spawn_floor = 0.0
                     
-                    player_spawn = {'pos': [world_x, spawn_floor + 1.5, world_z], 'rot': rot_rad}
+                    sx, sz = push_out_of_walls(world_x, world_z, walls_json)
+                    if poly_floor_at(sx, sz) is None:
+                        sx, sz = world_x, world_z
+                    player_spawn = {'pos': [sx, spawn_floor + 1.5, sz], 'rot': rot_rad}
                     break
 
             entities_json = []
+            nudged = 0
             for t in things_raw:
                 tx, ty, angle, ttype, flags = t
                 world_x = round(tx * SCALE, 2)
                 world_z = round(-ty * SCALE, 2)
                 rot_rad = round((360 - angle) * math.pi / 180.0, 3)
+
+                nx, nz = push_out_of_walls(world_x, world_z, walls_json)
+                if poly_floor_at(nx, nz) is not None:
+                    if (nx, nz) != (world_x, world_z):
+                        nudged += 1
+                    world_x, world_z = nx, nz
 
                 ent_floor = poly_floor_at(world_x, world_z)
                 if ent_floor is None:
@@ -502,7 +543,8 @@ def convert_wad(wad_filename, pack_id, pack_title):
 
             print(f"[{pack_id}] Converted Level {map_num} ({map_name}) -> {json_file_path}"
                   f"  [{poly_fallbacks} unclosed chain(s), "
-                  f"{len(rect_fallbacks)} rectangle fallback(s)]")
+                  f"{len(rect_fallbacks)} rectangle fallback(s), "
+                  f"{nudged} thing(s) nudged out of walls]")
 
     manifest_path = os.path.join(out_dir, 'manifest.json')
     with open(manifest_path, 'w', encoding='utf-8') as mf:

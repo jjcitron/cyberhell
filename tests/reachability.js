@@ -299,7 +299,7 @@ function analyze(level) {
 /* Waypoints from spawn to the exit switch, in world coordinates.
    Feeding these to the real engine turns "the flood fill says it is reachable"
    into "the engine's own collision code walked it". Returns null if no route. */
-function pathToExit(level) {
+function pathToExit(level, strideUnits = 2.0) {
   const grid = new Grid(level);
   const sp = level.playerSpawn && level.playerSpawn.pos;
   if (!sp) return null;
@@ -348,7 +348,10 @@ function pathToExit(level) {
   // anything that walks the straight line between them, and the climb rule
   // then refuses the whole rise at once.
   const pts = [];
-  const STRIDE = Math.max(1, Math.round(2.0 / CELL));
+  // The straight line between two waypoints can cut across a ledge the cell
+  // path went around, so a caller that actually walks the route wants a fine
+  // stride (CELL) rather than the default 2 units.
+  const STRIDE = Math.max(1, Math.round(strideUnits / CELL));
   let lastY = null, sinceEmit = 0;
   for (let n = 0; n < cells.length; n++) {
     const k = cells[n];

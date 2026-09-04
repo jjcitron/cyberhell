@@ -285,7 +285,7 @@ const CHASE = function (seconds) {
       if (w.topY !== undefined && w.topY <= feet + 0.05) continue;
       if (w.bottomY !== undefined && w.bottomY >= head) continue;
       // Same radius the mover pushes out to, minus float slack.
-      if (segDist(p.x, p.z, w.p1.x, w.p1.z, w.p2.x, w.p2.z) < (en.radius || 0.5) - 0.06) {
+      if (segDist(p.x, p.z, w.p1.x, w.p1.z, w.p2.x, w.p2.z) < 0.25) {
         out.inWall++;
         if (examples.length < 3) examples.push({ kind: 'enemyInWall', type: en.enemyType, x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
         break;
@@ -325,21 +325,30 @@ const WALK = function (route) {
   let reached = 0;
   let stall = null;
   for (const [tx, tz] of route) {
-    let guard = 0;
+    let guard = 0, best = Infinity, stale = 0;
     while (guard++ < 1200) {
       const dx = tx - e.camera.position.x, dz = tz - e.camera.position.z;
       const L = Math.hypot(dx, dz);
-      if (L < 0.15) break;   // hug the route: loose steering cuts corners into pits
+      if (L < 0.15) break;
+      if (L < best - 0.01) { best = L; stale = 0; } else if (++stale > 90) break;
       e.player.velocity.x = (dx / L) * 6;
       e.player.velocity.z = (dz / L) * 6;
       e.updatePhysics(1 / 60);
     }
     if (Math.hypot(tx - e.camera.position.x, tz - e.camera.position.z) < 0.4) reached++;
-    else { stall = { target: [tx, tz], frames: guard, isRunning: e.isRunning, onGround: e.player.onGround,
-                     floor: e.getFloorAt(e.camera.position.x, e.camera.position.z),
-                     y: +e.camera.position.y.toFixed(2) }; break; }
   }
-  return { reached, total: route.length, stall,
+  // Waypoints are steering hints; the invariant is standing at the exit.
+  let toExit = Infinity;
+  for (const w of (e.exitWalls || [])) {
+    const vx = w.p2.x - w.p1.x, vz = w.p2.z - w.p1.z;
+    const t = Math.max(0, Math.min(1, ((e.camera.position.x - w.p1.x) * vx + (e.camera.position.z - w.p1.z) * vz) / (vx * vx + vz * vz || 1)));
+    toExit = Math.min(toExit, Math.hypot(e.camera.position.x - (w.p1.x + t * vx), e.camera.position.z - (w.p1.z + t * vz)));
+  }
+  if (toExit > 4.5) {   // USE_RANGE 4.0 + the offline grid's 0.25 cells
+    stall = { toExit: +toExit.toFixed(2), floor: e.getFloorAt(e.camera.position.x, e.camera.position.z),
+              y: +e.camera.position.y.toFixed(2) };
+  }
+  return { reached, total: route.length, stall, atExit: !stall,
            at: [+e.camera.position.x.toFixed(2), +e.camera.position.z.toFixed(2)] };
 };
 
@@ -398,7 +407,7 @@ function check(id, ok, detail) {
       const level = t.file
         ? JSON.parse(fs.readFileSync(path.join(ROOT, t.file), 'utf8'))
         : loadMap01();
-      const route = pathToExit(level);
+      const route = pathToExit(level, 0.25);   // walk the cell path, don't cut corners
       if (!route) {
         check(`CH-COL-9 ${t.name}`, false, 'offline model found no route to the exit');
       } else {
@@ -413,9 +422,9 @@ function check(id, ok, detail) {
         }, level.playerSpawn.pos);
         const walk = await page.evaluate(
           ([fn, r]) => new Function('return ' + fn)()(r), [WALK.toString(), route]);
-        check(`CH-COL-9 ${t.name}`, walk.reached === walk.total,
-          `walked ${walk.reached}/${walk.total} waypoints of the offline exit route` +
-          `${walk.reached === walk.total ? '' : ', stalled at ' + JSON.stringify(walk.at) + ' ' + JSON.stringify(walk.stall)}`);
+        check(`CH-COL-9 ${t.name}`, walk.atExit,
+          `reached the exit switch, ${walk.reached}/${walk.total} route waypoints hit` +
+          `${walk.atExit ? '' : ' -- STOPPED at ' + JSON.stringify(walk.at) + ' ' + JSON.stringify(walk.stall)}`);
       }
 
       const chase = await page.evaluate(

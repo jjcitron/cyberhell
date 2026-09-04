@@ -2417,7 +2417,19 @@ class CyberDoomEngine {
     // Trust the level's floor, not the entity's stored y.
     const spot = this.getFloorAt(ent.pos[0], ent.pos[2]);
     const baseY = spot.inside ? spot.floorY : ent.pos[1];
-    group.position.set(ent.pos[0], baseY + (st0 && st0.fly ? ENEMY_HOVER : 0), ent.pos[2]);
+    const hoverY = baseY + (st0 && st0.fly ? ENEMY_HOVER : 0);
+    // Some WAD things sit inside a wall. moveEnemy only refuses bad steps, it
+    // never corrects a bad start, so un-stick here: push out, and if that lands
+    // off the floor try a short ring of offsets before giving up.
+    let sx = ent.pos[0], sz = ent.pos[2];
+    for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
+                            [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
+      const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, 0.6, hoverY, 1.6);
+      if (!this.getFloorAt(c.x, c.z).inside) continue;
+      sx = c.x; sz = c.z;
+      break;
+    }
+    group.position.set(sx, hoverY, sz);
     group.rotation.y = ent.rot || 0;
     this.scene.add(group);
     this.enableShadowsOn(group);
@@ -3517,6 +3529,10 @@ class CyberDoomEngine {
         const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
         const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
         const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
+        // Only veto a clean crossing. If the origin is already inside this
+        // wall's band, the push-out owns the outcome -- vetoing there freezes
+        // anyone who ends up touching a wall, in every direction, forever.
+        if (getSegDist(fromX, fromZ, p1x, p1z, p2x, p2z).dist < radius) continue;
         const d1 = side(p1x, p1z, p2x, p2z, fromX, fromZ);
         const d2 = side(p1x, p1z, p2x, p2z, resX, resZ);
         if ((d1 > 0) === (d2 > 0)) continue;
