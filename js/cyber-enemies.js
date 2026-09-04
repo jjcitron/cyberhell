@@ -5,7 +5,7 @@
 
      window.CyberEnemies.build(typeId, ent, THREE) -> THREE.Group
      window.CyberEnemies.animate(enemy, timeSeconds, delta)
-     window.CyberEnemies.stats(typeId) -> { hp, speed, attack, range, cooldown, damage, scale }
+     window.CyberEnemies.stats(typeId) -> { hp, speed, attack, range, cooldown, damage, scale, fly? }
      window.CyberEnemies.flash(group)
 
    Geometry only, no textures — the same toolkit shape as Clash of Steel's
@@ -840,16 +840,19 @@
     3001: { hp: 60,   speed: 3.6, attack: 'fireball', range: 20, cooldown: 2.2, damage: 12, scale: 1.0 },
     3002: { hp: 120,  speed: 4.6, attack: 'melee',   range: 2.2, cooldown: 1.2, damage: 18, scale: 1.0 },
     58:   { hp: 120,  speed: 5.0, attack: 'melee',   range: 2.4, cooldown: 1.1, damage: 16, scale: 1.0 },
-    3005: { hp: 150,  speed: 3.2, attack: 'laser',   range: 26, cooldown: 1.8, damage: 15, scale: 1.0 },
+    3005: { hp: 150,  speed: 3.2, attack: 'laser',   range: 26, cooldown: 1.8, damage: 15, scale: 1.0, fly: true },
     69:   { hp: 300,  speed: 3.4, attack: 'fireball', range: 24, cooldown: 2.0, damage: 22, scale: 1.0 },
     3003: { hp: 500,  speed: 3.2, attack: 'fireball', range: 26, cooldown: 1.8, damage: 28, scale: 1.25 },
-    66:   { hp: 220,  speed: 4.2, attack: 'fireball', range: 28, cooldown: 2.0, damage: 20, scale: 1.0 },
+    66:   { hp: 220,  speed: 4.2, attack: 'fireball', range: 28, cooldown: 2.0, damage: 20, scale: 1.0, fly: true },
     67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.0 },
     68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.0 },
     64:   { hp: 450,  speed: 3.8, attack: 'fireball', range: 26, cooldown: 2.6, damage: 30, scale: 1.0 },
     16:   { hp: 1000, speed: 2.5, attack: 'fireball', range: 30, cooldown: 1.6, damage: 40, scale: 1.0 },
     7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.0 }
   };
+  // fly: hovers above the floor, crosses ledges freely, still stopped by walls
+  // (index.html: moveEnemy / ENEMY_HOVER). Cacodemon and Revenant only; the
+  // converter does not spawn Lost Souls (3006) or Pain Elementals (71).
   var DEFAULT_STATS = { hp: 50, speed: 3.5, attack: 'melee', range: 2.5, cooldown: 1.6, damage: 10, scale: 1.0 };
 
   function stats(typeId) {

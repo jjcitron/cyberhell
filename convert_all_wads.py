@@ -3,6 +3,154 @@ import glob
 import struct
 import math
 import json
+from collections import defaultdict
+
+
+# --------------------------------------------------------------------------
+# Sector boundary polygons
+#
+# A Doom sector is an arbitrary polygon (often concave, often with holes, and
+# often several disjoint rooms sharing one sector number).  The old converter
+# stored one axis-aligned bounding rectangle per sector, so neighbouring
+# sectors overlapped, getFloorAt picked the wrong one and the player fell
+# through floors / stood on nothing.  These helpers recover the real boundary.
+#
+# Doom convention: a linedef's FRONT sidedef is on the right of v1->v2, so
+# walking v1->v2 keeps the front sector's interior on the right.  For the back
+# sector the same is true of v2->v1.  Collect those directed edges per sector
+# and chain them head-to-tail into closed loops.
+# --------------------------------------------------------------------------
+
+NO_SIDEDEF = 0xFFFF
+
+
+def sector_directed_edges(linedefs, sidedefs, verts, nsectors):
+    """{sector_id: [((x1,y1),(x2,y2)), ...]} of directed boundary edges,
+    in raw Doom map coordinates."""
+    edges = defaultdict(list)
+    nv = len(verts)
+    for ld in linedefs:
+        v1, v2 = ld[0], ld[1]
+        if v1 >= nv or v2 >= nv or v1 == v2:
+            continue
+        s1, s2 = ld[5], ld[6]
+        front = sidedefs[s1][5] if s1 != NO_SIDEDEF and s1 < len(sidedefs) else None
+        back = sidedefs[s2][5] if s2 != NO_SIDEDEF and s2 < len(sidedefs) else None
+        if front is not None and front == back:
+            continue  # self-referencing line: not a boundary of anything
+        a, b = verts[v1], verts[v2]
+        if a == b:
+            continue
+        if front is not None and 0 <= front < nsectors:
+            edges[front].append((a, b))
+        if back is not None and 0 <= back < nsectors:
+            edges[back].append((b, a))
+    return edges
+
+
+def _pick_turn(a, b, cands, elist):
+    """At a junction, keep hugging the same face: take the sharpest right
+    turn (interior is on the right).  A full reversal is the last resort."""
+    ang_in = math.atan2(b[1] - a[1], b[0] - a[0])
+    best, best_t = cands[0], 10.0
+    for j in cands:
+        c = elist[j][1]
+        t = math.atan2(c[1] - b[1], c[0] - b[0]) - ang_in
+        t = (t + math.pi) % (2 * math.pi) - math.pi
+        if t <= -math.pi + 1e-9:
+            t = math.pi  # 180 degree reversal
+        if t < best_t:
+            best, best_t = j, t
+    return best
+
+
+def chain_loops(elist):
+    """Directed edges -> (loops as vertex lists, count_of_unclosed_chains).
+
+    A chain that never returns to its start means the sector's boundary is
+    malformed in the WAD (or uses a trick this walker does not model). Closing
+    it by joining its ends approximates the real shape far better than falling
+    back to a bounding rectangle, which is the overlap bug this whole change
+    exists to remove -- so keep it, and count it."""
+    adj = defaultdict(list)
+    for i, (a, _b) in enumerate(elist):
+        adj[a].append(i)
+    used = [False] * len(elist)
+    loops, dropped = [], 0
+    for i in range(len(elist)):
+        if used[i]:
+            continue
+        start = elist[i][0]
+        cur, pts, closed = i, [], False
+        while True:
+            used[cur] = True
+            a, b = elist[cur]
+            pts.append(a)
+            if b == start:
+                closed = True
+                break
+            cands = [j for j in adj[b] if not used[j]]
+            if not cands:
+                break
+            cur = cands[0] if len(cands) == 1 else _pick_turn(a, b, cands, elist)
+            if len(pts) > 50000:
+                break
+        if len(pts) >= 3:
+            loops.append(pts)
+            if not closed:
+                dropped += 1
+        elif pts:
+            dropped += 1
+    return loops, dropped
+
+
+def to_engine_loop(pts, scale):
+    """Doom (x, y) -> engine (x, z) with the y->-z flip, deduped and rounded."""
+    out = []
+    for (x, y) in pts:
+        p = [round(x * scale, 2), round(-y * scale, 2)]
+        if out and out[-1] == p:
+            continue
+        out.append(p)
+    while len(out) > 1 and out[0] == out[-1]:
+        out.pop()
+    return out if len(out) >= 3 else None
+
+
+def directed_area(elist, scale):
+    """Signed area straight from the directed edges -- independent of the loop
+    chaining, so tests can use it to catch a chaining bug."""
+    acc = 0.0
+    for (a, b) in elist:
+        ax, az = a[0] * scale, -a[1] * scale
+        bx, bz = b[0] * scale, -b[1] * scale
+        acc += ax * bz - bx * az
+    return abs(acc) / 2.0
+
+
+def loop_area(loop):
+    acc = 0.0
+    n = len(loop)
+    for i in range(n):
+        x1, z1 = loop[i]
+        x2, z2 = loop[(i + 1) % n]
+        acc += x1 * z2 - x2 * z1
+    return acc / 2.0
+
+
+def point_in_polys(x, z, polys):
+    """Even-odd test over every loop of a sector (holes cancel out)."""
+    inside = False
+    for loop in polys:
+        n = len(loop)
+        j = n - 1
+        for i in range(n):
+            xi, zi = loop[i]
+            xj, zj = loop[j]
+            if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+                inside = not inside
+            j = i
+    return inside
 
 def convert_wad(wad_filename, pack_id, pack_title):
     out_dir = os.path.join('levelPacks', pack_id)
@@ -70,7 +218,36 @@ def convert_wad(wad_filename, pack_id, pack_title):
                         sector_verts[sec_id].append(verts[v1])
                         sector_verts[sec_id].append(verts[v2])
 
+            # Real sector boundaries (see helpers at the top of this file).
+            sec_edges = sector_directed_edges(linedefs, sidedefs, verts, len(sectors_raw))
+            sec_polys, sec_area, poly_fallbacks = {}, {}, 0
+            for sec_id in range(len(sectors_raw)):
+                elist = sec_edges.get(sec_id, [])
+                sec_area[sec_id] = round(directed_area(elist, SCALE), 2)
+                loops_raw, dropped = chain_loops(elist)
+                loops = [l for l in (to_engine_loop(pts, SCALE) for pts in loops_raw) if l]
+                if dropped:
+                    poly_fallbacks += dropped
+                sec_polys[sec_id] = loops
+
+            poly_bb = {}
+            for s_id, loops in sec_polys.items():
+                if not loops:
+                    continue
+                pts = [p for l in loops for p in l]
+                poly_bb[s_id] = (min(p[0] for p in pts), min(p[1] for p in pts),
+                                 max(p[0] for p in pts), max(p[1] for p in pts))
+
+            def poly_floor_at(x, z):
+                for s_id, bb in poly_bb.items():
+                    if x < bb[0] or x > bb[2] or z < bb[1] or z > bb[3]:
+                        continue
+                    if point_in_polys(x, z, sec_polys[s_id]):
+                        return round(sectors_raw[s_id][0] * SCALE, 2)
+                return None
+
             sectors_json = []
+            rect_fallbacks = []
             for sec_id, sec in enumerate(sectors_raw):
                 floor_h, ceil_h, floor_tex, ceil_tex, light, special, tag = sec
                 f_tex_str = floor_tex.rstrip(b'\x00').decode('ascii', errors='ignore').upper()
@@ -100,8 +277,24 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 else:
                     w, d, cx, cz = 20, 20, 0, 0
 
+                loops = sec_polys[sec_id]
+                if not loops and sec_area[sec_id] > 0.5:
+                    # Boundary walk produced nothing usable for a sector that
+                    # does enclose area: fall back to its bounding rectangle
+                    # so the floor exists, and accept that it may overlap a
+                    # neighbour. Logged by the caller.
+                    hw, hd = max(0.5, w) / 2, max(0.5, d) / 2
+                    loops = [[[cx - hw, cz - hd], [cx + hw, cz - hd],
+                              [cx + hw, cz + hd], [cx - hw, cz + hd]]]
+                    rect_fallbacks.append(sec_id)
+
                 sectors_json.append({
                     'id': f'sec_{sec_id}',
+                    # Real boundary loops (outer + holes, even-odd). The x/z/
+                    # width/depth rectangle below is only a fallback for
+                    # consumers that predate this field.
+                    'polys': loops,
+                    'area': sec_area[sec_id],
                     'floorY': round(floor_h * SCALE, 2),
                     'ceilY': round(ceil_h * SCALE, 2),
                     'floorTex': f_tex,
@@ -114,69 +307,86 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     'depth': max(1.0, d)
                 })
 
-            # Real Doom lets a player auto-climb a floor-height difference up to
-            # 24 map units with no jump, and drop off any height freely. A
-            # two-sided linedef whose sectors differ by more than that is a
-            # ledge you can jump down from but not climb; anything below it is
-            # just a walkable step. Neither should be a full solid wall (that
-            # sealed 36/198 converted maps into pockets at spawn).
-            STEP_LIMIT = 24  # Doom map units
+            # Doom movement rules this encodes:
+            #   - auto-climb a floor step up to 24 map units, no jump needed
+            #   - a two-sided line is passable only if the gap between the
+            #     higher floor and the lower ceiling is tall enough to fit
+            #   - ML_BLOCKING (flag 1) blocks regardless of geometry
+            # Floor risers are never solid walls: climbing is gated by floor
+            # height, not by geometry. Both the engine (updatePhysics) and the
+            # offline model (tests/reachability.js) refuse a step that raises
+            # the floor by more than STEP_LIMIT, and allow any drop.
+            STEP_LIMIT = 24   # Doom map units
+            MIN_GAP = 32      # can't squeeze through anything shorter
+            ML_BLOCKING = 0x0001
 
             walls_json = []
             for idx, ld in enumerate(linedefs):
                 v1_idx, v2_idx, flags, special, tag, s1_idx, s2_idx = ld
+                if v1_idx >= len(verts) or v2_idx >= len(verts): continue
                 p1 = verts[v1_idx]
                 p2 = verts[v2_idx]
 
-                is_single = (s2_idx == 65535)
+                is_single = (s2_idx == 65535 or s2_idx >= len(sidedefs))
                 is_door = special in [1, 26, 27, 28, 31, 32, 117, 118]
                 # Exit specials: 11/51 are switch exits, 52/124 walkover exits.
-                # These used to fall into the generic switch bucket and get a
-                # sw_<tag> id the engine ignores, which is why no converted
-                # level could be finished.  They must carry sw_exit_game.
                 is_exit = special in [11, 51, 52, 124]
                 is_switch = is_exit or special in [9, 14, 18, 42, 63, 103]
 
                 if s1_idx >= len(sidedefs): continue
                 sec1_id = sidedefs[s1_idx][5]
+                if sec1_id >= len(sectors_raw): continue
                 sec1 = sectors_raw[sec1_id]
 
-                h_diff = None
+                solid = True
                 is_step_up = False
                 is_ledge = False
                 if is_single:
                     bottom_y = sec1[0] * SCALE
                     top_y = sec1[1] * SCALE
-                    h = max(8.0, top_y - bottom_y)
+                    h = max(0.5, top_y - bottom_y)
                     raw_tex = sidedefs[s1_idx][4].rstrip(b'\x00').decode('ascii', errors='ignore').upper()
                 else:
-                    if s2_idx >= len(sidedefs): continue
                     sec2_id = sidedefs[s2_idx][5]
+                    if sec2_id >= len(sectors_raw): continue
                     sec2 = sectors_raw[sec2_id]
+                    f_lo, f_hi = min(sec1[0], sec2[0]), max(sec1[0], sec2[0])
+                    gap = min(sec1[1], sec2[1]) - f_hi
+                    raw_tex = sidedefs[s1_idx][3].rstrip(b'\x00').decode('ascii', errors='ignore').upper()
                     if is_door or is_switch:
-                        # Doors/switches still need floor-to-ceiling geometry
-                        # to act as a panel, regardless of any floor step.
+                        # Doors/switches need floor-to-ceiling geometry to act
+                        # as a panel, regardless of any floor step.
                         bottom_y = min(sec1[0], sec2[0]) * SCALE
                         top_y = max(sec1[1], sec2[1]) * SCALE
-                        h = max(8.0, top_y - bottom_y)
-                    else:
-                        h_diff = abs(sec1[0] - sec2[0])
-                        if h_diff < 1:
-                            continue  # flat floor, fully open, no geometry needed
-                        # The riser only spans the floor step, not up to the
-                        # ceiling, so the open space above it stays walkable.
+                        h = max(0.5, top_y - bottom_y)
+                    elif (flags & ML_BLOCKING) or 0 < gap < MIN_GAP:
+                        # Impassable line, or a window/overhang too tight to
+                        # walk through: a real wall, full height. gap <= 0 is
+                        # NOT blocked -- that is a closed door sector or a
+                        # lowered lift, and this engine has no moving sectors,
+                        # so sealing them would wall off half of every map.
                         bottom_y = min(sec1[0], sec2[0]) * SCALE
-                        top_y = max(sec1[0], sec2[0]) * SCALE
+                        top_y = max(sec1[1], sec2[1]) * SCALE
+                        h = max(0.5, top_y - bottom_y)
+                        raw_tex = sidedefs[s1_idx][4].rstrip(b'\x00').decode('ascii', errors='ignore').upper() or raw_tex
+                    else:
+                        h_diff = f_hi - f_lo
+                        if h_diff < 1:
+                            continue  # flat floor, fully open, no geometry
+                        # The riser spans the floor step only, so the space
+                        # above it stays walkable.
+                        bottom_y = f_lo * SCALE
+                        top_y = f_hi * SCALE
                         h = max(0.1, top_y - bottom_y)
                         is_step_up = h_diff <= STEP_LIMIT
                         is_ledge = not is_step_up
-                    raw_tex = sidedefs[s1_idx][3].rstrip(b'\x00').decode('ascii', errors='ignore').upper()
+                        solid = False
 
                 x1, z1 = round(p1[0] * SCALE, 2), round(-p1[1] * SCALE, 2)
                 x2, z2 = round(p2[0] * SCALE, 2), round(-p2[1] * SCALE, 2)
 
                 length = math.hypot(x2 - x1, z2 - z1)
-                if length < 0.3 and not is_door and not is_switch: continue
+                if length < 0.05: continue
 
                 tex = 'tech_wall'
                 if 'DOOR' in raw_tex or is_door: tex = 'door_blast'
@@ -194,7 +404,7 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     'topY': round(top_y, 2),
                     'h': round(h, 2),
                     'tex': tex,
-                    'solid': True
+                    'solid': solid
                 }
                 if is_door:
                     w['isDoor'] = True
@@ -206,18 +416,11 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     if is_exit:
                         w['isExit'] = True
                 if is_step_up:
-                    # Climbable in both directions: no jump needed, so it must
-                    # not push the player back at all.
-                    w['solid'] = False
+                    # Free auto-climb in both directions.
                     w['stepUp'] = True
                 elif is_ledge:
-                    # Too tall to auto-climb. Not solid in the generic 2D
-                    # sense used by the offline reachability checkers (they
-                    # deliberately ignore height, same as getFloorAt), but the
-                    # engine blocks climbing it from the low side and lets the
-                    # player drop off it from the high side -- see loFloor/
-                    # hiFloor and resolveWallCollisions in index.html.
-                    w['solid'] = False
+                    # Too tall to climb; the floor-height rule blocks it from
+                    # below and lets the player walk off the top.
                     w['ledge'] = True
                     w['loFloor'] = round(bottom_y, 2)
                     w['hiFloor'] = round(top_y, 2)
@@ -231,11 +434,9 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     world_z = round(-t[1] * SCALE, 2)
                     rot_rad = round((360 - t[2]) * math.pi / 180.0, 3)
                     
-                    spawn_floor = 0.0
-                    for s in sectors_json:
-                        if abs(world_x - s['x']) <= s['width']/2 and abs(world_z - s['z']) <= s['depth']/2:
-                            spawn_floor = s['floorY']
-                            break
+                    spawn_floor = poly_floor_at(world_x, world_z)
+                    if spawn_floor is None:
+                        spawn_floor = 0.0
                     
                     player_spawn = {'pos': [world_x, spawn_floor + 1.5, world_z], 'rot': rot_rad}
                     break
@@ -247,11 +448,9 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 world_z = round(-ty * SCALE, 2)
                 rot_rad = round((360 - angle) * math.pi / 180.0, 3)
 
-                ent_floor = 0.0
-                for s in sectors_json:
-                    if abs(world_x - s['x']) <= s['width']/2 and abs(world_z - s['z']) <= s['depth']/2:
-                        ent_floor = s['floorY']
-                        break
+                ent_floor = poly_floor_at(world_x, world_z)
+                if ent_floor is None:
+                    ent_floor = 0.0
 
                 if ttype == 2005:
                     entities_json.append({'type': 'weapon', 'name': 'chainsaw', 'pos': [world_x, ent_floor + 0.5, world_z]})
@@ -290,7 +489,7 @@ def convert_wad(wad_filename, pack_id, pack_title):
             json_filename = f"json{map_num}.json"
             json_file_path = os.path.join(out_dir, json_filename)
             with open(json_file_path, 'w', encoding='utf-8') as out_f:
-                json.dump(map_data, out_f, indent=2)
+                json.dump(map_data, out_f, separators=(',', ':'))
 
             manifest.append({
                 "id": f"json{map_num}",
@@ -301,7 +500,9 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 "entities": len(entities_json)
             })
 
-            print(f"[{pack_id}] Converted Level {map_num} ({map_name}) -> {json_file_path}")
+            print(f"[{pack_id}] Converted Level {map_num} ({map_name}) -> {json_file_path}"
+                  f"  [{poly_fallbacks} unclosed chain(s), "
+                  f"{len(rect_fallbacks)} rectangle fallback(s)]")
 
     manifest_path = os.path.join(out_dir, 'manifest.json')
     with open(manifest_path, 'w', encoding='utf-8') as mf:
@@ -338,8 +539,8 @@ def convert_all():
         json.dump(master_manifest, f, indent=2)
 
     print(f"\nALL WADs CONVERTED SUCCESSFUL! Master manifest saved to {master_path}")
-    print("Tagging exit linedefs here is necessary but not sufficient: sectors are")
-    print("approximated as bounding boxes, so an exit can end up walled off.")
+    print("Sectors now carry real boundary polygons; the bounding rectangle is")
+    print("kept only as a fallback for consumers that predate `polys`.")
     print("Run  python patch_exit_switches.py  then  node tests/check-exits.js")
     print("to place a reachable exit on every level and prove it.")
 

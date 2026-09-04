@@ -8,6 +8,7 @@
   <script src="js/cyber-midi-player.js"></script>
   <script src="js/cyber-enemies.js"></script>
   <script src="js/cyber-weapons.js"></script>
+  <script src="js/cyber-gore.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -705,6 +706,14 @@
 
         <div style="display:flex; gap:12px;">
           <button id="start-btn" class="start-btn">ENTER THE ABYSS</button>
+        </div>
+        <!-- LEVEL CLEARED / PACK COMPLETE secondary actions. Hidden by default;
+             triggerVictory() shows this row only for its own end-card variants
+             so triggerGameOver()'s card (same #overlay-screen.mode-end) never
+             sees it. -->
+        <div id="end-secondary-btns" style="display:none; gap:12px; margin-top:4px;">
+          <button id="end-replay-btn" class="start-btn" style="background:#37474f;">REPLAY</button>
+          <button id="end-menu-btn" class="start-btn" style="background:#263238;">MENU</button>
         </div>
         <div class="title-tip" style="color:#a0aec0; font-size:12px; margin-top:2px;">TIP: Press <span class="key-badge">K</span> or type <span class="key-badge">IDKFA</span> in-game for All Ammo & Weapons cheat!</div>
       </div>
@@ -1692,10 +1701,19 @@ function getGlowTexture() {
 
 // Doom lets a player auto-climb a floor step up to 24 map units with no
 // jump; the WAD->engine scale is 0.05 (see convert_all_wads.py), so that is
-// 1.2 engine units. Levels tag those risers `stepUp` (non-solid) and taller
-// ones `ledge` (climb-blocking, drop-through) -- see resolveWallCollisions
-// and the floor-clamp step in updatePhysics below.
+// 1.2 engine units. Risers are never solid walls: updatePhysics refuses any
+// step that raises the floor more than this above the player's feet, and
+// allows any drop. tests/reachability.js and patch_exit_switches.py use the
+// same number, so exits are only ever placed where the engine can walk.
+const EMPTY_WALLS = [];
+const EMPTY_SECTORS = [];
 const STEP_UP_MAX = 1.2;
+// A step of exactly 24 map units is the commonest stair in Doom, and 2.0-0.8
+// is 1.2000000000000002 in binary floating point. Without this slack the
+// engine refuses the very steps the maps are built from.
+const STEP_EPS = 1e-3;
+// Flying enemies (stats.fly) ride this far above their sector floor.
+const ENEMY_HOVER = 2.2;
 
 /* ==========================================================================
    MAIN 3D ENGINE CORE
@@ -1800,6 +1818,8 @@ class CyberDoomEngine {
 
   loadLevel(data) {
     this.levelData = data;
+    this._wallGrid = null;   // rebuilt lazily from the new wall list
+    this._secGrid = null;
     this.scene.fog = new THREE.FogExp2(data.fogColor, data.fogDensity);
     this.renderer.setClearColor(data.skyColor);
 
@@ -1906,7 +1926,123 @@ class CyberDoomEngine {
     this.camera.rotation.x = this.pitch;
   }
 
+  // One texture per name per level. TextureFactory.create() paints a fresh
+  // 256x256 canvas every call, which is minutes of work on a 20k-wall map;
+  // tiling is baked into the geometry UVs instead of texture.repeat so the
+  // same texture object can be shared.
+  levelTexture(name) {
+    if (!this._texCache) this._texCache = {};
+    let t = this._texCache[name];
+    if (!t) {
+      t = TextureFactory.create(name);
+      t.anisotropy = 4;
+      this._texCache[name] = t;
+    }
+    return t;
+  }
+
+  static scaleUVs(geo, su, sv) {
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+    uv.needsUpdate = true;
+    return geo;
+  }
+
+  // A sector's boundary loops -> THREE.Shapes. A loop nested inside an odd
+  // number of others is a hole; everything else is its own island (one Doom
+  // sector number is often used by several disjoint rooms).
+  static shapesFromPolys(polys) {
+    const rings = polys.filter(l => l && l.length >= 3).map(loop => {
+      let a = 0;
+      for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+        a += loop[j][0] * loop[i][1] - loop[i][0] * loop[j][1];
+      }
+      return { loop, area: Math.abs(a) / 2 };
+    });
+    const contains = (outer, pt) => {
+      let inside = false;
+      for (let i = 0, j = outer.length - 1; i < outer.length; j = i++) {
+        const [xi, zi] = outer[i], [xj, zj] = outer[j];
+        if ((zi > pt[1]) !== (zj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - zi)) / (zj - zi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    const shapes = [];
+    for (const r of rings) {
+      // Smallest ring that strictly contains this one, if any, is its parent.
+      let parent = null;
+      for (const o of rings) {
+        if (o === r || o.area <= r.area) continue;
+        if (!contains(o.loop, r.loop[0])) continue;
+        if (!parent || o.area < parent.area) parent = o;
+      }
+      r.parent = parent;
+    }
+    for (const r of rings) {
+      let depth = 0;
+      for (let p = r.parent; p; p = p.parent) depth++;
+      r.isHole = depth % 2 === 1;
+    }
+    for (const r of rings) {
+      if (r.isHole) continue;
+      // Shape space is (x, -z): rotating -90 deg about X maps (x, y) -> (x, 0, -y).
+      const shape = new THREE.Shape(r.loop.map(([x, z]) => new THREE.Vector2(x, -z)));
+      for (const h of rings) {
+        if (h.isHole && h.parent === r) shape.holes.push(new THREE.Path(h.loop.map(([x, z]) => new THREE.Vector2(x, -z))));
+      }
+      shapes.push(shape);
+    }
+    return shapes;
+  }
+
+  // Floor + ceiling from the sector's real polygon, so they meet the walls
+  // exactly instead of overhanging as a bounding rectangle.
+  buildSectorPolyGeometry(sec) {
+    const shapes = CyberDoomEngine.shapesFromPolys(sec.polys);
+    if (!shapes.length) return;
+    let geo;
+    try {
+      geo = new THREE.ShapeGeometry(shapes);
+    } catch (e) {
+      return; // degenerate ring set: leave the sector without a floor mesh
+    }
+    // ShapeGeometry UVs are the shape's own coordinates, so one tile per 8u.
+    CyberDoomEngine.scaleUVs(geo, 1 / 8, 1 / 8);
+
+    const floorMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.floorTex), roughness: 0.8 });
+    floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
+    const floorMesh = new THREE.Mesh(geo, floorMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.y = sec.floorY;
+    floorMesh.receiveShadow = true;
+    // Tagged so tests can raycast the rendered floor and compare it with
+    // getFloorAt -- the two disagreeing is exactly the fall-through bug.
+    floorMesh.userData.floorY = sec.floorY;
+    this.scene.add(floorMesh);
+
+    if (!sec.isSky) {
+      // Same geometry, seen from below: BackSide flips the normal for us.
+      const ceilMat = new THREE.MeshStandardMaterial({
+        map: this.levelTexture(sec.ceilTex), roughness: 0.8, side: THREE.BackSide
+      });
+      const ceilMesh = new THREE.Mesh(geo, ceilMat);
+      ceilMesh.rotation.x = -Math.PI / 2;
+      ceilMesh.position.y = sec.ceilY;
+      ceilMesh.receiveShadow = true;
+      this.scene.add(ceilMesh);
+    }
+  }
+
   buildSectorGeometry(sec) {
+    if (sec.polys) {
+      // Converted levels: real boundary loops. The x/z/width/depth rectangle
+      // stays on the sector only as a hint for light placement.
+      sec.resolvedFloors = (sec.x !== undefined && sec.width !== undefined)
+        ? [{ x: sec.x, z: sec.z, width: sec.width, depth: sec.depth }] : [];
+      if (sec.polys.length) this.buildSectorPolyGeometry(sec);
+      return;
+    }
+
     let rects = sec.floors;
     if (!rects || rects.length === 0) {
       let width = sec.width !== undefined ? sec.width : 60;
@@ -1929,23 +2065,19 @@ class CyberDoomEngine {
 
     rects.forEach(rect => {
       const { x, z, width, depth } = rect;
-      const floorGeo = new THREE.PlaneGeometry(width, depth);
-      const floorTex = TextureFactory.create(sec.floorTex);
-      floorTex.repeat.set(width / 8, depth / 8);
-      floorTex.anisotropy = 4;
-      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.8 });
+      const floorGeo = CyberDoomEngine.scaleUVs(new THREE.PlaneGeometry(width, depth), width / 8, depth / 8);
+      const floorMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.floorTex), roughness: 0.8 });
       floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
       const floorMesh = new THREE.Mesh(floorGeo, floorMat);
       floorMesh.rotation.x = -Math.PI / 2;
       floorMesh.position.set(x, sec.floorY, z);
       floorMesh.receiveShadow = true;
+      floorMesh.userData.floorY = sec.floorY;
       this.scene.add(floorMesh);
 
       // Ceiling (if not open sky)
       if (!sec.isSky) {
-        const ceilTex = TextureFactory.create(sec.ceilTex);
-        ceilTex.repeat.set(width / 4, depth / 4);
-        const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 0.8 });
+        const ceilMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.ceilTex), roughness: 0.8 });
         const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
         ceilMesh.rotation.x = Math.PI / 2;
         ceilMesh.position.set(x, sec.ceilY, z);
@@ -1966,14 +2098,16 @@ class CyberDoomEngine {
     const midZ = (z1 + z2) / 2;
 
     const baseBottomY = w.bottomY !== undefined ? w.bottomY : 0.0;
-    const wallH = w.h !== undefined ? Math.max(8.0, w.h) : 8.0;
-    const totalHeight = wallH + 4.0; // Extend 2 units below floor & 2 units above ceiling to prevent floor gaps!
-    const centerY = baseBottomY - 2.0 + totalHeight / 2;
+    // Use the wall's real height. The old Math.max(8.0, h) rendered every
+    // knee-high step riser as an 8-unit slab you could walk straight through,
+    // which is most of what "walking through walls" looked like.
+    const wallH = Math.max(0.1, w.h !== undefined ? w.h : 8.0);
+    const PAD = 0.1;  // hides the seam where the wall meets floor/ceiling
+    const totalHeight = wallH + PAD * 2;
+    const centerY = baseBottomY - PAD + totalHeight / 2;
 
-    const wallGeo = new THREE.BoxGeometry(len, totalHeight, 0.4);
-    const wallTex = TextureFactory.create(w.tex);
-    wallTex.repeat.set(len / 4, totalHeight / 4);
-    const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.7 });
+    const wallGeo = CyberDoomEngine.scaleUVs(new THREE.BoxGeometry(len, totalHeight, 0.4), len / 4, totalHeight / 4);
+    const wallMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(w.tex), roughness: 0.7 });
     const wallMesh = new THREE.Mesh(wallGeo, wallMat);
 
     wallMesh.position.set(midX, centerY, midZ);
@@ -1988,6 +2122,10 @@ class CyberDoomEngine {
       p2: { x: x2, z: z2 },
       mesh: wallMesh,
       height: w.h,
+      // Kept for the height gate in resolveWallCollisions: a wall whose top is
+      // at or below your feet cannot block you, nor can one entirely overhead.
+      bottomY: w.bottomY,
+      topY: w.topY !== undefined ? w.topY : (w.bottomY !== undefined ? w.bottomY + wallH : undefined),
       solid: w.solid,
       isDoor: w.isDoor || false,
       isSwitch: w.isSwitch || false,
@@ -2275,7 +2413,11 @@ class CyberDoomEngine {
 
   createEnemy(ent) {
     const group = this.buildCustomEnemyMesh(ent.enemyType, ent);
-    group.position.set(ent.pos[0], ent.pos[1], ent.pos[2]);
+    const st0 = window.CyberEnemies ? window.CyberEnemies.stats(ent.enemyType) : null;
+    // Trust the level's floor, not the entity's stored y.
+    const spot = this.getFloorAt(ent.pos[0], ent.pos[2]);
+    const baseY = spot.inside ? spot.floorY : ent.pos[1];
+    group.position.set(ent.pos[0], baseY + (st0 && st0.fly ? ENEMY_HOVER : 0), ent.pos[2]);
     group.rotation.y = ent.rot || 0;
     this.scene.add(group);
     this.enableShadowsOn(group);
@@ -2298,7 +2440,9 @@ class CyberDoomEngine {
       speed: (st && st.speed) || (isBoss ? 2.5 : 3.5),
       limbs: group.userData.limbs || null,
       stats: st,
-      radius: 0.6
+      radius: 0.6,
+      floorY: baseY,
+      bobT: Math.random() * Math.PI * 2
     });
   }
 
@@ -2381,6 +2525,11 @@ class CyberDoomEngine {
     const loadLevelBtn = document.getElementById('load-level-btn');
 
     if (packSelect && levelSelect && loadLevelBtn) {
+      // this.campaign tracks the pack/level the player is progressing through
+      // so triggerVictory() knows what "next" means. The boot level (MAP01)
+      // is never actually fetched here (isInitialLoad skips the load), but it
+      // is treated as index 0 of pack 1 anyway -- see the round-2 progression
+      // plan -- so index+1 already lands on pack1's real level 2.
       const loadPackManifest = (manifestUrl, isInitialLoad = false) => {
         fetch(manifestUrl)
           .then(res => res.json())
@@ -2393,6 +2542,9 @@ class CyberDoomEngine {
               levelSelect.appendChild(opt);
             });
 
+            const packInfo = (this.allPacks || []).find(p => p.manifest === manifestUrl) || {};
+            this.campaign = { packManifestUrl: manifestUrl, packName: packInfo.name || '', levels: manifest, index: 0 };
+
             if (manifest.length > 0 && manifest[0].file) {
               this.loadLevelFromFile(manifest[0].file, !isInitialLoad);
             }
@@ -2403,6 +2555,7 @@ class CyberDoomEngine {
       fetch('levelPacks/packs.json')
         .then(res => res.json())
         .then(packs => {
+          this.allPacks = packs;
           packSelect.innerHTML = '';
           packs.forEach(p => {
             const opt = document.createElement('option');
@@ -2427,10 +2580,33 @@ class CyberDoomEngine {
       loadLevelBtn.addEventListener('click', () => {
         const filePath = levelSelect.value;
         if (filePath) {
+          if (this.campaign) {
+            const idx = this.campaign.levels.findIndex(l => l.file === filePath);
+            if (idx >= 0) this.campaign.index = idx;
+          }
           this.loadLevelFromFile(filePath, true);
         }
       });
     }
+
+    // LEVEL CLEARED / PACK COMPLETE secondary buttons (triggerVictory wires
+    // the primary #start-btn per-case; these two are always the same action).
+    const endReplayBtn = document.getElementById('end-replay-btn');
+    const endMenuBtn = document.getElementById('end-menu-btn');
+    if (endReplayBtn) endReplayBtn.addEventListener('click', () => this.replayCurrentLevel());
+    if (endMenuBtn) endMenuBtn.addEventListener('click', () => window.location.reload());
+
+    // Enter/Space activates whatever the cleared-screen's primary CTA is
+    // (NEXT LEVEL / NEXT PACK / MENU), same button startBtn.click() already
+    // triggers on mouse.
+    document.addEventListener('keydown', (e) => {
+      if (!this.isVictory) return;
+      if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
+        e.preventDefault();
+        const btn = document.getElementById('start-btn');
+        if (btn) btn.click();
+      }
+    });
 
     // CH-QA-03: one place that raises the PAUSED overlay, so Escape and
     // lost-focus take the exact same path. The pause overlay is also the only
@@ -2962,7 +3138,9 @@ class CyberDoomEngine {
 
   killEnemy(enemy) {
     enemy.state = 'DEAD';
+    const deathPos = enemy.group.position.clone();
     this.flashAt(enemy.group.position, 0xff4422);
+    if (window.CyberGore) window.CyberGore.death(deathPos, enemy);
     // Death collapse animation
     enemy.group.rotation.x = Math.PI / 2;
     enemy.group.position.y = 0.2;
@@ -2997,7 +3175,17 @@ class CyberDoomEngine {
     setTimeout(() => hm.classList.remove('active'), 80);
   }
 
-  spawnBlood(pos) {
+  // opts: { enemy, amount, dir } -- enemy/amount pick the blood/oil mix and
+  // spray size, dir is the spray axis (defaults to camera -> hit point).
+  spawnBlood(pos, opts) {
+    opts = opts || {};
+    if (window.CyberGore) {
+      if (!this._goreInited) { window.CyberGore.init(this.scene, THREE); this._goreInited = true; }
+      const dir = opts.dir || pos.clone().sub(this.camera.position).normalize();
+      window.CyberGore.hit(pos, dir, opts.amount || 10, opts.enemy);
+      return;
+    }
+    // Fallback if cyber-gore.js failed to load: the old cyan cubes.
     for (let i = 0; i < 8; i++) {
       const p = new THREE.Mesh(
         new THREE.BoxGeometry(0.08, 0.08, 0.08),
@@ -3114,6 +3302,7 @@ class CyberDoomEngine {
     // Cylinder Wall Collision Resolution.  Resolve in short steps so a slow
     // frame cannot carry the player through a thin wall or over a floor seam.
     const pRadius = 0.55;
+    const feetY = this.camera.position.y - this.player.height;
     const horizontalDistance = Math.hypot(newX - this.camera.position.x, newZ - this.camera.position.z);
     const collisionSteps = Math.max(1, Math.ceil(horizontalDistance / (pRadius * 0.5)));
     let resolved = { x: this.camera.position.x, z: this.camera.position.z };
@@ -3122,8 +3311,14 @@ class CyberDoomEngine {
       const t = step / collisionSteps;
       const candidateX = THREE.MathUtils.lerp(this.camera.position.x, newX, t);
       const candidateZ = THREE.MathUtils.lerp(this.camera.position.z, newZ, t);
-      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius);
-      if (!this.getFloorAt(candidate.x, candidate.z).inside) {
+      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius, feetY, this.player.height, resolved.x, resolved.z);
+      const cf = this.getFloorAt(candidate.x, candidate.z);
+      // Refuse to leave floor geometry, and refuse a climb steeper than the
+      // free auto-climb. Measuring against the feet (not the current floor)
+      // means a jump buys extra reach, and drops are always allowed. This is
+      // what stops the player teleporting up the face of a ledge -- risers
+      // are not solid walls, the floor height is the gate.
+      if (!cf.inside || cf.floorY - feetY > STEP_UP_MAX + STEP_EPS) {
         leftKnownFloor = true;
         break;
       }
@@ -3179,7 +3374,56 @@ class CyberDoomEngine {
     this.updateProjectiles(delta);
   }
 
-  resolveWallCollisions(x, z, radius) {
+  // Walls bucketed on a 4-unit grid, built lazily per level. The megamaps
+  // carry 20k walls and every collision pass used to scan all of them; at
+  // three push-out iterations per sub-step that is the frame budget gone.
+  wallsNear(x, z, r) {
+    if (!this._wallGrid) {
+      const C = 4, map = new Map();
+      for (const w of this.walls) {
+        const x0 = Math.min(w.p1.x, w.p2.x), x1 = Math.max(w.p1.x, w.p2.x);
+        const z0 = Math.min(w.p1.z, w.p2.z), z1 = Math.max(w.p1.z, w.p2.z);
+        for (let i = Math.floor(x0 / C); i <= Math.floor(x1 / C); i++) {
+          for (let j = Math.floor(z0 / C); j <= Math.floor(z1 / C); j++) {
+            const k = i + ',' + j;
+            let a = map.get(k);
+            if (!a) map.set(k, a = []);
+            a.push(w);
+          }
+        }
+      }
+      this._wallGrid = { cell: C, map: map };
+    }
+    const g = this._wallGrid, C = g.cell;
+    const i0 = Math.floor((x - r) / C), i1 = Math.floor((x + r) / C);
+    const j0 = Math.floor((z - r) / C), j1 = Math.floor((z + r) / C);
+    if (i0 === i1 && j0 === j1) return g.map.get(i0 + ',' + j0) || EMPTY_WALLS;
+    const out = [];
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const a = g.map.get(i + ',' + j);
+        if (!a) continue;
+        for (const w of a) if (out.indexOf(w) === -1) out.push(w);
+      }
+    }
+    return out;
+  }
+
+  // feetY/height are optional: pass them and a wall only blocks if it
+  // actually spans the mover's body. Omit them and every solid wall blocks
+  // (the pre-existing behaviour, still used by callers with no height).
+  // fromX/fromZ are where the mover started this step; pass them and the
+  // result is guaranteed not to be on the far side of a wall.
+  resolveWallCollisions(x, z, radius, feetY, height, fromX, fromZ) {
+    const gated = feetY !== undefined;
+    const headY = gated ? feetY + (height !== undefined ? height : 1.5) : 0;
+    const blocks = (w) => {
+      if (!w.solid) return false;
+      if (!gated) return true;
+      if (w.topY !== undefined && w.topY <= feetY + 0.05) return false;
+      if (w.bottomY !== undefined && w.bottomY >= headY) return false;
+      return true;
+    };
     const getSegDist = (px, pz, ax, az, bx, bz) => {
       const vx = bx - ax, vz = bz - az;
       const wx = px - ax, wz = pz - az;
@@ -3193,7 +3437,7 @@ class CyberDoomEngine {
     };
 
     // Auto open doors/switches if player approaches them
-    for (const w of this.walls) {
+    for (const w of this.wallsNear(x, z, 1.4)) {
       if (!w.closed) continue;
       const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
       const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
@@ -3218,22 +3462,19 @@ class CyberDoomEngine {
     let resX = x;
     let resZ = z;
 
-    // ponytail: ledge risers (w.ledge, floor gap > STEP_UP_MAX) were tried as
-    // one-way collision (block climbing from the low side, open from the
-    // high side, gated on foot height). That broke real finishability: the
-    // offline reachability model (tests/reachability.js, used to place every
-    // exit) is deliberately height/direction-ignorant, so its routes cross
-    // ledges from whichever side is shortest and the QA browser walk then
-    // deadlocked on 3/4 sampled converted maps approaching from the "wrong"
-    // side. Ledges are therefore non-solid like ordinary steps -- climbable
-    // and droppable both ways, just rendered taller and eased more slowly
-    // (see the rise check in updatePhysics). Upgrade to true one-way ledges
-    // only alongside a direction-aware offline pathfinder + exit re-placement.
+    // Ledge risers (w.ledge) are not solid walls. Climbing is gated by floor
+    // height in updatePhysics instead, which is one-way for free: you can drop
+    // off a ledge but not walk up it. tests/reachability.js and
+    // patch_exit_switches.py run the same directed rule, so an exit is never
+    // placed somewhere the engine cannot actually walk to.
 
     // 3 iterations of pushback resolution
+    const nearby = this.wallsNear(x, z, radius * 3);
     for (let iter = 0; iter < 3; iter++) {
-      for (const w of this.walls) {
-        if (!w.solid) continue;
+      for (const w of nearby) {
+        // Below the feet (a kerb you are standing on top of) or entirely
+        // overhead (a lintel you walk under): no horizontal block.
+        if (!blocks(w)) continue;
         const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
         const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
         const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
@@ -3263,7 +3504,71 @@ class CyberDoomEngine {
       }
     }
 
+    // Pushing out of one wall can shove the mover across another in a tight
+    // corner -- three iterations of radial push-out cannot guarantee otherwise.
+    // If the resolved point ended up on the far side of a wall, refuse the
+    // whole step instead. Callers sub-step, so this stops at the wall.
+    if (fromX !== undefined) {
+      const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+      const span = Math.hypot(resX - fromX, resZ - fromZ) / 2 + radius;
+      for (const w of this.wallsNear((resX + fromX) / 2, (resZ + fromZ) / 2, span)) {
+        if (!blocks(w)) continue;
+        const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
+        const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
+        const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
+        const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
+        const d1 = side(p1x, p1z, p2x, p2z, fromX, fromZ);
+        const d2 = side(p1x, p1z, p2x, p2z, resX, resZ);
+        if ((d1 > 0) === (d2 > 0)) continue;
+        const d3 = side(fromX, fromZ, resX, resZ, p1x, p1z);
+        const d4 = side(fromX, fromZ, resX, resZ, p2x, p2z);
+        if ((d3 > 0) === (d4 > 0)) continue;
+        return { x: fromX, z: fromZ };
+      }
+    }
+
     return { x: resX, z: resZ };
+  }
+
+  // Sectors bucketed on an 8-unit grid, same idea as wallsNear. The megamaps
+  // carry 2000+ sectors and getFloorAt runs for the player and every moving
+  // enemy, several times a frame.
+  sectorsNear(x, z) {
+    if (!this._secGrid) {
+      const C = 8, map = new Map();
+      for (const sec of this.levelData.sectors) {
+        let bb = null;
+        if (sec.polys && sec.polys.length) {
+          bb = [Infinity, Infinity, -Infinity, -Infinity];
+          for (const loop of sec.polys) for (const p of loop) {
+            if (p[0] < bb[0]) bb[0] = p[0];
+            if (p[1] < bb[1]) bb[1] = p[1];
+            if (p[0] > bb[2]) bb[2] = p[0];
+            if (p[1] > bb[3]) bb[3] = p[1];
+          }
+        } else {
+          const rects = sec.resolvedFloors || sec.floors ||
+            (sec.width !== undefined ? [{ x: sec.x, z: sec.z, width: sec.width, depth: sec.depth }] : []);
+          for (const r of rects) {
+            const b = [r.x - r.width / 2, r.z - r.depth / 2, r.x + r.width / 2, r.z + r.depth / 2];
+            bb = bb ? [Math.min(bb[0], b[0]), Math.min(bb[1], b[1]), Math.max(bb[2], b[2]), Math.max(bb[3], b[3])] : b;
+          }
+        }
+        if (!bb) continue;
+        sec._bb = bb;
+        for (let i = Math.floor(bb[0] / C); i <= Math.floor(bb[2] / C); i++) {
+          for (let j = Math.floor(bb[1] / C); j <= Math.floor(bb[3] / C); j++) {
+            const k = i + ',' + j;
+            let a = map.get(k);
+            if (!a) map.set(k, a = []);
+            a.push(sec);
+          }
+        }
+      }
+      this._secGrid = { cell: C, map: map };
+    }
+    const g = this._secGrid;
+    return g.map.get(Math.floor(x / g.cell) + ',' + Math.floor(z / g.cell)) || EMPTY_SECTORS;
   }
 
   getFloorAt(x, z) {
@@ -3271,28 +3576,48 @@ class CyberDoomEngine {
       return { inside: false, floorY: 0.0 };
     }
 
-    // Floor rectangles are the collision authority.  Do not use the nearest
-    // rectangle as a floor: that made a visual gap traversable and let the
-    // camera drift beyond the rendered level.
-    for (let i = 0; i < this.levelData.sectors.length; i++) {
-      const sec = this.levelData.sectors[i];
+    let bestRect = null;   // rectangle levels only; see the note below
+    // Sector polygons are the collision authority.  Do not use the nearest
+    // one as a floor: that made a visual gap traversable and let the camera
+    // drift beyond the rendered level.  Doom sectors never overlap in plan,
+    // so the first polygon hit is THE sector the point is in.
+    const candidates = this.sectorsNear(x, z);
+    for (let i = 0; i < candidates.length; i++) {
+      const sec = candidates[i];
+      if (sec.polys) {
+        if (!sec.polys.length) continue;
+        const bb = sec._bb;
+        if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3]) continue;
+        let inside = false;
+        for (const loop of sec.polys) {
+          for (let a = 0, b = loop.length - 1; a < loop.length; b = a++) {
+            const xi = loop[a][0], zi = loop[a][1], xj = loop[b][0], zj = loop[b][1];
+            if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+          }
+        }
+        if (inside) return { inside: true, floorY: sec.floorY };
+        continue;
+      }
       const rects = sec.resolvedFloors || sec.floors;
+      let hit = false;
       if (rects) {
         for (const r of rects) {
           const halfW = r.width / 2;
           const halfD = r.depth / 2;
-          if (x >= r.x - halfW && x <= r.x + halfW && z >= r.z - halfD && z <= r.z + halfD) {
-            return { inside: true, floorY: sec.floorY };
-          }
+          if (x >= r.x - halfW && x <= r.x + halfW && z >= r.z - halfD && z <= r.z + halfD) { hit = true; break; }
         }
       } else if (sec.x !== undefined && sec.width !== undefined) {
         const halfW = sec.width / 2;
         const halfD = sec.depth / 2;
-        if (x >= sec.x - halfW && x <= sec.x + halfW && z >= sec.z - halfD && z <= sec.z + halfD) {
-          return { inside: true, floorY: sec.floorY };
-        }
+        hit = x >= sec.x - halfW && x <= sec.x + halfW && z >= sec.z - halfD && z <= sec.z + halfD;
       }
+      // Rectangles overlap (MAP01 does so deliberately). Take the HIGHEST
+      // floor covering the point, which is the one actually drawn on top and
+      // the one the player stands on -- array order picked an invisible floor
+      // underneath and dropped the camera into it.
+      if (hit && (bestRect === null || sec.floorY > bestRect)) bestRect = sec.floorY;
     }
+    if (bestRect !== null) return { inside: true, floorY: bestRect };
     return { inside: false, floorY: 0.0 };
   }
 
@@ -3312,6 +3637,7 @@ class CyberDoomEngine {
         this.barrels = [];
         this.projectiles = [];
         this.particles = [];
+        if (window.CyberGore) window.CyberGore.clear();
         this.loadLevel(mapData);
         // buildWall doesn't carry ledge-riser data onto the runtime wall
         // objects it builds; attach it here (mapData.walls and this.walls
@@ -3414,6 +3740,69 @@ class CyberDoomEngine {
   /* ==========================================================================
      ENEMY AI & PROJECTILES
      ========================================================================== */
+  // Enemies obey the same walls and the same floor as the player: push out of
+  // solid geometry, refuse a step off the floor or up a ledge, then sit on the
+  // floor (walkers) or hover over it (flyers).
+  moveEnemy(enemy, dx, dz) {
+    const ePos = enemy.group.position;
+    const fly = !!(enemy.stats && enemy.stats.fly);
+    const feet = fly ? ePos.y : (enemy.floorY !== undefined ? enemy.floorY : ePos.y);
+    const r = enemy.radius || 0.5;
+    const cand = this.resolveWallCollisions(ePos.x + dx, ePos.z + dz, r, feet, 1.6, ePos.x, ePos.z);
+    const f = this.getFloorAt(cand.x, cand.z);
+    if (!f.inside) return;                                   // would leave the level
+    if (!fly && f.floorY - feet > STEP_UP_MAX + STEP_EPS) return;   // too tall to climb
+    ePos.x = cand.x;
+    ePos.z = cand.z;
+    enemy.floorY = f.floorY;
+  }
+
+  // Keep enemies out of each other. Bucketed on a 1.5-unit hash rather than
+  // compared pairwise: the Deus Vult maps carry 4000+ enemies and the all-pairs
+  // version cost 1.7 seconds a frame there.
+  separateEnemies() {
+    const CELL = 1.5;
+    const buckets = new Map();
+    for (const e of this.enemies) {
+      // Only movers need separating; dormant enemies stay where the map put
+      // them, and the megamaps keep thousands of them packed in closets.
+      if (e.state !== 'CHASE') continue;
+      const k = Math.floor(e.group.position.x / CELL) + ',' + Math.floor(e.group.position.z / CELL);
+      let a = buckets.get(k);
+      if (!a) buckets.set(k, a = []);
+      a.push(e);
+    }
+    let n = 0;
+    for (const [key, list] of buckets) {
+      const c = key.split(',');
+      const ci = +c[0], cj = +c[1];
+      // Own bucket plus half the ring, so each pair is visited once.
+      const others = [list];
+      for (const [di, dj] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+        const o = buckets.get((ci + di) + ',' + (cj + dj));
+        if (o) others.push(o);
+      }
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        for (let g = 0; g < others.length; g++) {
+          const arr = others[g];
+          for (let j = (g === 0 ? i + 1 : 0); j < arr.length; j++) {
+            const b = arr[j];
+            const want = (a.radius || 0.5) + (b.radius || 0.5);
+            let dx = b.group.position.x - a.group.position.x;
+            let dz = b.group.position.z - a.group.position.z;
+            let d = Math.hypot(dx, dz);
+            if (d >= want) continue;
+            if (d < 0.0001) { dx = Math.cos(n * 2.4); dz = Math.sin(n * 2.4); d = 1; n++; }
+            const push = (want - d) / 2;
+            this.moveEnemy(a, (-dx / d) * push, (-dz / d) * push);
+            this.moveEnemy(b, (dx / d) * push, (dz / d) * push);
+          }
+        }
+      }
+    }
+  }
+
   updateEnemies(delta) {
     const pPos = this.camera.position;
 
@@ -3438,7 +3827,7 @@ class CyberDoomEngine {
         // Move toward player if not too close
         if (dist > (enemy.type === 'soldier' ? 7.0 : 4.0)) {
           const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
-          ePos.addScaledVector(forward, enemy.speed * delta);
+          this.moveEnemy(enemy, forward.x * enemy.speed * delta, forward.z * enemy.speed * delta);
           // walking animation (borrowed walk cycle style from weapon-fighting)
           {
             const w = enemy.walkT + delta * (enemy.type==='soldier'? 9 : 7);
@@ -3466,7 +3855,22 @@ class CyberDoomEngine {
           }
         }
       }
+
+      // Vertical placement. Walkers sit on their sector floor; flyers hover
+      // over it with a slow bob and ignore ledges entirely.
+      if (enemy.floorY === undefined) {
+        const f0 = this.getFloorAt(ePos.x, ePos.z);
+        enemy.floorY = f0.inside ? f0.floorY : ePos.y;
+      }
+      if (enemy.stats && enemy.stats.fly) {
+        enemy.bobT = (enemy.bobT || 0) + delta * 1.6;
+        ePos.y = enemy.floorY + ENEMY_HOVER + Math.sin(enemy.bobT) * 0.18;
+      } else {
+        ePos.y = enemy.floorY;
+      }
     });
+
+    this.separateEnemies();
   }
 
   enemyAttack(enemy) {
@@ -3485,7 +3889,8 @@ class CyberDoomEngine {
         : 'fireball';
       this.sound.playMonsterFireball();
       const from = enemy.group.position.clone();
-      from.y += 1.0;
+      // Flyers already sit at hover height, so the shot leaves from there.
+      from.y += (enemy.stats && enemy.stats.fly) ? 0.2 : 1.0;
       const dir = new THREE.Vector3().subVectors(this.camera.position, from).normalize();
       this.spawnProjectile({ from, dir, kind, owner: 'enemy' });
     }
@@ -3560,7 +3965,8 @@ class CyberDoomEngine {
     enemy.hp -= amount;
     this.showHitmarker();
     this.sound.playMonsterHurt();
-    this.spawnBlood(hitPoint || enemy.group.position);
+    const gorePos = hitPoint || enemy.group.position;
+    this.spawnBlood(gorePos, { enemy, amount, dir: gorePos.clone().sub(this.camera.position).normalize() });
     // Whiten the enemy's emissive accents for a beat so the hit reads on the body itself.
     if (window.CyberEnemies && enemy.group) window.CyberEnemies.flash(enemy.group);
     if (enemy.hp <= 0) this.killEnemy(enemy);
@@ -3767,6 +4173,7 @@ class CyberDoomEngine {
         this.particles.splice(i, 1);
       }
     }
+    if (window.CyberGore) window.CyberGore.update(delta, (x, z) => this.getFloorAt(x, z));
   }
 
   /* ==========================================================================
@@ -3854,11 +4261,124 @@ class CyberDoomEngine {
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'flex';
     this.setOverlayMode('end');
-    document.getElementById('overlay-title').innerText = "LEVEL 01 CLEARED";
-    document.getElementById('overlay-title').style.color = "#00ffcc";
-    document.getElementById('overlay-subtitle').innerText = "PORTAL SECURED. EXTRACTION READY.";
-    document.getElementById('start-btn').innerText = "REPLAY MISSION";
-    document.getElementById('start-btn').onclick = () => window.location.reload();
+
+    const title = document.getElementById('overlay-title');
+    const subtitle = document.getElementById('overlay-subtitle');
+    const startBtn = document.getElementById('start-btn');
+    const secondary = document.getElementById('end-secondary-btns');
+    title.style.color = "#00ffcc";
+
+    const camp = this.campaign;
+    if (!camp) {
+      // No pack context (manifests never loaded) -- fall back to the old
+      // single-level behaviour rather than guessing at a "next" level.
+      title.innerText = "LEVEL CLEARED";
+      subtitle.innerText = "PORTAL SECURED. EXTRACTION READY.";
+      startBtn.innerText = "REPLAY MISSION";
+      startBtn.onclick = () => window.location.reload();
+      if (secondary) secondary.style.display = 'none';
+      return;
+    }
+
+    const packs = this.allPacks || [];
+    const packIdx = packs.findIndex(p => p.manifest === camp.packManifestUrl);
+    const levelName = (this.levelData && this.levelData.name) || 'SECTOR';
+
+    if (camp.index + 1 < camp.levels.length) {
+      // More levels left in this pack.
+      title.innerText = `LEVEL ${camp.index + 1} CLEARED — ${levelName}`;
+      subtitle.innerText = "PORTAL SECURED. EXTRACTION READY.";
+      startBtn.innerText = "NEXT LEVEL";
+      startBtn.onclick = () => this.startCampaignLevel(camp.index + 1);
+      if (secondary) secondary.style.display = 'flex';
+    } else if (packIdx >= 0 && packIdx + 1 < packs.length) {
+      // Pack finished, another pack follows.
+      const nextPack = packs[packIdx + 1];
+      title.innerText = "PACK COMPLETE";
+      subtitle.innerText = `${camp.packName || 'PACK'} CLEARED. NEXT: ${nextPack.name}`;
+      startBtn.innerText = "NEXT PACK";
+      startBtn.onclick = () => this.startNextPack(nextPack);
+      if (secondary) secondary.style.display = 'flex';
+    } else {
+      // Last pack, last level.
+      title.innerText = "CAMPAIGN COMPLETE";
+      subtitle.innerText = "EVERY SECTOR PURGED. STAND DOWN.";
+      startBtn.innerText = "MENU";
+      startBtn.onclick = () => window.location.reload();
+      if (secondary) secondary.style.display = 'none';
+    }
+  }
+
+  /* ==========================================================================
+     CAMPAIGN PROGRESSION (round 2, package I)
+     loadLevel()/loadLevelFromFile() never touch player.weapons/player.ammo/
+     player.health/player.armor, so continuing into the next map already
+     carries the arsenal forward for free -- the only rule added on top is
+     Doom's health floor (health carries over, but never below 50).
+     ========================================================================== */
+  startCampaignLevel(index) {
+    const camp = this.campaign;
+    const item = camp && camp.levels[index];
+    if (!item) { window.location.reload(); return; }
+    camp.index = index;
+    this.player.health = Math.max(50, this.player.health);
+    this.applyCampaignToSelects();
+    this.loadLevelFromFile(item.file, false);
+    this.updateHUD();
+    this.beginMission();
+  }
+
+  startNextPack(nextPack) {
+    fetch(nextPack.manifest)
+      .then(res => res.json())
+      .then(manifest => {
+        this.campaign = { packManifestUrl: nextPack.manifest, packName: nextPack.name, levels: manifest, index: -1 };
+        this.startCampaignLevel(0);
+      })
+      .catch(err => console.warn("Next pack fetch failed:", err));
+  }
+
+  replayCurrentLevel() {
+    if (!this.campaign) { window.location.reload(); return; }
+    this.startCampaignLevel(this.campaign.index);
+  }
+
+  // Keeps the title-screen PACK/LEVEL selects in sync so a later pause/menu
+  // visit shows whatever the player is actually playing.
+  applyCampaignToSelects() {
+    const camp = this.campaign;
+    const packSelect = document.getElementById('pack-select');
+    const levelSelect = document.getElementById('level-select');
+    if (!camp || !packSelect || !levelSelect) return;
+    if (packSelect.value !== camp.packManifestUrl) {
+      packSelect.value = camp.packManifestUrl;
+      levelSelect.innerHTML = '';
+      camp.levels.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.file;
+        opt.textContent = item.name;
+        levelSelect.appendChild(opt);
+      });
+    }
+    const cur = camp.levels[camp.index];
+    if (cur) levelSelect.value = cur.file;
+  }
+
+  // Same start-up performed by the title screen's start-btn click (resume
+  // audio, attach/enter the level's music, take pointer lock) so NEXT
+  // LEVEL/NEXT PACK drop the player straight into play, not back at the menu.
+  beginMission() {
+    this.isVictory = false;
+    this.isGameOver = false;
+    // triggerVictory() may have left #end-secondary-btns as display:flex;
+    // clear it here so a later triggerGameOver() (outside this region, never
+    // touches this element) doesn't inherit stale REPLAY/MENU buttons.
+    const secondary = document.getElementById('end-secondary-btns');
+    if (secondary) secondary.style.display = 'none';
+    this.checkAllWeaponsOption();
+    this.sound.resume();
+    if (window.cyberMidi) window.cyberMidi.enterLevel();
+    this.canvas.requestPointerLock();
   }
 
   /* ==========================================================================

@@ -73,3 +73,33 @@ tagged in the JSON for a future direction-aware pass. Cosmetic: Hell Knight/Baro
 taller than the old boxes. Process note: the shared `bcl` daemon runs on a persistent Chrome
 profile with extensions; agents were told to stay headless on their own ports, and the lead
 QA used an isolated browser.
+
+---
+
+# Round 2 (same day): collision root cause, gore, level progression
+
+**Joel's report after playing:** no blood on hits (wants copious blood *and oil* — cybernetic
+enemies); still falling through floors, walking through walls, enemies coming through walls,
+some enemies should be walking/flying; clearing a level should go to the next level in the
+pack, not the menu.
+
+**Root cause of the clipping family:** `convert_all_wads.py` stores every Doom sector as ONE
+axis-aligned bounding rectangle (`x, z, width, depth`). Doom sectors are arbitrary polygons
+(often concave, with holes), so neighbouring rectangles overlap heavily; `getFloorAt` returns
+the first rectangle containing the point, so a lower sector's box can win inside a higher
+room (fall-through), floor meshes are drawn as rectangles that do not match the walls
+(visual clipping, 32% "orphan" wall endpoints), and the player can stand where there is no
+real floor. Enemies have no collision code at all and none fly.
+
+| # | package | model | owns |
+|---|---|---|---|
+| G | Collision: converter emits sector polygon loops; engine builds floor/ceiling meshes from triangulated polygons (holes included), `getFloorAt` = point-in-polygon; walls from every blocking linedef; enemy wall + floor collision; flying enemies hover; tests | opus | `convert_all_wads.py`, `patch_exit_switches.py`, `levelPacks/**`, `tests/**`, `index.html` sector/wall build (~1760–1900), physics/collision (~3100–3300), `updateEnemies` movement (~3417–3470), `js/cyber-enemies.js` stats (`fly`) |
+| H | Gore: blood + oil sprays scaled by damage, death bursts, persistent floor/wall decals, sparks | sonnet | `js/cyber-gore.js` (new), `spawnBlood` (~3000–3015), particle loop (~3760–3775), gore calls in `damageEnemy`/`killEnemy` |
+| I | Progression: exit → LEVEL CLEARED → NEXT LEVEL loads the next map in the current pack (MAP01 → pack 1 level 1; end of pack → next pack / menu), keep weapons and ammo between levels, restore health partially | sonnet | `triggerVictory` (~3850–3865), pack/manifest loading (~2380–2440), `loadLevelFromFile`, overlay button wiring |
+
+## Round 2 status: Completed 2026-09-04
+
+- **Collision (G).** Four defects, not one: bounding-rectangle sectors; every wall mesh forced ≥ 8 units tall (knee-high risers drew as non-solid slabs = "walking through walls"); climbing ungated (cliffs teleported you up); and `2.0 - 0.8 > 1.2` float rejection of Doom's 24-unit stair. Now: real sector polygons from the WAD (54,038/54,038), `ShapeGeometry` floors/ceilings with holes, point-in-polygon `getFloorAt` with spatial buckets, walls at true height, climb gated at one step measured from the feet (drops free), enemy wall/floor collision + separation, Cacodemon/Revenant fly. Orphan wall endpoints 32.6% → 0.1%; exits 198/198; `tests/qa-collision.js` 21/21. Median reachable floor is now 60.8% (was a false 78.5% with overlapping rectangles): the remainder needs Doom lifts, remote doors and teleporters, which the engine does not implement — a content/engine follow-up, not collision.
+- **Gore (H).** `js/cyber-gore.js`: instanced blood + oil droplets, streaks, hit splash, floor decals with satellites, growing death pool, chunks, mist; enemy body paint; ~0.25 ms/frame worst case.
+- **Progression (I).** Campaign tracking, LEVEL CLEARED → NEXT LEVEL / PACK COMPLETE → NEXT PACK / CAMPAIGN COMPLETE, arsenal carried over, health floored at 50, Enter/Space continues.
+- Follow-ups: lifts/remote doors/teleporters for full map coverage; wall splats; `tests/qa-automap-exit.js` needs puppeteer-core (its walk is reproduced in qa-collision).

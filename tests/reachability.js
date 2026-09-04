@@ -16,6 +16,10 @@
 
 const P_RADIUS = 0.55;
 const CELL = 0.25;
+// Doom's free auto-climb is 24 map units; the WAD->engine scale is 0.05.
+// Same constant as STEP_UP_MAX in index.html. Drops are unlimited, so the
+// walk graph is DIRECTED -- a ledge you fall off is not a ledge you can climb.
+const STEP_UP_MAX = 1.2;   // +1e-3 slack at the comparison; see index.html
 // Reach of interact(): raycast hit under 6.5 units. Require the player to get
 // meaningfully closer than that so the switch is usable, not just theoretically
 // in line of sight from across a chasm.
@@ -31,6 +35,36 @@ function floorRects(level) {
     }
   }
   return rects;
+}
+
+// Converted levels carry real sector boundary loops; only the hand-built
+// MAP01 still uses rectangles. Both are reduced to the same free-cell grid.
+function sectorPolys(level) {
+  const out = [];
+  for (const sec of level.sectors || []) {
+    if (sec.polys && sec.polys.length) out.push(sec.polys);
+  }
+  return out;
+}
+
+function loopsBounds(polys) {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const loop of polys) for (const [x, z] of loop) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  return [minX, minZ, maxX, maxZ];
+}
+
+function pointInPolys(x, z, polys) {
+  let inside = false;
+  for (const loop of polys) {
+    for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+      const [xi, zi] = loop[i], [xj, zj] = loop[j];
+      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    }
+  }
+  return inside;
 }
 
 function wallPoints(w) {
@@ -57,8 +91,9 @@ function segDist(px, pz, ax, az, bx, bz) {
 
 class Grid {
   constructor(level) {
-    const rects = floorRects(level);
-    if (!rects.length) throw new Error('level has no floor rectangles');
+    const polySectors = sectorPolys(level);
+    const rects = polySectors.length ? [] : floorRects(level);
+    if (!rects.length && !polySectors.length) throw new Error('level has no floor geometry');
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const r of rects) {
@@ -67,18 +102,52 @@ class Grid {
       minZ = Math.min(minZ, r.z - r.depth / 2);
       maxZ = Math.max(maxZ, r.z + r.depth / 2);
     }
+    for (const polys of polySectors) {
+      const [a, b, c, d] = loopsBounds(polys);
+      minX = Math.min(minX, a); minZ = Math.min(minZ, b);
+      maxX = Math.max(maxX, c); maxZ = Math.max(maxZ, d);
+    }
     this.minX = minX - 1; this.minZ = minZ - 1;
     this.w = Math.ceil((maxX - minX + 2) / CELL);
     this.h = Math.ceil((maxZ - minZ + 2) / CELL);
     this.free = new Uint8Array(this.w * this.h);
 
-    // Pass 1: mark every cell that sits on a floor rectangle.
+    // Pass 1: mark every cell that sits on real floor geometry.
     for (const r of rects) {
       const x0 = this.cx(r.x - r.width / 2), x1 = this.cx(r.x + r.width / 2);
       const z0 = this.cz(r.z - r.depth / 2), z1 = this.cz(r.z + r.depth / 2);
       for (let j = Math.max(0, z0); j <= Math.min(this.h - 1, z1); j++) {
         for (let i = Math.max(0, x0); i <= Math.min(this.w - 1, x1); i++) {
           this.free[j * this.w + i] = 1;
+        }
+      }
+    }
+    // Scanline fill per sector, recording each cell's floor height: the walk
+    // graph is height-aware, so a cell without a height cannot be stepped on.
+    // Per-cell point-in-polygon would be O(cells x edges) and take minutes on
+    // the big maps.
+    this.floorY = new Float32Array(this.w * this.h);
+    for (const sec of level.sectors || []) {
+      if (sec.polys && sec.polys.length) this.fillLoops(sec.polys, sec.floorY);
+    }
+    // Rectangle levels (MAP01) overlap their sectors on purpose. Take the
+    // HIGHEST floor covering a cell, matching getFloorAt in index.html --
+    // array order would pick a floor that is not the one drawn on top.
+    const written = new Uint8Array(this.w * this.h);
+    for (const sec of level.sectors || []) {
+      if (sec.polys && sec.polys.length) continue;
+      const secRects = (sec.floors && sec.floors.length) ? sec.floors
+        : (sec.width !== undefined ? [{ x: sec.x, z: sec.z, width: sec.width, depth: sec.depth }] : []);
+      for (const r of secRects) {
+        const x0 = this.cx(r.x - r.width / 2), x1 = this.cx(r.x + r.width / 2);
+        const z0 = this.cz(r.z - r.depth / 2), z1 = this.cz(r.z + r.depth / 2);
+        for (let j = Math.max(0, z0); j <= Math.min(this.h - 1, z1); j++) {
+          for (let i = Math.max(0, x0); i <= Math.min(this.w - 1, x1); i++) {
+            const k = j * this.w + i;
+            const y = sec.floorY || 0;
+            if (!written[k] || y > this.floorY[k]) this.floorY[k] = y;
+            written[k] = 1;
+          }
         }
       }
     }
@@ -97,11 +166,53 @@ class Grid {
       }
     }
   }
+  // Even-odd scanline fill of one sector's loops into this.free/this.floorY.
+  fillLoops(loops, floorY) {
+    const buckets = new Array(this.h);
+    const edges = [];
+    for (const loop of loops) {
+      for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+        const z1 = loop[j][1], z2 = loop[i][1];
+        if (z1 === z2) continue;                 // horizontal: never crossed
+        const e = edges.length;
+        edges.push([loop[j][0], z1, loop[i][0], z2]);
+        let r0 = Math.max(0, Math.ceil((Math.min(z1, z2) - this.minZ) / CELL));
+        let r1 = Math.min(this.h - 1, Math.floor((Math.max(z1, z2) - this.minZ) / CELL));
+        for (let r = r0; r <= r1; r++) (buckets[r] || (buckets[r] = [])).push(e);
+      }
+    }
+    const xs = [];
+    for (let j = 0; j < this.h; j++) {
+      const b = buckets[j];
+      if (!b) continue;
+      const z = this.wz(j);
+      xs.length = 0;
+      for (const e of b) {
+        const [ax, az, bx, bz] = edges[e];
+        if ((az > z) === (bz > z)) continue;
+        xs.push(ax + ((z - az) / (bz - az)) * (bx - ax));
+      }
+      if (xs.length < 2) continue;
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const i0 = Math.max(0, Math.ceil((xs[k] - this.minX) / CELL));
+        const i1 = Math.min(this.w - 1, Math.floor((xs[k + 1] - this.minX) / CELL));
+        for (let i = i0; i <= i1; i++) {
+          this.free[j * this.w + i] = 1;
+          if (floorY !== undefined) this.floorY[j * this.w + i] = floorY;
+        }
+      }
+    }
+  }
   cx(x) { return Math.round((x - this.minX) / CELL); }
   cz(z) { return Math.round((z - this.minZ) / CELL); }
   wx(i) { return this.minX + i * CELL; }
   wz(j) { return this.minZ + j * CELL; }
   isFree(i, j) { return i >= 0 && j >= 0 && i < this.w && j < this.h && this.free[j * this.w + i] === 1; }
+
+  // A step is legal if the destination is floor and is not more than one
+  // free auto-climb above where we stand. Falling any distance is legal.
+  canStep(fromK, toK) { return this.floorY[toK] - this.floorY[fromK] <= STEP_UP_MAX + 1e-3; }
 
   // Nearest free cell to a world point, searched outward. Spawns land on a
   // wall band often enough that snapping is necessary, and the engine does the
@@ -134,6 +245,7 @@ class Grid {
         if (!this.isFree(ni, nj)) continue;
         const nk = nj * this.w + ni;
         if (seen[nk]) continue;
+        if (!this.canStep(k, nk)) continue;
         seen[nk] = 1;
         stack.push(nk);
       }
@@ -217,6 +329,7 @@ function pathToExit(level) {
         if (!grid.isFree(ni, nj)) continue;
         const nk = nj * grid.w + ni;
         if (prev[nk] !== -1) continue;
+        if (!grid.canStep(k, nk)) continue;
         prev[nk] = k;
         next.push(nk);
       }
@@ -230,11 +343,20 @@ function pathToExit(level) {
   cells.push(s0);
   cells.reverse();
 
-  // Thin the cell chain down to waypoints roughly 2 units apart, plus the end.
+  // Thin the cell chain to waypoints roughly 2 units apart, but never skip a
+  // change of floor height: a staircase between two waypoints is invisible to
+  // anything that walks the straight line between them, and the climb rule
+  // then refuses the whole rise at once.
   const pts = [];
   const STRIDE = Math.max(1, Math.round(2.0 / CELL));
-  for (let n = 0; n < cells.length; n += STRIDE) {
-    const i = cells[n] % grid.w, j = (cells[n] - (cells[n] % grid.w)) / grid.w;
+  let lastY = null, sinceEmit = 0;
+  for (let n = 0; n < cells.length; n++) {
+    const k = cells[n];
+    const y = grid.floorY[k];
+    if (n !== 0 && y === lastY && ++sinceEmit < STRIDE) continue;
+    sinceEmit = 0;
+    lastY = y;
+    const i = k % grid.w, j = (k - (k % grid.w)) / grid.w;
     pts.push([+grid.wx(i).toFixed(2), +grid.wz(j).toFixed(2)]);
   }
   const last = cells[cells.length - 1];
@@ -245,9 +367,10 @@ function pathToExit(level) {
 
 /* Floor-coverage metrics: how much of the map's walkable floor is actually
    reachable from spawn, and how big any disconnected pockets are.
-   Step/ledge risers are already non-solid in the level data (see
-   convert_all_wads.py), so this reuses the same 2D flood fill as analyze() --
-   deliberately height-ignorant, same simplification the exit patcher uses. */
+   Risers are non-solid in the level data (see convert_all_wads.py); climbing
+   is gated by floor height instead, so the fill is directed and the "pocket"
+   counts are an upper bound (a pocket you can drop into but not climb out of
+   is still counted separately). */
 function floorMetrics(level) {
   const grid = new Grid(level);
   let totalCells = 0;
@@ -292,4 +415,4 @@ function floorMetrics(level) {
   };
 }
 
-module.exports = { analyze, pathToExit, exitWalls, Grid, floorRects, blockingWalls, wallPoints, segDist, floorMetrics, CELL, P_RADIUS, USE_RANGE };
+module.exports = { STEP_UP_MAX, sectorPolys, pointInPolys, loopsBounds, analyze, pathToExit, exitWalls, Grid, floorRects, blockingWalls, wallPoints, segDist, floorMetrics, CELL, P_RADIUS, USE_RANGE };

@@ -38,11 +38,16 @@ import struct
 import sys
 
 import numpy as np
+from collections import deque
 
 SCALE = 0.05
 CELL = 0.25
 P_RADIUS = 0.55
 USE_RANGE = 4.0          # how close the player must get to press a switch
+STEP_UP_MAX = 1.2        # Doom's 24-unit free auto-climb, at SCALE 0.05.
+                         # Same constant as index.html and reachability.js:
+                         # climbing more than this is blocked, dropping is not,
+                         # so the walk graph is directed.
 EXIT_SPECIALS = (11, 51, 52, 124)
 EXIT_SWITCH_ID = 'sw_exit_game'
 
@@ -108,6 +113,10 @@ def wall_pts(w):
 
 
 def floor_rects(level):
+    # Only the hand-built MAP01 still uses rectangles; converted levels carry
+    # real sector boundary loops (see convert_all_wads.py).
+    if any(sec.get('polys') for sec in level.get('sectors', [])):
+        return []
     rects = []
     for sec in level.get('sectors', []):
         if sec.get('floors'):
@@ -116,6 +125,30 @@ def floor_rects(level):
             rects.append({'x': sec['x'], 'z': sec['z'],
                           'width': sec['width'], 'depth': sec['depth']})
     return rects
+
+
+def all_loops(level):
+    return [loop for sec in level.get('sectors', []) for loop in (sec.get('polys') or [])]
+
+
+def loops_bounds(loops):
+    xs = [q[0] for l in loops for q in l]
+    zs = [q[1] for l in loops for q in l]
+    return min(xs), min(zs), max(xs), max(zs)
+
+
+def point_in_polys(x, z, polys):
+    inside = False
+    for loop in polys:
+        n = len(loop)
+        j = n - 1
+        for i in range(n):
+            xi, zi = loop[i]
+            xj, zj = loop[j]
+            if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+                inside = not inside
+            j = i
+    return inside
 
 
 def seg_dist_grid(px, pz, ax, az, bx, bz):
@@ -134,13 +167,18 @@ class Reach:
 
     def __init__(self, level):
         rects = floor_rects(level)
-        if not rects:
-            raise ValueError('level has no floor rectangles')
+        loops = all_loops(level)
+        if not rects and not loops:
+            raise ValueError('level has no floor geometry')
 
-        min_x = min(r['x'] - r['width'] / 2 for r in rects) - 1
-        max_x = max(r['x'] + r['width'] / 2 for r in rects) + 1
-        min_z = min(r['z'] - r['depth'] / 2 for r in rects) - 1
-        max_z = max(r['z'] + r['depth'] / 2 for r in rects) + 1
+        if rects:
+            min_x = min(r['x'] - r['width'] / 2 for r in rects) - 1
+            max_x = max(r['x'] + r['width'] / 2 for r in rects) + 1
+            min_z = min(r['z'] - r['depth'] / 2 for r in rects) - 1
+            max_z = max(r['z'] + r['depth'] / 2 for r in rects) + 1
+        else:
+            a, b, c, d = loops_bounds(loops)
+            min_x, min_z, max_x, max_z = a - 1, b - 1, c + 1, d + 1
 
         self.min_x, self.min_z = min_x, min_z
         self.w = max(1, int(math.ceil((max_x - min_x) / CELL)))
@@ -151,6 +189,22 @@ class Reach:
             i0, i1 = self.ci(r['x'] - r['width'] / 2), self.ci(r['x'] + r['width'] / 2)
             j0, j1 = self.cj(r['z'] - r['depth'] / 2), self.cj(r['z'] + r['depth'] / 2)
             free[max(0, j0):min(self.h, j1 + 1), max(0, i0):min(self.w, i1 + 1)] = True
+        self.fy = np.zeros((self.h, self.w), dtype=np.float32)
+        for sec in level.get('sectors', []):
+            if sec.get('polys'):
+                # Scanline per sector so every cell carries its floor height.
+                self.fill_loops(free, sec['polys'], sec['floorY'])
+        for sec in level.get('sectors', []):
+            if sec.get('polys'):
+                continue
+            srects = sec.get('floors') or ([{'x': sec['x'], 'z': sec['z'],
+                                             'width': sec['width'], 'depth': sec['depth']}]
+                                           if sec.get('width') is not None else [])
+            for r in srects:
+                i0, i1 = self.ci(r['x'] - r['width'] / 2), self.ci(r['x'] + r['width'] / 2)
+                j0, j1 = self.cj(r['z'] - r['depth'] / 2), self.cj(r['z'] + r['depth'] / 2)
+                self.fy[max(0, j0):min(self.h, j1 + 1),
+                        max(0, i0):min(self.w, i1 + 1)] = sec.get('floorY', 0.0)
 
         xs = self.min_x + np.arange(self.w) * CELL
         zs = self.min_z + np.arange(self.h) * CELL
@@ -170,6 +224,40 @@ class Reach:
             d = seg_dist_grid(self.px[j0:j1, i0:i1], self.pz[j0:j1, i0:i1], ax, az, bx, bz)
             sub &= ~(d < P_RADIUS)
         self.free = free
+
+    def fill_loops(self, free, loops, floor_y=None):
+        buckets = {}
+        edges = []
+        for loop in loops:
+            n = len(loop)
+            for i in range(n):
+                (x1, z1), (x2, z2) = loop[i - 1], loop[i]
+                if z1 == z2:
+                    continue
+                e = len(edges)
+                edges.append((x1, z1, x2, z2))
+                r0 = max(0, int(math.ceil((min(z1, z2) - self.min_z) / CELL)))
+                r1 = min(self.h - 1, int(math.floor((max(z1, z2) - self.min_z) / CELL)))
+                for r in range(r0, r1 + 1):
+                    buckets.setdefault(r, []).append(e)
+        for j, b in buckets.items():
+            z = self.min_z + j * CELL
+            xs = []
+            for e in b:
+                ax, az, bx, bz = edges[e]
+                if (az > z) == (bz > z):
+                    continue
+                xs.append(ax + (z - az) / (bz - az) * (bx - ax))
+            if len(xs) < 2:
+                continue
+            xs.sort()
+            for k in range(0, len(xs) - 1, 2):
+                i0 = max(0, int(math.ceil((xs[k] - self.min_x) / CELL)))
+                i1 = min(self.w - 1, int(math.floor((xs[k + 1] - self.min_x) / CELL)))
+                if i1 >= i0:
+                    free[j, i0:i1 + 1] = True
+                    if floor_y is not None:
+                        self.fy[j, i0:i1 + 1] = floor_y
 
     @staticmethod
     def blocking(level):
@@ -196,25 +284,49 @@ class Reach:
         return None
 
     def bfs(self, si, sj):
-        """4-connected BFS. CELL is fine enough that a 1.1-wide wall band
-        cannot be crossed, so the fill cannot leak through geometry."""
-        dist = np.full((self.h, self.w), -1, dtype=np.int32)
-        dist[sj, si] = 0
-        frontier = np.zeros((self.h, self.w), dtype=bool)
-        frontier[sj, si] = True
-        d = 0
-        while frontier.any():
-            d += 1
-            nxt = np.zeros_like(frontier)
-            nxt[1:, :] |= frontier[:-1, :]
-            nxt[:-1, :] |= frontier[1:, :]
-            nxt[:, 1:] |= frontier[:, :-1]
-            nxt[:, :-1] |= frontier[:, 1:]
-            nxt &= self.free & (dist == -1)
-            dist[nxt] = d
-            frontier = nxt
-        self.dist = dist
-        return dist
+        """4-connected BFS, directed by the climb rule: a step may drop any
+        distance but may only rise by STEP_UP_MAX. CELL is fine enough that a
+        1.1-wide wall band cannot be crossed, so it cannot leak through
+        geometry.
+
+        Queue-based rather than whole-array numpy passes: the array form costs
+        one pass per BFS ring, which on the Deus Vult megamaps is thousands of
+        passes over millions of cells."""
+        w, h = self.w, self.h
+        free = self.free.reshape(-1)
+        fy = self.fy.reshape(-1)
+        dist = np.full(h * w, -1, dtype=np.int32)
+        start = sj * w + si
+        dist[start] = 0
+        queue = deque([start])
+        dl = dist.tolist()          # python lists: ~5x faster than numpy item access
+        fl = fy.tolist()
+        fr = free.tolist()
+        while queue:
+            k = queue.popleft()
+            d = dl[k] + 1
+            here = fl[k]
+            i = k % w
+            if i + 1 < w:
+                n = k + 1
+                if fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                    dl[n] = d
+                    queue.append(n)
+            if i > 0:
+                n = k - 1
+                if fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                    dl[n] = d
+                    queue.append(n)
+            n = k + w
+            if n < h * w and fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                dl[n] = d
+                queue.append(n)
+            n = k - w
+            if n >= 0 and fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                dl[n] = d
+                queue.append(n)
+        self.dist = np.array(dl, dtype=np.int32).reshape(h, w)
+        return self.dist
 
     def wall_access(self, ax, az, bx, bz):
         """(best walking distance, min gap) for reachable cells near a wall."""
@@ -240,25 +352,22 @@ class Reach:
 # Exit selection
 # --------------------------------------------------------------------------
 
-def floor_at(level, x, z):
-    """Mirrors the engine's getFloorAt: first sector (in array order) whose
-    bounding-box rect contains (x, z). Sector rects are Doom-polygon
-    approximations and can overlap, so two nearby points can legitimately
-    resolve to different, unrelated sectors -- see standoff_floor_ok below."""
-    for sec in level.get('sectors', []):
-        rects = sec.get('floors') or ([{'x': sec['x'], 'z': sec['z'],
-                                         'width': sec['width'], 'depth': sec['depth']}]
-                                       if sec.get('width') is not None else [])
-        for r in rects:
-            if (abs(x - r['x']) <= r['width'] / 2 and abs(z - r['z']) <= r['depth'] / 2):
-                return sec['floorY']
-    return None
+def floor_at(reach, x, z):
+    """Mirrors the engine's getFloorAt, read off the rasterised grid the Reach
+    object already built (point-in-polygon per query was this script's entire
+    runtime). None where there is no floor."""
+    i, j = reach.ci(x), reach.cj(z)
+    if not (0 <= i < reach.w and 0 <= j < reach.h):
+        return None
+    if not reach.free[j, i]:
+        return None
+    return float(reach.fy[j, i])
 
 
 FLOOR_TOLERANCE = 2.0  # engine units (~40 Doom map units)
 
 
-def standoff_floor_ok(level, w):
+def standoff_floor_ok(reach, w):
     """A candidate exit wall is only usable if the floor the player will
     actually be standing on in front of it matches the sector height that
     wall was built from. Bounding-box sector overlap can otherwise place the
@@ -277,7 +386,7 @@ def standoff_floor_ok(level, w):
     for side in (1, -1):
         for back in (1.6, 2.4, 3.2):
             px, pz = mx + nx * side * back, mz + nz * side * back
-            fy = floor_at(level, px, pz)
+            fy = floor_at(reach, px, pz)
             if fy is not None and abs(fy - expected) <= FLOOR_TOLERANCE:
                 return True
     return False
@@ -315,7 +424,7 @@ def choose_exit(level, wad_exit_lines):
         d, _gap = reach.wall_access(ax, az, bx, bz)
         if d is None:
             continue
-        (native if standoff_floor_ok(level, w) else native_unsafe).append(w)
+        (native if standoff_floor_ok(reach, w) else native_unsafe).append(w)
     if native:
         return native, 'native-exit-linedef'
 
@@ -333,7 +442,7 @@ def choose_exit(level, wad_exit_lines):
             ax, az, bx, bz = wall_pts(w)
             if math.hypot(bx - ax, bz - az) < 1.0:
                 continue                      # too short to reliably raycast onto
-            if require_safe and not standoff_floor_ok(level, w):
+            if require_safe and not standoff_floor_ok(reach, w):
                 continue
             d, _gap = reach.wall_access(ax, az, bx, bz)
             if d is None:
@@ -398,7 +507,7 @@ def main():
             counts[strategy] = counts.get(strategy, 0) + 1
             if not dry:
                 with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(level, f, indent=2)
+                    json.dump(level, f, separators=(',', ':'))
             if not quiet:
                 print('  [%s] %7s  %s  (%d wall(s))' % (pack_id, entry['id'], strategy, k))
         summary[pack_id] = counts

@@ -1,11 +1,11 @@
 /* For every level, checks that wall geometry lines up with floor geometry:
-   every wall endpoint should sit on the edge of some sector's floor
-   rectangle (an "orphan" wall floats in space, unrelated to any floor), and
-   every sector rectangle should have a sane, non-degenerate size (a "closed"
-   polygon in this bounding-box model). Reports gaps; does not hard-fail on
-   them, since sector shapes here are bounding-box approximations of
-   arbitrary Doom polygons; a wall on a concave sector's real edge can sit
-   inside that sector's bounding box rather than exactly on its border.
+   every wall endpoint should sit on the boundary of some sector's floor (an
+   "orphan" wall floats in space, unrelated to any floor).
+
+   Converted levels carry real sector boundary loops, so an endpoint must
+   coincide with a loop vertex -- both come from the same WAD vertices, so
+   anything else means the boundary walk lost an edge. The hand-built MAP01
+   still uses rectangles and is measured against rectangle borders.
    Run: node tests/check-clipping.js [--json] */
 const fs = require('fs');
 const path = require('path');
@@ -36,7 +36,54 @@ function sectorRects(level) {
   return rects;
 }
 
+// Vertices of every sector loop, bucketed on a 1-unit grid so an endpoint
+// lookup is a handful of comparisons instead of a scan.
+function polyVertexIndex(level) {
+  const buckets = new Map();
+  let n = 0;
+  for (const s of level.sectors || []) {
+    for (const loop of s.polys || []) {
+      for (const [x, z] of loop) {
+        const k = Math.floor(x) + ':' + Math.floor(z);
+        let b = buckets.get(k);
+        if (!b) buckets.set(k, (b = []));
+        b.push([x, z]);
+        n++;
+      }
+    }
+  }
+  return n ? buckets : null;
+}
+
+function nearVertex(buckets, px, pz) {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      const b = buckets.get((Math.floor(px) + dx) + ':' + (Math.floor(pz) + dz));
+      if (!b) continue;
+      for (const [x, z] of b) if (Math.abs(x - px) <= EPS && Math.abs(z - pz) <= EPS) return true;
+    }
+  }
+  return false;
+}
+
 function checkLevel(level) {
+  const verts = polyVertexIndex(level);
+  if (verts) {
+    let orphanWalls = 0;
+    const orphanSample = [];
+    for (const w of level.walls || []) {
+      if (nearVertex(verts, w.p1[0], w.p1[1]) && nearVertex(verts, w.p2[0], w.p2[1])) continue;
+      orphanWalls++;
+      if (orphanSample.length < 3) orphanSample.push({ p1: w.p1, p2: w.p2 });
+    }
+    const degenerate = (level.sectors || []).filter(s =>
+      s.polys && s.area > 0.5 && !s.polys.length).length;
+    return {
+      sectors: (level.sectors || []).length, walls: (level.walls || []).length,
+      badSectors: degenerate, orphanWalls, orphanSample
+    };
+  }
+
   const rects = sectorRects(level);
   const badSectors = rects.filter(r =>
     !(r.width > 0) || !(r.depth > 0) || !Number.isFinite(r.x) || !Number.isFinite(r.z));
@@ -79,12 +126,9 @@ if (process.argv.includes('--json')) {
   const totalWalls = rows.reduce((a, r) => a + r.walls, 0);
   const totalOrphans = rows.reduce((a, r) => a + r.orphanWalls, 0);
   console.log(`${rows.length} maps checked, ${totalWalls} walls total.`);
-  console.log(`Degenerate sector rectangles: ${badSectorMaps.length} maps affected.`);
-  console.log(`Orphan wall endpoints (not on any sector's floor border, within ${EPS}u): ` +
+  console.log(`Sectors with area but no boundary loop: ${badSectorMaps.length} maps affected.`);
+  console.log(`Orphan wall endpoints (not on any sector's floor boundary, within ${EPS}u): ` +
     `${totalOrphans}/${totalWalls} (${(100 * totalOrphans / totalWalls).toFixed(1)}%)`);
-  console.log('This is expected to be non-zero: sectors are rectangular bounding-box');
-  console.log('approximations of arbitrary Doom polygons, so a wall on a concave/angled');
-  console.log('sector edge can land inside its bounding box rather than exactly on it.');
   const worst = [...rows].sort((a, b) => b.orphanWalls - a.orphanWalls).slice(0, 5);
   console.log('\nWorst 5 by orphan wall count:');
   for (const r of worst) console.log(`  [${r.pack}/${r.id}] ${r.orphanWalls}/${r.walls} orphan walls, ${r.badSectors} bad sectors`);
