@@ -107,6 +107,27 @@
     return (level.walls || []).filter(w => w.act && w.act.kind === 'tele' && w.act.dest);
   }
 
+  /* Plan-view bounds of a sector, padded by an enemy radius, cached on the
+     sector. Used to decide which enemies a moving floor can possibly affect. */
+  function secBox(sec) {
+    if (sec._tbb) return sec._tbb;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    if (sec.polys) {
+      for (const loop of sec.polys) for (const pt of loop) {
+        if (pt[0] < x0) x0 = pt[0];
+        if (pt[0] > x1) x1 = pt[0];
+        if (pt[1] < z0) z0 = pt[1];
+        if (pt[1] > z1) z1 = pt[1];
+      }
+    }
+    if (!(x0 < x1) && sec.x !== undefined && sec.width !== undefined) {
+      x0 = sec.x - sec.width / 2; x1 = sec.x + sec.width / 2;
+      z0 = sec.z - sec.depth / 2; z1 = sec.z + sec.depth / 2;
+    }
+    if (!(x0 < x1)) { x0 = -Infinity; z0 = -Infinity; x1 = Infinity; z1 = Infinity; }
+    return (sec._tbb = [x0 - 1.5, z0 - 1.5, x1 + 1.5, z1 + 1.5]);
+  }
+
   // The floor-height envelope of a sector: the lowest and highest its floor
   // can ever be, given every lift / raise / lower that targets it.  Absent
   // keys mean a static floor.
@@ -629,7 +650,8 @@
       const cam = engine.camera.position;
       const feet = cam.y - engine.player.height;
       const standingOn = engine.getFloorAt(cam.x, cam.z);
-      let movedAny = false;
+      const movedBoxes = this._movedBoxes || (this._movedBoxes = []);
+      movedBoxes.length = 0;
       for (let i = this.active.length - 1; i >= 0; i--) {
         const a = this.active[i];
         const sec = a.sec;
@@ -661,7 +683,7 @@
             engine.player.safePosition.set(cam.x, cam.y, cam.z);
           }
         }
-        movedAny = movedAny || moved !== 0;
+        if (moved !== 0) movedBoxes.push(secBox(sec));
         if (sec.floorY === a.target) {
           this.active.splice(i, 1);
           if (a.onDone) a.onDone();
@@ -669,12 +691,19 @@
       }
       // Enemies cache the floor they stand on and only refresh it when they
       // successfully move; one standing still on a lift would keep the old
-      // height and hang in the air. Cheap enough to re-derive for everyone
-      // while anything is actually moving.
-      if (movedAny && engine.enemies) {
+      // height and hang in the air. Only the ones actually over a floor that
+      // moved need re-deriving: doing it for everyone cost 15 ms a frame on
+      // the 4,161-enemy megamap, because every one of them was a getFloorAt.
+      if (movedBoxes.length && engine.enemies) {
         for (const e of engine.enemies) {
           const p = e.group && e.group.position;
           if (!p) continue;
+          let over = false;
+          for (let b = 0; b < movedBoxes.length; b++) {
+            const bb = movedBoxes[b];
+            if (p.x >= bb[0] && p.x <= bb[2] && p.z >= bb[1] && p.z <= bb[3]) { over = true; break; }
+          }
+          if (!over) continue;
           const f = engine.getFloorAt(p.x, p.z);
           if (!f.inside) continue;
           // CyberAI re-seats any enemy that moved this frame and owns it;

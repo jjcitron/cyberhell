@@ -1879,6 +1879,7 @@ function getGlowTexture() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 32, 32);
   getGlowTexture._t = new THREE.CanvasTexture(c);
+  getGlowTexture._t._shared = true;   // page-lifetime cache; see disposeObject3D
   return getGlowTexture._t;
 }
 
@@ -1901,6 +1902,102 @@ const ENEMY_HOVER = 2.2;
 /* ==========================================================================
    MAIN 3D ENGINE CORE
    ========================================================================== */
+/* Concatenate a list of indexed BufferGeometries that share an attribute set
+   into one. Three r128's core build does not ship BufferGeometryUtils (it is
+   an examples module), and this is the only merge the engine needs: same
+   attributes, no groups, no morph targets. */
+function mergeGeos(list) {
+  if (list.length === 1) return list[0];
+  const names = Object.keys(list[0].attributes);
+  let vCount = 0, iCount = 0;
+  for (const g of list) {
+    const n = g.attributes.position.count;
+    vCount += n;
+    iCount += g.index ? g.index.count : n;
+  }
+  const out = new THREE.BufferGeometry();
+  for (const name of names) {
+    const size = list[0].attributes[name].itemSize;
+    const arr = new Float32Array(vCount * size);
+    let o = 0;
+    for (const g of list) {
+      const a = g.attributes[name];
+      arr.set(a.array.length === a.count * size ? a.array : a.array.subarray(0, a.count * size), o);
+      o += a.count * size;
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
+  }
+  const idx = vCount > 65535 ? new Uint32Array(iCount) : new Uint16Array(iCount);
+  let io = 0, vo = 0;
+  for (const g of list) {
+    const n = g.attributes.position.count;
+    if (g.index) { const gi = g.index.array; for (let i = 0; i < gi.length; i++) idx[io++] = gi[i] + vo; }
+    else { for (let i = 0; i < n; i++) idx[io++] = i + vo; }
+    vo += n;
+  }
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
+}
+
+/* Sector light used to be baked into material.color, which forced one
+   material per surface and made merging impossible. It rides in a vertex
+   colour instead; the merged material keeps color white and three multiplies
+   the two, so the shading is pixel-identical. */
+function paintGeo(geo, tint) {
+  const n = geo.attributes.position.count;
+  const c = new Float32Array(n * 3);
+  c.fill(tint);
+  geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  return geo;
+}
+
+/* Point-to-segment distance and the closest point on the segment. Hoisted out
+   of resolveWallCollisions, which used to rebuild the closure and return a
+   fresh object on every wall it tested -- three push-out iterations over
+   every wall near every mover, on maps with 4,161 movers. */
+const _segHit = { dist: 0, projX: 0, projZ: 0 };
+function getSegDist(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az;
+  const c1 = (px - ax) * vx + (pz - az) * vz;
+  if (c1 <= 0) {
+    _segHit.projX = ax; _segHit.projZ = az;
+  } else {
+    const c2 = vx * vx + vz * vz;
+    if (c2 <= c1) { _segHit.projX = bx; _segHit.projZ = bz; }
+    else { const t = c1 / c2; _segHit.projX = ax + t * vx; _segHit.projZ = az + t * vz; }
+  }
+  _segHit.dist = Math.hypot(px - _segHit.projX, pz - _segHit.projZ);
+  return _segHit;
+}
+
+const _batchM = new THREE.Matrix4();
+const _pickDir = new THREE.Vector3();
+const _moveDir = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+
+/* Free every GPU resource under an Object3D. Textures held in the engine's
+   level texture cache are shared across levels on purpose (see levelTexture)
+   and are flagged as such; everything else a level created -- sky canvases,
+   gore sprites, enemy skins -- dies with the level. */
+function disposeObject3D(root) {
+  root.traverse(o => {
+    // A shadow-casting light owns a render target. Dropping the light without
+    // it leaked one depth texture per level change.
+    if (o.isLight && o.shadow && o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) {
+      if (!m) continue;
+      for (const k in m) {
+        const v = m[k];
+        if (v && v.isTexture && !v._shared) v.dispose();
+      }
+      m.dispose();
+    }
+  });
+}
+
 class CyberDoomEngine {
   constructor() {
     this.canvas = document.getElementById('render-canvas');
@@ -1986,7 +2083,9 @@ class CyberDoomEngine {
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Phones ship 3x panels; rendering a Doom map at native density is three
+    // times the fragment work for detail nobody can see at arm's length.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? 1.5 : 2));
     // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
     // where the extra shadow-map pass isn't worth the frame cost.
     this.renderer.shadowMap.enabled = !this.isTouch;
@@ -2029,7 +2128,10 @@ class CyberDoomEngine {
     this.sunDir = new THREE.Vector3(...data.sunLight.pos).normalize();
     if (this.renderer.shadowMap.enabled) {
       sun.castShadow = true;
-      sun.shadow.mapSize.set(2048, 2048);
+      // 2048 is a 16 MB depth target. Machines reporting few cores are also
+      // the ones with weak integrated GPUs, so halve it there.
+      const shadowRes = (navigator.hardwareConcurrency || 8) <= 4 ? 1024 : 2048;
+      sun.shadow.mapSize.set(shadowRes, shadowRes);
       sun.shadow.camera.near = 1;
       sun.shadow.camera.far = 160;
       sun.shadow.camera.left = -40;
@@ -2043,19 +2145,43 @@ class CyberDoomEngine {
     this.sunLight = sun;
     this.scene.add(sun);
 
+    // Sectors a trigger can raise or lower. Their floor mesh, and the risers
+    // beside it, animate every frame, so they are the one thing that cannot
+    // be merged into a static chunk (see flushBatches).
+    const movable = new Set();
+    for (const t of data.triggers || []) for (const si of (t.act && t.act.secs) || []) movable.add(si);
+    for (const w of data.walls || []) for (const si of (w.act && w.act.secs) || []) movable.add(si);
+    this._movableSecs = movable;
+
+    // Static world geometry is collected here and merged per material per
+    // 32-unit tile once everything is built: one mesh per wall and per sector
+    // was 5,800+ draw calls on the biggest map.
+    this._batches = new Map();
+
+    // Coarse load breakdown, read by tests/perf.js. Five timestamps is not
+    // instrumentation worth hiding behind a flag.
+    const lp = this._loadPhases = {};
+    let _t = performance.now();
+
     // Build Sectors (Floors & Ceilings)
-    data.sectors.forEach(sec => {
-      this.buildSectorGeometry(sec);
+    data.sectors.forEach((sec, i) => {
+      this.buildSectorGeometry(sec, i);
     });
+    lp.sectors = +(performance.now() - _t).toFixed(1); _t = performance.now();
 
     // Build Walls, Doors & Switches
     data.walls.forEach(w => {
       this.buildWall(w);
     });
+    lp.walls = +(performance.now() - _t).toFixed(1); _t = performance.now();
+
+    this.flushBatches();
+    lp.merge = +(performance.now() - _t).toFixed(1); _t = performance.now();
 
     // Lifts, switch-raised floors, teleporters and the dead-end safety net.
     // data.walls[i] pairs 1:1 with this.walls[i]; the module relies on that.
     if (window.CyberTraversal) window.CyberTraversal.init(this, data);
+    lp.traversal = +(performance.now() - _t).toFixed(1); _t = performance.now();
 
     // The extraction switch is what ends the level, so the automap has to be
     // able to point at it.  Every level carries exactly one marked exit; if a
@@ -2098,10 +2224,13 @@ class CyberDoomEngine {
       }
     }
 
+    lp.lights = +(performance.now() - _t).toFixed(1); _t = performance.now();
+
     // Spawn Entities
     data.entities.forEach(ent => {
       this.spawnEntity(ent);
     });
+    lp.entities = +(performance.now() - _t).toFixed(1); _t = performance.now();
 
     // Environment dressing: sky/fog per theme, atmosphere particles, and
     // instanced props (lights, pipes, crates, racks, cables, signs). Runs
@@ -2110,6 +2239,7 @@ class CyberDoomEngine {
       if (!this._envInited) { window.CyberEnv.init(this.scene, THREE); this._envInited = true; }
       window.CyberEnv.decorate(data, this);
     }
+    lp.env = +(performance.now() - _t).toFixed(1); _t = performance.now();
 
     // Set Spawn
     const spawnFloor = this.getFloorAt(data.playerSpawn.pos[0], data.playerSpawn.pos[2]);
@@ -2125,6 +2255,11 @@ class CyberDoomEngine {
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
+
+    // Settle every body's level of detail against the spawn point before the
+    // first frame renders: otherwise frame one of a 4,161-enemy map submits
+    // every rig in full and stalls for a beat.
+    for (let i = 0; i < 8; i++) this.updateEnemyLOD();
   }
 
   // One texture per name per level. TextureFactory.create() paints a fresh
@@ -2138,6 +2273,7 @@ class CyberDoomEngine {
     if (!t) {
       t = TextureFactory.create(name, variant);
       t.anisotropy = 4;
+      t._shared = true;    // survives resetLevelScene; see disposeObject3D
       this._texCache[key] = t;
     }
     return t;
@@ -2151,7 +2287,7 @@ class CyberDoomEngine {
     const key = `${name}#${variant || 0}`;
     if (!(key in this._texEmCache)) {
       const t = TextureFactory.createEmissive(name, variant);
-      if (t) t.anisotropy = 4;
+      if (t) { t.anisotropy = 4; t._shared = true; }
       this._texEmCache[key] = t;
     }
     return this._texEmCache[key];
@@ -2261,42 +2397,87 @@ class CyberDoomEngine {
     const secTint = 0.45 + secLight * 0.65;
     const floorVariant = CyberDoomEngine.hashVariant(sec.floorTex + sec.x + ',' + sec.z, TextureFactory.variantCount(sec.floorTex));
     const floorEmMap = this.levelEmissiveTexture(sec.floorTex, floorVariant);
-    const floorMat = new THREE.MeshStandardMaterial({
-      map: this.levelTexture(sec.floorTex, floorVariant), roughness: 0.8,
-      color: new THREE.Color().setScalar(secTint),
-      ...(floorEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: floorEmMap, emissiveIntensity: 0.8 } : {})
-    });
-    floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
-    const floorMesh = new THREE.Mesh(geo, floorMat);
-    floorMesh.rotation.x = -Math.PI / 2;
-    floorMesh.position.y = sec.floorY;
-    floorMesh.receiveShadow = true;
-    // Tagged so tests can raycast the rendered floor and compare it with
-    // getFloorAt -- the two disagreeing is exactly the fall-through bug.
-    floorMesh.userData.floorY = sec.floorY;
-    // Moving sectors (lifts, switch-raised floors) slide this mesh; see
-    // js/cyber-traversal.js. getFloorAt already reads sec.floorY live.
-    sec._floorMesh = floorMesh;
-    this.scene.add(floorMesh);
+    const movable = this._movableSecs && this._movableSecs.has(sec._secIdx);
+    // The ceiling is the same plane seen from below. Take its copy BEFORE the
+    // floor batch bakes the floor's world transform into these vertices.
+    const ceilGeo = (!movable && !sec.isSky) ? geo.clone() : null;
+
+    if (movable) {
+      // Lifts and switch-raised floors slide their own mesh every frame
+      // (js/cyber-traversal.js), so they stay a mesh of their own.
+      const floorMat = new THREE.MeshStandardMaterial({
+        map: this.levelTexture(sec.floorTex, floorVariant), roughness: 0.8,
+        color: new THREE.Color().setScalar(secTint),
+        ...(floorEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: floorEmMap, emissiveIntensity: 0.8 } : {})
+      });
+      floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
+      const floorMesh = new THREE.Mesh(geo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.position.y = sec.floorY;
+      floorMesh.receiveShadow = true;
+      // Tagged so tests can raycast the rendered floor and compare it with
+      // getFloorAt -- the two disagreeing is exactly the fall-through bug.
+      floorMesh.userData.floorY = sec.floorY;
+      sec._floorMesh = floorMesh;
+      this.scene.add(floorMesh);
+    } else {
+      this.batchSurface('floor', sec.floorTex, floorVariant, floorEmMap, secTint,
+                        geo, sec.floorY, 0, 0);
+    }
 
     if (!sec.isSky) {
       // Same geometry, seen from below: BackSide flips the normal for us.
       const ceilVariant = CyberDoomEngine.hashVariant(sec.ceilTex + sec.x + ',' + sec.z, TextureFactory.variantCount(sec.ceilTex));
       const ceilEmMap = this.levelEmissiveTexture(sec.ceilTex, ceilVariant);
-      const ceilMat = new THREE.MeshStandardMaterial({
-        map: this.levelTexture(sec.ceilTex, ceilVariant), roughness: 0.8, side: THREE.BackSide,
-        color: new THREE.Color().setScalar(secTint),
-        ...(ceilEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: ceilEmMap, emissiveIntensity: 0.8 } : {})
-      });
-      const ceilMesh = new THREE.Mesh(geo, ceilMat);
-      ceilMesh.rotation.x = -Math.PI / 2;
-      ceilMesh.position.y = sec.ceilY;
-      ceilMesh.receiveShadow = true;
-      this.scene.add(ceilMesh);
+      if (movable) {
+        const ceilMat = new THREE.MeshStandardMaterial({
+          map: this.levelTexture(sec.ceilTex, ceilVariant), roughness: 0.8, side: THREE.BackSide,
+          color: new THREE.Color().setScalar(secTint),
+          ...(ceilEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: ceilEmMap, emissiveIntensity: 0.8 } : {})
+        });
+        const ceilMesh = new THREE.Mesh(geo, ceilMat);
+        ceilMesh.rotation.x = -Math.PI / 2;
+        ceilMesh.position.y = sec.ceilY;
+        ceilMesh.receiveShadow = true;
+        ceilMesh.userData.ceilY = sec.ceilY;
+        this.scene.add(ceilMesh);
+      } else {
+        this.batchSurface('ceil', sec.ceilTex, ceilVariant, ceilEmMap, secTint,
+                          ceilGeo, sec.ceilY, 0, 0);
+      }
     }
   }
 
-  buildSectorGeometry(sec) {
+  /* One static floor/ceiling surface into the merge buckets. The plane is
+     baked to world space here so the merged chunk needs no per-surface
+     transform. Floors are keyed by their height as well as material so the
+     merged mesh can still carry userData.floorY, which is what tests/
+     qa-collision.js raycasts to prove the drawn floor and getFloorAt agree. */
+  batchSurface(role, tex, variant, emMap, tint, geo, y, ox, oz) {
+    // The source plane lies in XY. -90 deg about X lays it flat facing up
+    // (floors, and the poly-path ceiling which faces down via BackSide);
+    // +90 deg lays it flat facing down, which is what the rectangle ceilings
+    // used to get from mesh.rotation.x = +PI/2.
+    _batchM.makeRotationX(role === 'ceilRect' ? Math.PI / 2 : -Math.PI / 2);
+    _batchM.setPosition(ox || 0, y, oz || 0);
+    geo.applyMatrix4(_batchM);
+    paintGeo(geo, tint);
+    geo.computeBoundingSphere();
+    const c = geo.boundingSphere ? geo.boundingSphere.center : { x: ox || 0, z: oz || 0 };
+    // Height is part of the bucket key for every horizontal surface, so a
+    // merged mesh can carry the one height it draws at. qa-collision raycasts
+    // the floor tag; tests/perf.js raycasts both and compares them with the
+    // level data, which is what catches a bad bake.
+    const bucket = role + '|' + tex + '#' + variant + '|' + this.chunkKey(c.x, c.z) + '|' + y.toFixed(3);
+    this.batchGeo(bucket, geo, {
+      role, tex, variant, emMap,
+      floorY: role === 'floor' ? y : undefined,
+      ceilY: role === 'floor' ? undefined : y
+    });
+  }
+
+  buildSectorGeometry(sec, index) {
+    sec._secIdx = index;
     if (sec.polys) {
       // Converted levels: real boundary loops. The x/z/width/depth rectangle
       // stays on the sector only as a hint for light placement.
@@ -2328,37 +2509,22 @@ class CyberDoomEngine {
 
     rects.forEach(rect => {
       const { x, z, width, depth } = rect;
-      const floorGeo = CyberDoomEngine.scaleUVs(new THREE.PlaneGeometry(width, depth), width / 8, depth / 8);
       const secTint = 0.45 + (sec.light !== undefined ? sec.light : 0.7) * 0.65;
       const floorVariant = CyberDoomEngine.hashVariant(sec.floorTex + x + ',' + z, TextureFactory.variantCount(sec.floorTex));
       const floorEmMap = this.levelEmissiveTexture(sec.floorTex, floorVariant);
-      const floorMat = new THREE.MeshStandardMaterial({
-        map: this.levelTexture(sec.floorTex, floorVariant), roughness: 0.8,
-        color: new THREE.Color().setScalar(secTint),
-        ...(floorEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: floorEmMap, emissiveIntensity: 0.8 } : {})
-      });
-      floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
-      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-      floorMesh.rotation.x = -Math.PI / 2;
-      floorMesh.position.set(x, sec.floorY, z);
-      floorMesh.receiveShadow = true;
-      floorMesh.userData.floorY = sec.floorY;
-      this.scene.add(floorMesh);
+      const floorGeo = CyberDoomEngine.scaleUVs(new THREE.PlaneGeometry(width, depth), width / 8, depth / 8);
+      this.batchSurface('floor', sec.floorTex, floorVariant, floorEmMap, secTint,
+                        floorGeo, sec.floorY, x, z);
 
       // Ceiling (if not open sky)
       if (!sec.isSky) {
         const ceilVariant = CyberDoomEngine.hashVariant(sec.ceilTex + x + ',' + z, TextureFactory.variantCount(sec.ceilTex));
         const ceilEmMap = this.levelEmissiveTexture(sec.ceilTex, ceilVariant);
-        const ceilMat = new THREE.MeshStandardMaterial({
-          map: this.levelTexture(sec.ceilTex, ceilVariant), roughness: 0.8,
-          color: new THREE.Color().setScalar(secTint),
-          ...(ceilEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: ceilEmMap, emissiveIntensity: 0.8 } : {})
-        });
-        const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
-        ceilMesh.rotation.x = Math.PI / 2;
-        ceilMesh.position.set(x, sec.ceilY, z);
-        ceilMesh.receiveShadow = true;
-        this.scene.add(ceilMesh);
+        // Rectangle ceilings face down by rotating the other way, so they are
+        // FrontSide geometry rather than the poly path's BackSide trick.
+        const ceilGeo = CyberDoomEngine.scaleUVs(new THREE.PlaneGeometry(width, depth), width / 8, depth / 8);
+        this.batchSurface('ceilRect', sec.ceilTex, ceilVariant, ceilEmMap, secTint,
+                          ceilGeo, sec.ceilY, x, z);
       }
     });
   }
@@ -2386,19 +2552,36 @@ class CyberDoomEngine {
     const wallLight = this.sectorLightAt(midX, midZ);
     const wallVariant = CyberDoomEngine.hashVariant(w.tex + midX + ',' + midZ, TextureFactory.variantCount(w.tex));
     const wallEmMap = this.levelEmissiveTexture(w.tex, wallVariant);
-    const wallMat = new THREE.MeshStandardMaterial({
-      map: this.levelTexture(w.tex, wallVariant), roughness: 0.7,
-      color: new THREE.Color().setScalar(0.45 + wallLight * 0.65),
-      ...(wallEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: wallEmMap, emissiveIntensity: 0.8 } : {})
-    });
-    const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+    const wallTint = 0.45 + wallLight * 0.65;
 
-    wallMesh.position.set(midX, centerY, midZ);
-    wallMesh.rotation.y = -angle;
-    wallMesh.castShadow = true;
-    wallMesh.receiveShadow = true;
+    // Doors slide up, switch panels repaint, and a riser beside a lift is
+    // rescaled every frame -- those three keep a mesh of their own. Every
+    // other wall never moves again and goes into a merged chunk.
+    const nearMovable = this._movableSecs &&
+      ((w.fs !== undefined && this._movableSecs.has(w.fs)) ||
+       (w.bs !== undefined && w.bs >= 0 && this._movableSecs.has(w.bs)));
+    let wallMesh = null;
 
-    this.scene.add(wallMesh);
+    if (w.isDoor || w.isSwitch || nearMovable) {
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: this.levelTexture(w.tex, wallVariant), roughness: 0.7,
+        color: new THREE.Color().setScalar(wallTint),
+        ...(wallEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: wallEmMap, emissiveIntensity: 0.8 } : {})
+      });
+      wallMesh = new THREE.Mesh(wallGeo, wallMat);
+      wallMesh.position.set(midX, centerY, midZ);
+      wallMesh.rotation.y = -angle;
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
+      this.scene.add(wallMesh);
+    } else {
+      _batchM.makeRotationY(-angle);
+      _batchM.setPosition(midX, centerY, midZ);
+      wallGeo.applyMatrix4(_batchM);
+      paintGeo(wallGeo, wallTint);
+      this.batchGeo('wall|' + w.tex + '#' + wallVariant + '|' + this.chunkKey(midX, midZ),
+                    wallGeo, { role: 'wall', tex: w.tex, variant: wallVariant, emMap: wallEmMap });
+    }
 
     const wallObj = {
       p1: { x: x1, z: z1 },
@@ -2425,6 +2608,48 @@ class CyberDoomEngine {
     }
 
     this.walls.push(wallObj);
+  }
+
+  // 32-unit tiles. Small enough that frustum culling still throws most of a
+  // big map away, large enough that a megamap lands in hundreds of draw calls
+  // instead of thousands.
+  chunkKey(x, z) { return Math.floor(x / 32) + ',' + Math.floor(z / 32); }
+
+  batchGeo(bucket, geo, spec) {
+    let b = this._batches.get(bucket);
+    if (!b) this._batches.set(bucket, b = Object.assign({ geos: [] }, spec));
+    b.geos.push(geo);
+  }
+
+  /* Merge every collected bucket into one mesh each. Called once at the end
+     of loadLevel, after both the sector and the wall pass. */
+  flushBatches() {
+    if (!this._batches) return;
+    for (const b of this._batches.values()) {
+      const geo = mergeGeos(b.geos);
+      if (b.geos.length > 1) for (const g of b.geos) g.dispose();
+      const mat = new THREE.MeshStandardMaterial({
+        map: this.levelTexture(b.tex, b.variant),
+        roughness: b.role === 'wall' ? 0.7 : 0.8,
+        vertexColors: true,
+        ...(b.role === 'ceil' ? { side: THREE.BackSide } : {}),
+        ...(b.emMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: b.emMap, emissiveIntensity: 0.8 } : {})
+      });
+      if (b.role === 'floor') {
+        mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1;
+      }
+      const mesh = new THREE.Mesh(geo, mat);
+      // Floors keep the tag qa-collision raycasts; the bucket key carries the
+      // height, so every surface in one merged floor mesh shares it.
+      if (b.floorY !== undefined) mesh.userData.floorY = b.floorY;
+      if (b.ceilY !== undefined) mesh.userData.ceilY = b.ceilY;
+      mesh.receiveShadow = true;
+      mesh.castShadow = b.role === 'wall';
+      mesh.matrixAutoUpdate = false;      // baked to world space, never moves
+      mesh.updateMatrix();
+      this.scene.add(mesh);
+    }
+    this._batches = null;
   }
 
   // Public hook for other regions (enemies/pickups) that build meshes outside
@@ -2505,9 +2730,16 @@ class CyberDoomEngine {
   }
 
   createBarrel(ent) {
-    const geo = new THREE.CylinderGeometry(0.4, 0.4, 1.2, 12);
-    const tex = TextureFactory.create('toxic_ooze');
-    const mat = new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x005511, emissiveIntensity: 0.6, roughness: 0.4 });
+    // One cylinder and one material for every barrel on the level. Each
+    // barrel used to build its own, plus a 256x256 toxic_ooze canvas that was
+    // painted and then never attached to anything.
+    if (!this._barrelAssets) {
+      this._barrelAssets = {
+        geo: new THREE.CylinderGeometry(0.4, 0.4, 1.2, 12),
+        mat: new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x005511, emissiveIntensity: 0.6, roughness: 0.4 })
+      };
+    }
+    const { geo, mat } = this._barrelAssets;
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(ent.pos[0], ent.pos[1] + 0.6, ent.pos[2]);
     this.scene.add(mesh);
@@ -2522,175 +2754,15 @@ class CyberDoomEngine {
     return this.buildBoxEnemyMesh(typeId, ent);
   }
 
-  buildBoxEnemyMesh(typeId, ent) {
+  /* Last-ditch stand-in when js/cyber-enemies.js is missing. It used to be
+     170 lines of hand-built boxes per monster type, maintained in parallel
+     with the real rigs and never once rendered in a working build. */
+  buildBoxEnemyMesh() {
     const group = new THREE.Group();
-    const eType = parseInt(typeId) || (ent.type === 'soldier' ? 3004 : 3001);
-
-    const mat = (col, extra = {}) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, ...extra });
-    const basicMat = (col, extra = {}) => new THREE.MeshBasicMaterial({ color: col, ...extra });
-
-    switch(eType) {
-      case 3004: { // 1. Zombieman: man shape, green with red eyes
-        const bodyMat = mat(0x2e7d32);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.4), bodyMat); body.position.y = 0.8;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), bodyMat); head.position.y = 1.6;
-        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), basicMat(0xff0000)); eyeL.position.set(-0.1, 1.62, -0.21);
-        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), basicMat(0xff0000)); eyeR.position.set(0.1, 1.62, -0.21);
-        group.add(body, head, eyeL, eyeR);
-        break;
-      }
-      case 9: { // 2. Shotgun Guy: man shape, brown holding shotgun
-        const bodyMat = mat(0x795548);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.4), bodyMat); body.position.y = 0.8;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), bodyMat); head.position.y = 1.6;
-        const shotgun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.8), mat(0x212121, { metalness: 0.8 }));
-        shotgun.position.set(0.2, 0.9, -0.4);
-        group.add(body, head, shotgun);
-        break;
-      }
-      case 65: { // 3. Chaingunner: man shape wide and stout holding 2 large barrel shaped guns in each hand
-        const bodyMat = mat(0x424242);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 0.6), bodyMat); body.position.y = 0.75;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), bodyMat); head.position.y = 1.45;
-        const gunL = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.8, 12), mat(0x111111, { metalness: 0.9 }));
-        gunL.rotation.x = Math.PI / 2; gunL.position.set(-0.65, 0.75, -0.4);
-        const gunR = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.8, 12), mat(0x111111, { metalness: 0.9 }));
-        gunR.rotation.x = Math.PI / 2; gunR.position.set(0.65, 0.75, -0.4);
-        group.add(body, head, gunL, gunR);
-        break;
-      }
-      case 3001: { // 4. Imp: reddish brown tall skinny with long arms out of proportion
-        const bodyMat = mat(0x8d6e63);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.5, 0.35), bodyMat); body.position.y = 0.95;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), bodyMat); head.position.y = 1.85;
-        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4, 0.15), bodyMat); armL.position.set(-0.38, 0.6, -0.1);
-        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4, 0.15), bodyMat); armR.position.set(0.38, 0.6, -0.1);
-        group.add(body, head, armL, armR);
-        break;
-      }
-      case 3002: { // 5. Demon (Pinky): pink humanoid, no head, face is in chest gorilla like arms
-        const bodyMat = mat(0xec407a);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.7), bodyMat); body.position.y = 0.85;
-        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.1), basicMat(0xffff00)); eyeL.position.set(-0.2, 1.0, -0.36);
-        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.1), basicMat(0xffff00)); eyeR.position.set(0.2, 1.0, -0.36);
-        const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.1), basicMat(0xff0000)); mouth.position.set(0, 0.7, -0.36);
-        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.1, 0.28), bodyMat); armL.position.set(-0.6, 0.6, 0);
-        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.1, 0.28), bodyMat); armR.position.set(0.6, 0.6, 0);
-        group.add(body, eyeL, eyeR, mouth, armL, armR);
-        break;
-      }
-      case 58: { // 6. Spectre: semi transparent ghost figure humanoid but tall and very skinny
-        const ghostMat = mat(0x80deea, { transparent: true, opacity: 0.35 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.3), ghostMat); body.position.y = 1.1;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), ghostMat); head.position.y = 2.1;
-        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), basicMat(0x00ffff)); eyeL.position.set(-0.08, 2.12, -0.16);
-        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), basicMat(0x00ffff)); eyeR.position.set(0.08, 2.12, -0.16);
-        group.add(body, head, eyeL, eyeR);
-        break;
-      }
-      case 3005: { // 7. Cacodemon: round flying robot red eye shoots lasers
-        const robotMat = mat(0xd32f2f, { metalness: 0.5 });
-        const body = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), robotMat); body.position.y = 1.5;
-        const eyeFrame = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16), mat(0x212121));
-        eyeFrame.rotation.x = Math.PI / 2; eyeFrame.position.set(0, 1.5, -0.75);
-        const eyeLens = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basicMat(0xff0000));
-        eyeLens.position.set(0, 1.5, -0.82);
-        group.add(body, eyeFrame, eyeLens);
-        break;
-      }
-      case 69: { // 8. Hell Knight: silver, bulky humanoid large helmet, black visor
-        const knightMat = mat(0xb0bec5, { metalness: 0.85, roughness: 0.2 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.4, 0.6), knightMat); body.position.y = 0.9;
-        const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.55, 0.55), knightMat); helmet.position.y = 1.75;
-        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.14, 0.1), basicMat(0x111111)); visor.position.set(0, 1.75, -0.28);
-        group.add(body, helmet, visor);
-        break;
-      }
-      case 3003: { // 9. Baron of Hell: golden version of #8 25% larger
-        const baronMat = mat(0xffd700, { metalness: 0.9, roughness: 0.2 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.75, 0.75), baronMat); body.position.y = 1.1;
-        const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.7, 0.7), baronMat); helmet.position.y = 2.2;
-        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.12), basicMat(0x111111)); visor.position.set(0, 2.2, -0.35);
-        group.add(body, helmet, visor);
-        break;
-      }
-      case 66: { // 10. Revenant: humanoid torso, but with a rocket bottom, flying
-        const torsoMat = mat(0xcfd8dc);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.4), torsoMat); body.position.y = 1.5;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), torsoMat); head.position.y = 2.1;
-        const rocket = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.1, 0.8, 12), mat(0x37474f, { metalness: 0.8 }));
-        rocket.position.y = 0.7;
-        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 12), basicMat(0xff9900));
-        flame.rotation.x = Math.PI; flame.position.y = 0.1;
-        group.add(body, head, rocket, flame);
-        break;
-      }
-      case 67: { // 11. Mancubus: large tank like cyborg human torso, tank bottom
-        const torsoMat = mat(0x8d6e63);
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 0.7), torsoMat); torso.position.y = 1.25;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.4), torsoMat); head.position.y = 1.85;
-        const tank = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.4), mat(0x263238, { metalness: 0.7 })); tank.position.y = 0.3;
-        const treadL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.5), mat(0x111111)); treadL.position.set(-0.75, 0.25, 0);
-        const treadR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.5), mat(0x111111)); treadR.position.set(0.75, 0.25, 0);
-        group.add(torso, head, tank, treadL, treadR);
-        break;
-      }
-      case 68: { // 12. Arachnotron: human torso, spider bottom, silver legs
-        const torsoMat = mat(0x8d6e63);
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.4), torsoMat); torso.position.y = 1.0;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), torsoMat); head.position.y = 1.5;
-        const spiderBody = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 12), mat(0x37474f)); spiderBody.position.y = 0.5;
-        const legMat = mat(0xb0bec5, { metalness: 0.9 });
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
-          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.04, 0.9, 8), legMat);
-          leg.rotation.z = Math.PI / 3;
-          leg.rotation.y = a;
-          leg.position.set(Math.cos(a) * 0.5, 0.3, Math.sin(a) * 0.5);
-          group.add(leg);
-        }
-        group.add(torso, head, spiderBody);
-        break;
-      }
-      case 64: { // 13. Archvile: humanoid, glowing yellow hands, orange body, empty stomach with yellow glow, flaming head
-        const bodyMat = mat(0xff6f00);
-        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), bodyMat); chest.position.y = 1.5;
-        const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.35), bodyMat); hips.position.y = 0.5;
-        const glowGap = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), basicMat(0xffff00)); glowGap.position.y = 1.0;
-        const handL = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), basicMat(0xffff00)); handL.position.set(-0.45, 1.2, -0.3);
-        const handR = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), basicMat(0xffff00)); handR.position.set(0.45, 1.2, -0.3);
-        const flameHead = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.6, 8), basicMat(0xffab00)); flameHead.position.y = 2.0;
-        group.add(chest, hips, glowGap, handL, handR, flameHead);
-        break;
-      }
-      case 16: { // 14. Cyberdemon: human head, twisting silver cables body, arm gun barrels, intertwined sliding legs
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat(0xd7ccc8)); head.position.y = 2.1;
-        const cableMat = mat(0xb0bec5, { metalness: 0.9, roughness: 0.2 });
-        const cableTorso = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.18, 8, 16), cableMat);
-        cableTorso.rotation.x = Math.PI / 2; cableTorso.position.y = 1.4;
-        const armGunL = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 12), mat(0x212121, { metalness: 0.9 }));
-        armGunL.rotation.x = Math.PI / 2; armGunL.position.set(-0.6, 1.4, -0.4);
-        const armGunR = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 12), mat(0x212121, { metalness: 0.9 }));
-        armGunR.rotation.x = Math.PI / 2; armGunR.position.set(0.6, 1.4, -0.4);
-        const cableLegs = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 0.9, 12), cableMat); cableLegs.position.y = 0.55;
-        group.add(head, cableTorso, armGunL, armGunR, cableLegs);
-        break;
-      }
-      case 7: { // 15. Spider Mastermind: giant brain in a jar attached to a tank
-        const tankBase = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 1.6), mat(0x37474f, { metalness: 0.8 })); tankBase.position.y = 0.3;
-        const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.9, 16), mat(0x80deea, { transparent: true, opacity: 0.45 }));
-        jar.position.y = 1.05;
-        const brain = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), mat(0xe1bee7));
-        brain.scale.set(1.1, 0.8, 1.1); brain.position.y = 1.05;
-        group.add(tankBase, jar, brain);
-        break;
-      }
-      default: {
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.4), mat(0x8b3a2b)); body.position.y = 0.8;
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), mat(0x8b3a2b)); head.position.y = 1.6;
-        group.add(body, head);
-        break;
-      }
-    }
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x7a2b2b, roughness: 0.5 }));
+    body.position.y = 0.9;
+    group.add(body);
     return group;
   }
 
@@ -2731,7 +2803,7 @@ class CyberDoomEngine {
     const st = window.CyberEnemies ? window.CyberEnemies.stats(ent.enemyType) : null;
     const enemyHp = (st && st.hp) || hpMap[ent.enemyType] || 50;
 
-    this.enemies.push({
+    const rec = {
       type: ent.type,
       enemyType: ent.enemyType,
       hp: enemyHp,
@@ -2745,7 +2817,71 @@ class CyberDoomEngine {
       radius: 0.6,
       floorY: floorY,
       bobT: Math.random() * Math.PI * 2
+    };
+    this.classifyEnemyDetail(rec);
+    this.enemies.push(rec);
+  }
+
+  /* Rig detail level of detail.
+
+     A monster rig is 50-60 separate meshes -- knuckles, vents, eye pips, hose
+     segments -- and every one of them is a draw call. With 4,161 of them the
+     static world was 394 draw calls and the monsters were 5,187. Most of that
+     detail is under 20 cm across and stops being resolvable a few metres
+     away, so beyond LOD_NEAR only the big shapes are drawn, and past LOD_FAR
+     (where the map's own fog has the body down to a fifth of its colour) the
+     whole body goes. Nothing about behaviour changes: an enemy the player
+     cannot see still thinks, moves, and shoots. */
+  classifyEnemyDetail(rec) {
+    const g = rec.group;
+    const scale = Math.max(g.scale.x, g.scale.y, g.scale.z) || 1;
+    const detail = [];
+    const size = new THREE.Vector3();
+    g.traverse(o => {
+      if (!o.isMesh || !o.geometry) return;
+      // A rig may hide a part on purpose (an empty hand, say). Leave those
+      // out or restoring full detail would put them back on screen.
+      if (!o.visible) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      o.geometry.boundingBox.getSize(size);
+      const s = Math.max(size.x * o.scale.x, size.y * o.scale.y, size.z * o.scale.z) * scale;
+      if (s < 0.2) detail.push(o);
     });
+    rec.detailParts = detail;
+    rec.lod = 0;
+  }
+
+  setEnemyLOD(rec, level) {
+    if (rec.lod === level) return;
+    rec.lod = level;
+    rec.group.visible = level < 2;
+    const on = level === 0;
+    for (const m of rec.detailParts) m.visible = on;
+  }
+
+  /* One eighth of the roster per frame: an enemy changing band 130 ms late is
+     one at 20+ metres through fog, and sweeping all 4,161 every frame is the
+     kind of full-array pass this round exists to remove. */
+  updateEnemyLOD() {
+    const list = this.enemies;
+    if (!list.length) return;
+    const cam = this.camera.position;
+    const NEAR = 22, FAR = 95, HYST = 3;
+    const lane = (this._lodLane = ((this._lodLane || 0) + 1) & 7);
+    for (let i = lane; i < list.length; i += 8) {
+      const e = list[i];
+      if (!e.detailParts) continue;
+      const p = e.group.position;
+      const dx = p.x - cam.x, dz = p.z - cam.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      // Hysteresis: a body loitering on a boundary must not flicker.
+      const cur = e.lod;
+      let want = cur;
+      if (d < NEAR - (cur > 0 ? HYST : 0)) want = 0;
+      else if (d > FAR + (cur < 2 ? HYST : 0)) want = 2;
+      else if (d > NEAR + (cur === 0 ? HYST : 0) && d < FAR - (cur === 2 ? HYST : 0)) want = 1;
+      this.setEnemyLOD(e, want);
+    }
   }
 
   /* ==========================================================================
@@ -3373,8 +3509,19 @@ class CyberDoomEngine {
 
     raycaster.set(this.camera.position, dir);
 
-    // Check Barrels
-    const barrelMeshes = this.barrels.map(b => b.mesh);
+    // Check Barrels. Only what is inside the 60-unit hitscan range: the
+    // megamaps carry hundreds of barrels and thousands of enemies, and
+    // building the candidate arrays over all of them cost more than the
+    // raycast itself.
+    const RANGE = 60, RANGE2 = RANGE * RANGE;
+    const cam = this.camera.position;
+    const inRange = (o) => {
+      const dx = o.position.x - cam.x, dy = o.position.y - cam.y, dz = o.position.z - cam.z;
+      return dx * dx + dy * dy + dz * dz <= RANGE2;
+    };
+    raycaster.far = RANGE;
+    const barrelMeshes = [];
+    for (const b of this.barrels) if (inRange(b.mesh)) barrelMeshes.push(b.mesh);
     const barrelHits = raycaster.intersectObjects(barrelMeshes);
     if (barrelHits.length > 0 && barrelHits[0].distance < 60) {
       const hitBarrel = this.barrels.find(b => b.mesh === barrelHits[0].object);
@@ -3388,7 +3535,8 @@ class CyberDoomEngine {
     }
 
     // Check Enemies
-    const enemyGroups = this.enemies.filter(e => e.state !== 'DEAD').map(e => e.group);
+    const enemyGroups = [];
+    for (const e of this.enemies) if (e.state !== 'DEAD' && inRange(e.group)) enemyGroups.push(e.group);
     const hits = raycaster.intersectObjects(enemyGroups, true);
 
     if (hits.length > 0 && hits[0].distance < 60) {
@@ -3425,7 +3573,8 @@ class CyberDoomEngine {
       ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0).normalize()
       : null;
     let hits = 0;
-    this.enemies.filter(e => e.state !== 'DEAD').forEach(e => {
+    this.enemies.forEach(e => {
+      if (e.state === 'DEAD') return;
       const dist = pPos.distanceTo(e.group.position);
       if (dist >= range) return;
       if (facing) {
@@ -3443,9 +3592,10 @@ class CyberDoomEngine {
     const deathPos = enemy.group.position.clone();
     this.flashAt(enemy.group.position, 0xff4422);
     if (window.CyberGore) window.CyberGore.death(deathPos, enemy);
-    // Death collapse animation
-    enemy.group.rotation.x = Math.PI / 2;
-    enemy.group.position.y = 0.2;
+    // No snap here. js/cyber-enemies.js poses its own death off state ===
+    // 'DEAD' (crumple / topple / explode / fade). Forcing rotation.x = PI/2
+    // and y = 0.2 fought that animation and, because 0.2 is a world height,
+    // dropped every corpse killed on a raised floor through it.
     this.showHudMessage(`ELIMINATED ${enemy.type.toUpperCase()}`);
     this.hudFace.triggerGrin();
   }
@@ -3455,9 +3605,14 @@ class CyberDoomEngine {
     this.scene.remove(barrel.mesh);
     this.barrels = this.barrels.filter(b => b !== barrel);
 
-    // Damage nearby enemies and player
+    // Damage nearby enemies and player. Squared reject first: the blast is
+    // 7 units and the megamaps carry 4,161 bodies, so distanceTo on all of
+    // them (plus the array the filter built) was the expensive part.
     const bPos = barrel.mesh.position;
-    this.enemies.filter(e => e.state !== 'DEAD').forEach(e => {
+    this.enemies.forEach(e => {
+      if (e.state === 'DEAD') return;
+      const ex = e.group.position.x - bPos.x, ez = e.group.position.z - bPos.z;
+      if (ex * ex + ez * ez > 49) return;
       const d = bPos.distanceTo(e.group.position);
       if (d < 7.0) {
         e.hp -= (7.0 - d) * 18;
@@ -3506,64 +3661,86 @@ class CyberDoomEngine {
   /* ==========================================================================
      INTERACTIONS (Doors, Switches, Secret Alcoves)
      ========================================================================== */
+  /* Nearest wall the player is looking at, within `reach`. Walls used to be
+     one mesh each and this was a raycast over all 20,461 of them, rebuilding
+     the mesh array on every [E]; they are merged into chunks now, so the pick
+     runs against the wall segments themselves out of the collision grid. */
+  wallUnderCrosshair(reach) {
+    const cam = this.camera.position;
+    const d = _pickDir.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const dl = Math.hypot(d.x, d.z);
+    if (dl < 1e-6) return null;
+    const dx = d.x / dl, dz = d.z / dl;
+    let best = null, bestT = reach;
+    for (const w of this.wallsNear(cam.x + dx * reach / 2, cam.z + dz * reach / 2, reach)) {
+      // Ray (cam + t*dir) against the wall segment, in plan view.
+      const ax = w.p1.x, az = w.p1.z, bx = w.p2.x - ax, bz = w.p2.z - az;
+      const den = dx * bz - dz * bx;
+      if (Math.abs(den) < 1e-9) continue;
+      const ox = ax - cam.x, oz = az - cam.z;
+      const t = (ox * bz - oz * bx) / den;        // distance along the look ray
+      if (t <= 0 || t >= bestT) continue;
+      const u = (ox * dz - oz * dx) / den;        // position along the segment
+      if (u < 0 || u > 1) continue;
+      // The look is 3D: the wall has to actually span the height we hit it at.
+      const y = cam.y + (d.y / dl) * t;
+      if (w.topY !== undefined && y > w.topY + 0.2) continue;
+      if (w.bottomY !== undefined && y < w.bottomY - 0.2) continue;
+      best = w; bestT = t;
+    }
+    return best;
+  }
+
   interact() {
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(this.camera.position, new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion));
+    const hitWall = this.wallUnderCrosshair(6.5);
+    if (!hitWall) return;
 
-    const wallMeshes = this.walls.map(w => w.mesh);
-    const hits = raycaster.intersectObjects(wallMeshes);
-
-    if (hits.length > 0 && hits[0].distance < 6.5) {
-      const hitWall = this.walls.find(w => w.mesh === hits[0].object);
-      if (!hitWall) return;
-
-      // Operate Door
-      if (hitWall.isDoor) {
-        this.sound.playMechanicalClick();
-        if (hitWall.closed) {
-          hitWall.closed = false;
-          hitWall.solid = false;
-          hitWall.mesh.position.y += hitWall.height - 0.5;
-          this.showHudMessage("ACCESS PORTAL OPENED");
-        }
+    // Operate Door
+    if (hitWall.isDoor) {
+      this.sound.playMechanicalClick();
+      if (hitWall.closed) {
+        hitWall.closed = false;
+        hitWall.solid = false;
+        if (hitWall.mesh) hitWall.mesh.position.y += hitWall.height - 0.5;
+        this.showHudMessage("ACCESS PORTAL OPENED");
       }
+    }
 
-      // Lift / raising floor / teleporter on this linedef.
-      if (window.CyberTraversal && window.CyberTraversal.fire(this, hitWall, 'use')) {
-        this.showHudMessage("MECHANISM ACTIVATED");
-      }
+    // Lift / raising floor / teleporter on this linedef.
+    if (window.CyberTraversal && window.CyberTraversal.fire(this, hitWall, 'use')) {
+      this.showHudMessage("MECHANISM ACTIVATED");
+    }
 
-      // Operate Switch
-      if (hitWall.isSwitch) {
-        this.sound.playSwitch();
-        hitWall.mesh.material.map = TextureFactory.create('switch_on');
+    // Operate Switch
+    if (hitWall.isSwitch) {
+      this.sound.playSwitch();
+      if (hitWall.mesh) hitWall.mesh.material.map = this.levelTexture('switch_on', 0);
 
-        if (hitWall.switchId === 'sw_north_left' || hitWall.switchId === 'sw_north_right') {
-          const secretDoor = this.doors['door_north_secret'];
-          if (secretDoor && secretDoor.closed) {
-            secretDoor.closed = false;
-            secretDoor.solid = false;
-            secretDoor.mesh.position.y += 5;
-            this.showHudMessage("SECRET ALCOVE UNLOCKED!");
-            this.triggerPickupFlash();
-          }
-        } else if (hitWall.switchId === 'sw_south_yard') {
-          const yardDoor = this.doors['door_east_yard'];
-          if (yardDoor && yardDoor.closed) {
-            yardDoor.closed = false;
-            yardDoor.solid = false;
-            yardDoor.mesh.position.y += 6;
-            this.showHudMessage("EXTERIOR WASTELAND ACCESS GRANTED");
-          }
-          const exitDoor = this.doors['door_exit'];
-          if (exitDoor && exitDoor.closed) {
-            exitDoor.closed = false;
-            exitDoor.solid = false;
-            exitDoor.mesh.position.y += 5;
-          }
-        } else if (hitWall.switchId === 'sw_exit_game') {
-          this.triggerVictory();
+      if (hitWall.switchId === 'sw_north_left' || hitWall.switchId === 'sw_north_right') {
+        const secretDoor = this.doors['door_north_secret'];
+        if (secretDoor && secretDoor.closed) {
+          secretDoor.closed = false;
+          secretDoor.solid = false;
+          if (secretDoor.mesh) secretDoor.mesh.position.y += 5;
+          this.showHudMessage("SECRET ALCOVE UNLOCKED!");
+          this.triggerPickupFlash();
         }
+      } else if (hitWall.switchId === 'sw_south_yard') {
+        const yardDoor = this.doors['door_east_yard'];
+        if (yardDoor && yardDoor.closed) {
+          yardDoor.closed = false;
+          yardDoor.solid = false;
+          if (yardDoor.mesh) yardDoor.mesh.position.y += 6;
+          this.showHudMessage("EXTERIOR WASTELAND ACCESS GRANTED");
+        }
+        const exitDoor = this.doors['door_exit'];
+        if (exitDoor && exitDoor.closed) {
+          exitDoor.closed = false;
+          exitDoor.solid = false;
+          if (exitDoor.mesh) exitDoor.mesh.position.y += 5;
+        }
+      } else if (hitWall.switchId === 'sw_exit_game') {
+        this.triggerVictory();
       }
     }
   }
@@ -3575,10 +3752,10 @@ class CyberDoomEngine {
     if (!this.isRunning) return;
 
     // Lifts and raising floors settle before anything reads getFloorAt.
-    if (window.CyberTraversal) window.CyberTraversal.update(this, delta);
+    if (window.CyberTraversal) { const t = this.perfMark(); window.CyberTraversal.update(this, delta); this.perfAdd('traversal', t); }
 
     // Movement vector calculation
-    const moveDir = new THREE.Vector3();
+    const moveDir = _moveDir.set(0, 0, 0);
     if (this.keys['KeyW']) moveDir.z -= 1;
     if (this.keys['KeyS']) moveDir.z += 1;
     if (this.keys['KeyA']) moveDir.x -= 1;
@@ -3592,8 +3769,8 @@ class CyberDoomEngine {
 
     const isMoving = moveDir.lengthSq() > 0;
     const yaw = this.camera.rotation.y;
-    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const forward = _fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right = _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
 
     const targetVelocityX = (forward.x * -moveDir.z + right.x * moveDir.x) * this.player.speed;
     const targetVelocityZ = (forward.z * -moveDir.z + right.z * moveDir.x) * this.player.speed;
@@ -3712,6 +3889,7 @@ class CyberDoomEngine {
   // carry 20k walls and every collision pass used to scan all of them; at
   // three push-out iterations per sub-step that is the frame budget gone.
   wallsNear(x, z, r) {
+    if (this._wallQuery === undefined) { this._wallQuery = 0; this._wallOut = []; }
     if (!this._wallGrid) {
       const C = 4, map = new Map();
       for (const w of this.walls) {
@@ -3732,12 +3910,17 @@ class CyberDoomEngine {
     const i0 = Math.floor((x - r) / C), i1 = Math.floor((x + r) / C);
     const j0 = Math.floor((z - r) / C), j1 = Math.floor((z + r) / C);
     if (i0 === i1 && j0 === j1) return g.map.get(i0 + ',' + j0) || EMPTY_WALLS;
-    const out = [];
+    // A wall straddling several cells appears in each of them. Dedup with a
+    // per-query stamp rather than out.indexOf: this runs a few times per
+    // mover per frame and the linear scan was quadratic in a dense cell.
+    const stamp = ++this._wallQuery;
+    const out = this._wallOut;
+    out.length = 0;
     for (let i = i0; i <= i1; i++) {
       for (let j = j0; j <= j1; j++) {
         const a = g.map.get(i + ',' + j);
         if (!a) continue;
-        for (const w of a) if (out.indexOf(w) === -1) out.push(w);
+        for (const w of a) { if (w._qs === stamp) continue; w._qs = stamp; out.push(w); }
       }
     }
     return out;
@@ -3758,17 +3941,6 @@ class CyberDoomEngine {
       if (w.bottomY !== undefined && w.bottomY >= headY) return false;
       return true;
     };
-    const getSegDist = (px, pz, ax, az, bx, bz) => {
-      const vx = bx - ax, vz = bz - az;
-      const wx = px - ax, wz = pz - az;
-      const c1 = wx * vx + wz * vz;
-      if (c1 <= 0) return { dist: Math.hypot(px - ax, pz - az), projX: ax, projZ: az };
-      const c2 = vx * vx + vz * vz;
-      if (c2 <= c1) return { dist: Math.hypot(px - bx, pz - bz), projX: bx, projZ: bz };
-      const t = c1 / c2;
-      const projX = ax + t * vx, projZ = az + t * vz;
-      return { dist: Math.hypot(px - projX, pz - projZ), projX: projX, projZ: projZ };
-    };
 
     // Auto open doors/switches if player approaches them
     for (const w of this.wallsNear(x, z, 1.4)) {
@@ -3783,11 +3955,11 @@ class CyberDoomEngine {
         if (w.isDoor) {
           w.closed = false;
           w.solid = false;
-          w.mesh.position.y += w.height - 0.5;
+          if (w.mesh) w.mesh.position.y += w.height - 0.5;
           try { this.sound.playSwitch(); } catch(e) {}
         }
         if (w.isSwitch) {
-          w.mesh.material.map = TextureFactory.create('switch_on');
+          if (w.mesh) w.mesh.material.map = this.levelTexture('switch_on', 0);
           w.solid = false;
         }
       }
@@ -3959,24 +4131,38 @@ class CyberDoomEngine {
     return { inside: false, floorY: 0.0 };
   }
 
+  /* Tear the current level down: drop every scene object and free the GPU
+     resources behind it. Removing children alone leaves the buffers and
+     textures alive in the driver, which is what made three level changes
+     climb renderer.info.memory without bound. */
+  resetLevelScene() {
+    for (const child of this.scene.children.slice()) {
+      if (child === this.camera) continue;
+      this.scene.remove(child);
+      disposeObject3D(child);
+    }
+    if (!this.scene.children.includes(this.camera)) this.scene.add(this.camera);
+    this.scene.background = null;
+    this.walls = [];
+    this.doors = {};
+    this.switches = {};
+    this.enemies = [];
+    this.pickups = [];
+    this.barrels = [];
+    this.projectiles = [];
+    this.particles = [];
+    this._barrelAssets = null;   // disposed with the scene; rebuilt next level
+    if (window.CyberGore) window.CyberGore.clear();
+    if (window.CyberEnv) window.CyberEnv.clear();
+  }
+
+  // Returns the load promise so callers (and tests) can await the build
+  // instead of polling for levelData to change.
   loadLevelFromFile(filePath, notify = true) {
-    fetch(filePath)
+    return fetch(filePath)
       .then(res => res.json())
       .then(mapData => {
-        while (this.scene.children.length > 0) {
-          this.scene.remove(this.scene.children[0]);
-        }
-        this.scene.add(this.camera);
-        this.walls = [];
-        this.doors = {};
-        this.switches = {};
-        this.enemies = [];
-        this.pickups = [];
-        this.barrels = [];
-        this.projectiles = [];
-        this.particles = [];
-        if (window.CyberGore) window.CyberGore.clear();
-        if (window.CyberEnv) window.CyberEnv.clear();
+        this.resetLevelScene();
         this.loadLevel(mapData);
         // buildWall doesn't carry ledge-riser data onto the runtime wall
         // objects it builds; attach it here (mapData.walls and this.walls
@@ -4028,6 +4214,11 @@ class CyberDoomEngine {
   checkPickups() {
     const pPos = this.camera.position;
     this.pickups.forEach((item, index) => {
+      const ip = item.group.position;
+      const dx = ip.x - pPos.x, dz = ip.z - pPos.z;
+      // A pickup 40 units away is a pixel; spinning it is a matrix rebuild
+      // per frame for nothing, and the megamaps carry hundreds.
+      if (dx * dx + dz * dz > 1600) return;
       item.group.rotation.y += 0.03;
       if (pPos.distanceTo(item.group.position) < 1.4) {
         const d = item.data;
@@ -4159,7 +4350,9 @@ class CyberDoomEngine {
   // enemyAttack and separateEnemies below; this stays a one-line hand-off so
   // the AI can be swapped or tuned without touching the engine.
   updateEnemies(delta) {
-    if (window.CyberAI) { window.CyberAI.update(this, delta); return; }
+    // The brain, then the draw-cost gate. The AI decides who acts; the LOD
+    // pass decides how much of each body is worth submitting to the GPU.
+    if (window.CyberAI) { window.CyberAI.update(this, delta); this.updateEnemyLOD(); return; }
     // Fallback with the AI module missing: hold everyone on their floor so
     // nothing sinks through the world.
     for (const enemy of this.enemies) {
@@ -4315,12 +4508,34 @@ class CyberDoomEngine {
       }
     }
 
+    // Player shots used to test every enemy on the map, every frame, once per
+    // projectile -- 4,161 of them on the megamap times however many bolts are
+    // in the air. Collect the candidates once instead. 100 units is further
+    // than the longest-lived projectile can travel from the muzzle
+    // (energy_bolt, 34 u/s for 2.5 s), so nothing reachable is missed.
+    // ponytail: radius is a constant, not derived per kind. Derive it if a
+    // projectile ever gets a longer reach than that.
+    let targets = null;
+    for (const p of this.projectiles) if (p.owner === 'player') { targets = this._projTargets || (this._projTargets = []); break; }
+    if (targets) {
+      targets.length = 0;
+      const cp = this.camera.position;
+      for (const e of this.enemies) {
+        if (e.state === 'DEAD') continue;
+        const ex = e.group.position.x - cp.x, ez = e.group.position.z - cp.z;
+        if (ex * ex + ez * ez <= 10000) targets.push(e);
+      }
+    }
+
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.age += delta;
 
-      p.trailHistory.unshift(p.group.position.clone());
-      if (p.trailHistory.length > p.trail.length + 1) p.trailHistory.pop();
+      // Ring of pre-allocated vectors: cloning the position every frame for
+      // every projectile was the engine's biggest steady allocation source.
+      const hist = p.trailHistory;
+      const recycled = hist.length > p.trail.length ? hist.pop() : new THREE.Vector3();
+      hist.unshift(recycled.copy(p.group.position));
 
       p.group.position.addScaledVector(p.dir, p.speed * delta);
       p.life -= delta;
@@ -4356,7 +4571,7 @@ class CyberDoomEngine {
       let hitPoint = null;
 
       if (p.owner === 'player') {
-        for (const enemy of this.enemies) {
+        for (const enemy of targets) {
           if (enemy.state === 'DEAD') continue;
           const ePos = enemy.group.position;
           const dx = p.group.position.x - ePos.x;
@@ -4492,6 +4707,25 @@ class CyberDoomEngine {
     }
   }
 
+  /* Per-frame cost buckets, accumulated in ms. Read by tests/perf.js via
+     perfStats(); ~40 ns of Date-free timer per bucket per frame, so it stays
+     on in shipping builds rather than being a debug-only branch. */
+  perfMark() { return performance.now(); }
+  perfAdd(bucket, t0) {
+    const p = this._pf || (this._pf = {});
+    const b = p[bucket] || (p[bucket] = { ms: 0, n: 0 });
+    b.ms += performance.now() - t0; b.n++;
+  }
+  perfStats() {
+    const out = {};
+    for (const k in (this._pf || {})) {
+      const b = this._pf[k];
+      out[k] = b.n ? +(b.ms / b.n).toFixed(4) : 0;
+    }
+    return out;
+  }
+  perfReset() { this._pf = {}; }
+
   updateParticles(delta) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const pt = this.particles[i];
@@ -4503,8 +4737,12 @@ class CyberDoomEngine {
         this.particles.splice(i, 1);
       }
     }
-    if (window.CyberGore) window.CyberGore.update(delta, (x, z) => this.getFloorAt(x, z));
-    if (window.CyberEnv) window.CyberEnv.update(delta);
+    if (window.CyberGore) {
+      const t = this.perfMark();
+      window.CyberGore.update(delta, this._floorAtFn || (this._floorAtFn = (x, z) => this.getFloorAt(x, z)));
+      this.perfAdd('gore', t);
+    }
+    if (window.CyberEnv) { const t = this.perfMark(); window.CyberEnv.update(delta); this.perfAdd('env', t); }
   }
 
   /* ==========================================================================

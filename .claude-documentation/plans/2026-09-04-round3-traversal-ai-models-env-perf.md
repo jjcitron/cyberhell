@@ -42,9 +42,9 @@ many enemies.
 - Every existing test must stay green: `check-exits` 198/198, `check-polys`, `check-clipping`, `qa-collision` 21/21.
 - Report to the lead with SendMessage when done; do not go idle silently.
 
-## Status
+## Status: Completed 2026-09-05
 
-In progress.
+Wave 1 (T1–T4) shipped as b01e6a0; wave 2 (T5 performance) shipped with this commit. Lead QA on the integrated tree: exits 198/198, qa-collision 21/21, qa-deadend-net 6/6, qa-ai 11/11, lead harness (gore, progression, floor walk) clean. Harness fact for the record: teammates could not spawn sub-agents ("roster is flat"), so each lead built its package directly.
 
 ### T1 (traversal & clipping) — delivered
 
@@ -105,3 +105,105 @@ that the bot only partly has.
 you walk through a closed door sector, and sealing them can only create new stuck rooms, which is
 the bug being fixed. Doors therefore animate nothing; local doors keep the existing auto-open.
 Crushers, stair builders and perpetual-platform *stops* are exported as diagnostics only.
+
+### T5 (performance & code) — delivered
+
+**Harness first.** `tests/perf.js` is the repeatable command: it serves the tree on its own port,
+drives a real headless engine over MAP01 plus six converted maps spanning 91 to 20,461 walls, and
+for each one reports level load time and its build phases, draw calls and triangles at spawn and
+across a scripted 20-second walk-and-fight, scene light count, live geometry/texture counts, JS
+simulation cost (median and p95, contention-normalised against the same fixed arithmetic loop
+`tests/qa-ai.js` uses), and the per-module split (AI brains, enemy rigs, gore, environment,
+traversal) from new counters on the engine (`engine.perfStats()`). It then loads three maps back
+to back three times as a leak check, runs a geometry sanity pass, and finally repeats a short run
+in an 851x393 touch context. Usage: `node tests/perf.js [--maps a,b,c] [--seconds N]`, `QA_PORT`
+to move the port.
+
+**Where the cost actually was.** The baseline said the biggest map spent 14.85 ms a frame inside
+`CyberTraversal.update` — nothing to do with rendering. Every frame a lift was moving, the module
+re-derived `getFloorAt` for all 4,161 enemies to catch the handful standing on it. It now collects
+the plan-view boxes of the floors that actually moved and only re-seats bodies inside one. That
+one change is 14.85 ms -> 0.24 ms.
+
+**Static geometry batching.** Walls, floors and ceilings are collected during the build and merged
+per material per 32-unit tile (`batchGeo` / `batchSurface` / `flushBatches`, with a `mergeGeos`
+helper because three r128's core build does not ship `BufferGeometryUtils`). Sector light was
+baked into `material.color`, which is what forced one material per surface; it rides in a vertex
+colour now and the merged material keeps colour white, so the shading is unchanged. Three things
+deliberately keep their own mesh: doors (they slide), switch panels (they repaint), and anything
+adjacent to a sector a trigger can move (traversal rescales those risers every frame). The movable
+set is built from `data.triggers[].act.secs`, which is exactly the set `CyberTraversal.fire` will
+ever move. Horizontal surfaces are keyed by height as well as material so a merged mesh still
+carries `userData.floorY` / `userData.ceilY`.
+
+**Enemy rig LOD.** After batching, the megamap's static world was 394 draw calls and its monsters
+were 5,187: a rig is 50-60 separate meshes. Beyond 22 units only the parts over 20 cm across are
+drawn; beyond 95 units, where the map's own fog has a body at a fifth of its colour, the body is
+not drawn at all. Behaviour is untouched — an enemy the player cannot see still thinks, moves and
+shoots. The pass strides an eighth of the roster per frame and settles fully at level load.
+
+**Level teardown.** `resetLevelScene` now frees the GPU resources behind the objects it drops,
+including a shadow-casting light's render target. Textures the page caches for its whole life
+(the level texture cache, the sky/dust/skyline canvases in `CyberEnv`, the gore sprites, the glow
+sprite) carry a `_shared` flag so the teardown leaves them alone. Measured over three rounds of
+three level loads: live geometries were 998 -> 1,657 -> 2,316 and climbing, now flat at 61.
+
+**Culling, budgets and allocation.** Enemy rig animation gets a frustum test on top of the AI's
+existing distance gate. Player projectiles used to test every enemy on the map once per projectile
+per frame and now test one candidate list gathered per frame. Hitscan, melee, the barrel blast and
+the pickup spin all reject by squared distance before touching an array. `wallsNear` dedups with a
+per-query stamp into a scratch array instead of a quadratic `indexOf`; `getSegDist` was a closure
+rebuilt inside `resolveWallCollisions` on every call and is now a module function writing into one
+scratch record; projectile trails recycle their history vectors; the movement basis vectors are
+scratch; barrels share one cylinder and one material (each used to build its own, plus a 256x256
+`toxic_ooze` canvas that was painted and never attached to anything). `interact()` raycast an array
+of all 20,461 wall meshes it rebuilt on every keypress; it now picks the wall the crosshair is on
+out of the collision grid.
+
+**Mobile.** Pixel ratio caps at 1.5 on a coarse pointer (shadows were already off there), prop and
+particle budgets drop to a third, and the shadow map halves on machines reporting four cores or
+fewer. Verified at 851x393 with touch flags: starts, plays, 227 draw calls at spawn and 1,057
+walking, 0.5 ms median simulation, no page errors.
+
+**Numbers**, contention-normalised, JS only:
+
+| map | walls | calls @spawn | calls walking | sim p95 ms | load ms |
+|---|---|---|---|---|---|
+| MAP01 | 64 | 353 -> 243 | 148 -> 123 | 0.5 -> 0.6 | 46 -> 29 |
+| pack3/json29 | 91 | 161 -> 156 | 198 -> 155 | 0.2 -> 0.3 | 448 -> 534 |
+| pack3/json4 | 776 | 388 -> 317 | 2,430 -> 1,221 | 4.1 -> 3.2 | 534 -> 633 |
+| pack5/json23 | 1,581 | 5,403 -> 1,304 | 2,821 -> 881 | 1.2 -> 1.1 | 2,758 -> 1,981 |
+| dv/json1 | 6,641 | 88 -> 64 | 5,789 -> 896 | 3.8 -> 1.1 | 2,831 -> 1,597 |
+| pack1/json12 | 8,717 | 10,308 -> 2,262 | 8,220 -> 2,022 | 3.2 -> 3.0 | 3,991 -> 2,280 |
+| dv/json2 | 20,461 | 6,277 -> 512 | 11,855 -> 1,603 | 39.5 -> 2.8 | 11,886 -> 7,000 |
+
+The two small maps' load times are inside the noise of fetching over a local server on a contended
+box; the maps where load time mattered are all roughly halved. `dv/json2`'s remaining 7 s is mostly
+fetch and `JSON.parse` of a 4.4 MB file — the in-page build is 2.0 s of it, and 1.35 s of that is
+constructing 4,161 enemy rigs.
+
+**Not done, deliberately.** Incremental chunk building across frames was measured and skipped: the
+in-page build on the biggest map is 2.0 s behind a loading overlay and every other map is under
+0.5 s, so the complexity buys a window nobody sees. Shadow caster ring-scoping was skipped for the
+same reason — merging turned 20,461 caster meshes into a few hundred chunks, and three's own
+shadow-frustum cull already discards the ones outside the sun's tight ortho box. Throttling gore
+and environment particle updates was skipped on measurement: both cost 0.01-0.02 ms a frame.
+`index.html` was not split into modules, per the round's instruction.
+
+**Also fixed.** `killEnemy` snapped every corpse to `rotation.x = PI/2` and `y = 0.2`, which fought
+the death poses `js/cyber-enemies.js` drives off `state === 'DEAD'` and, because 0.2 is a world
+height, dropped corpses killed on a raised floor through it. The 172-line `buildBoxEnemyMesh`
+fallback, dead in any build where `js/cyber-enemies.js` loads, is now a single box. Module load
+order was audited: none of `js/cyber-*.js` touches `THREE` at load time, so loading them before
+`js/three.min.js` is safe.
+
+**Tests.** `check-exits` 198/198, `check-polys` 191/197 (the same six maps), `check-clipping`
+227/296,628 orphan endpoints, `qa-collision` 21/21, `qa-deadend-net` 6/6 (DN-5, the 60-second
+no-progress rule, already existed and stays green), `qa-ai` 11/11, `tests/perf.js` geometry sanity
+0 of 621 sampled surfaces drawn away from where the level data puts them. That geometry check is new and
+earned its keep immediately: it caught a ceiling being transformed twice by the batcher, which
+nothing else in the suite would have noticed. The 198-map `qa-traversal-sweep` was re-run as a
+breadth check on the collision changes: 169/197 walked to the exit (wave one was 165/197), zero
+off-floor frames, zero dead-end-net fires, and 46 wall penetrations against wave one's 48 — 45 of
+them on one map where the bot takes an unplanned teleport and then marches at a stale waypoint,
+the same single-map profile wave one reported.

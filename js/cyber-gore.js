@@ -349,6 +349,11 @@
       _tmpDir = new THREE.Vector3();
       mistTexture = makeMistTexture();
       splashTexture = makeSplashTexture();
+      // Built once for the page, not once per level: the engine's level
+      // teardown frees every texture on the materials it drops unless it is
+      // flagged as shared (see disposeObject3D in index.html).
+      mistTexture._shared = true;
+      splashTexture._shared = true;
 
       var dropGeo = new THREE.SphereGeometry(1, 4, 3);
       // Emissive floor is ~0.25 of the 0xc41022 base colour so blood still

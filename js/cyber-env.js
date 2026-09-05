@@ -21,8 +21,15 @@
   var dustVel = null;       // Float32Array parallel to dust positions
   var t = 0;
 
-  var TOTAL_BUDGET = 300;
-  var TYPE_BUDGET = { ceilLight: 60, pipe: 80, crate: 60, rack: 30, cable: 40, sign: 30 };
+  // Touch devices get a third of the dressing: the props are instanced so
+  // they are cheap to draw, but each one is still a matrix and a shadow
+  // caster, and a phone has neither the fill rate nor the memory to spare.
+  var MOBILE = (typeof window !== 'undefined' && window.matchMedia)
+    ? window.matchMedia('(pointer: coarse)').matches : false;
+  var TOTAL_BUDGET = MOBILE ? 100 : 300;
+  var TYPE_BUDGET = MOBILE
+    ? { ceilLight: 20, pipe: 26, crate: 20, rack: 10, cable: 14, sign: 10 }
+    : { ceilLight: 60, pipe: 80, crate: 60, rack: 30, cable: 40, sign: 30 };
 
   // ---- theme detection -----------------------------------------------
   // No raw Doom texture names survive the converter, only the family
@@ -85,6 +92,9 @@
     ctx.fillRect(0, 0, 8, 256);
     var tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+    // Cached for the life of the page, so the engine's level teardown must
+    // not free it (see disposeObject3D in index.html).
+    tex._shared = true;
     _skyCache[theme] = tex;
     return tex;
   }
@@ -107,6 +117,7 @@
     }
     var tex = new THREE.CanvasTexture(canvas);
     tex.transparent = true;
+    tex._shared = true;
     _skylineTex = tex;
     return tex;
   }
@@ -139,11 +150,12 @@
     g.addColorStop(0, '#fff'); g.addColorStop(1, '#fff0');
     ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 16);
     _dotTex = new THREE.CanvasTexture(canvas);
+    _dotTex._shared = true;
     return _dotTex;
   }
 
   function buildDust(theme) {
-    var count = 220;
+    var count = MOBILE ? 90 : 220;
     var positions = new Float32Array(count * 3);
     dustVel = new Float32Array(count * 3);
     var spread = 26;

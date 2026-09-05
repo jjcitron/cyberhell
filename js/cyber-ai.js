@@ -967,6 +967,7 @@
      documented autoDrive switch and run it AFTER placement, over the enemies
      near enough to see. The underlying baked-rest-height bug is still worth
      fixing in js/cyber-enemies.js. */
+  var _frustum = null, _fm = null, _sphere = null;
   function animate(engine, delta) {
     var CE = (typeof window !== 'undefined') && window.CyberEnemies;
     if (!CE || !CE.animate) return;
@@ -976,8 +977,22 @@
     var NEAR2 = TUNING.animRadius * TUNING.animRadius;
     var slow = frameNo % TUNING.animSlowRate;
     var shown = 0;
+    // A body behind the camera is drawn by nobody, so animating its rig is
+    // pure cost. One matrix multiply builds the test for the whole frame.
+    if (T && !_frustum) { _frustum = new T.Frustum(); _fm = new T.Matrix4(); _sphere = new T.Sphere(); }
+    if (_frustum) {
+      engine.camera.updateMatrixWorld();
+      _fm.multiplyMatrices(engine.camera.projectionMatrix, engine.camera.matrixWorldInverse);
+      _frustum.setFromProjectionMatrix(_fm);
+    }
     for (var i = 0; i < animList.length; i++) {
       var e = animList[i];
+      if (_frustum && !_frustum.containsPoint(e.group.position)) {
+        // Its feet may still be inside the view even when the origin is not,
+        // so allow a body's worth of slack before skipping.
+        var cp = e.group.position;
+        if (!_frustum.intersectsSphere(_sphere.set(cp, 1.6))) { reassert(e); continue; }
+      }
       // Rig animation is the most expensive thing per body (limbs, jaws,
       // emissive pulses). Close bodies animate every frame; the rest of the
       // 40-unit set animates on a third of them, which nobody reads as choppy
