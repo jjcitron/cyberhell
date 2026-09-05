@@ -179,8 +179,11 @@ const PROBE = function (samples, steps) {
       const p = e.camera.position;
 
       // CH-COL-8: did this step cross a wall that spans the body?
+      // A teleporter legitimately puts the player on the far side of every
+      // wall between here and there, so skip the frame it fired on.
       const feet = p.y - e.player.height, head = p.y;
-      if (Math.hypot(p.x - prevX, p.z - prevZ) > 0.01) {
+      const teleported = e.player.teleGrace > 0.99;
+      if (!teleported && Math.hypot(p.x - prevX, p.z - prevZ) > 0.01) {
         const spanR = Math.hypot(p.x - prevX, p.z - prevZ) / 2 + 0.1;
         for (const w of e.wallsNear((p.x + prevX) / 2, (p.z + prevZ) / 2, spanR)) {
           // Doors and switches drop `solid` when the player triggers them, so

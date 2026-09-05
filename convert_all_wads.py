@@ -183,6 +183,186 @@ def point_in_polys(x, z, polys):
             j = i
     return inside
 
+
+# --------------------------------------------------------------------------
+# Doom linedef specials the engine models.
+#
+# Doom moves the player between floor heights with lifts, switch-raised floors
+# and teleporters.  None of that was exported, so every drop-only pocket in a
+# converted map was a dead end.  This table is the whole classification; the
+# engine and tests/reachability.js read the `act` objects it produces and
+# never look at the raw special number again.
+#
+# kind  : lift | floor | tele | door
+# trig  : use (S/D switch or manual) | walk (W walkover) | gun (G shoot)
+# rep   : repeatable (R) vs one-shot (1)
+# to    : where a moving floor ends up -- resolved against sector neighbours
+# amt   : fixed rise in DOOM units (scaled on export)
+# --------------------------------------------------------------------------
+
+def _lift(trig, rep, fast=False):
+    return {'kind': 'lift', 'trig': trig, 'rep': rep,
+            'speed': 8.0 if fast else 4.0, 'wait': 1.75 if fast else 3.0}
+
+
+def _floor(trig, rep, to, direction, amt=0, fast=False):
+    d = {'kind': 'floor', 'trig': trig, 'rep': rep, 'to': to, 'dir': direction,
+         'speed': 4.0 if fast else 1.0}
+    if amt:
+        d['amt'] = amt
+    return d
+
+
+def _tele(trig, rep):
+    return {'kind': 'tele', 'trig': trig, 'rep': rep}
+
+
+def _door(trig, rep, local):
+    return {'kind': 'door', 'trig': trig, 'rep': rep, 'local': local}
+
+
+LINE_SPECIALS = {}
+
+for _s, _t, _r, _f in [(10, 'walk', False, False), (21, 'use', False, False),
+                       (62, 'use', True, False), (88, 'walk', True, False),
+                       (120, 'walk', True, True), (121, 'walk', False, True),
+                       (122, 'use', False, True), (123, 'use', True, True)]:
+    LINE_SPECIALS[_s] = _lift(_t, _r, _f)
+
+# Floor lowers to the lowest neighbouring floor.
+for _s, _t, _r in [(19, 'walk', False), (23, 'use', False), (38, 'walk', False),
+                   (60, 'use', True), (82, 'walk', True), (102, 'use', False),
+                   (37, 'walk', False), (84, 'walk', True), (83, 'walk', True)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'lowest', 'down')
+
+# Floor lowers to the HIGHEST neighbouring floor (turbo lowers).
+for _s, _t, _r in [(36, 'walk', False), (70, 'use', True),
+                   (71, 'use', False), (98, 'walk', True)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'highest', 'down', fast=True)
+
+# Floor raises to the next higher neighbouring floor.  30/96 are really
+# raise-to-texture-height and 9/20 are donuts; the next higher neighbour is
+# the right answer for "can I now walk up here", which is all we model.
+for _s, _t, _r, _f in [(18, 'use', False, False), (22, 'walk', False, False),
+                       (47, 'gun', False, False), (69, 'use', True, False),
+                       (95, 'walk', True, False), (119, 'walk', False, False),
+                       (128, 'walk', True, False), (129, 'walk', True, True),
+                       (130, 'walk', False, True), (131, 'use', False, True),
+                       (132, 'use', True, True), (9, 'use', False, False),
+                       (20, 'walk', False, False), (30, 'walk', False, False),
+                       (96, 'walk', True, False)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'nextHigher', 'up', fast=_f)
+
+# Floor raises until it meets the lowest neighbouring ceiling.
+for _s, _t, _r in [(5, 'walk', False), (24, 'gun', False), (64, 'use', True),
+                   (91, 'walk', True), (101, 'use', False)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'lowestCeil', 'up')
+
+# ... stopping 8 units short of it.
+for _s, _t, _r in [(55, 'use', False), (56, 'walk', False),
+                   (65, 'use', True), (94, 'walk', True)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'lowestCeil8', 'up')
+
+# Fixed rises.
+for _s, _t, _r, _a in [(58, 'walk', False, 24), (59, 'walk', False, 24),
+                       (92, 'walk', True, 24), (93, 'walk', True, 24),
+                       (15, 'use', False, 24), (66, 'use', True, 24),
+                       (67, 'use', True, 32), (14, 'use', False, 32),
+                       (140, 'use', False, 512)]:
+    LINE_SPECIALS[_s] = _floor(_t, _r, 'amt', 'up', amt=_a)
+
+# Perpetual raise/lower platforms: they oscillate between the lowest and the
+# highest neighbouring floor forever.  Modelled as a lift, which gives the
+# same envelope and the same "you can get up there" answer.
+for _s, _t, _r in [(53, 'walk', False), (87, 'walk', True)]:
+    LINE_SPECIALS[_s] = _lift(_t, _r)
+# Stragglers the first pass logged as unknown and that really do move a floor.
+LINE_SPECIALS[45] = _floor('use', True, 'highest', 'down')
+LINE_SPECIALS[68] = _floor('use', True, 'nextHigher', 'up')
+LINE_SPECIALS[40] = _floor('walk', False, 'lowest', 'down')
+
+for _s, _t, _r in [(39, 'walk', False), (97, 'walk', True),
+                   (125, 'walk', False), (126, 'walk', True)]:
+    LINE_SPECIALS[_s] = _tele(_t, _r)
+
+# Doors are markers only: the engine already lets you through a closed door
+# sector (converted door sectors are never sealed, precisely so a missing
+# door action cannot lock anyone in), and the local ones auto-open on
+# approach.  Exporting them keeps the diagnostics honest.
+for _s in [1, 26, 27, 28, 31, 32, 33, 34, 117, 118]:
+    LINE_SPECIALS[_s] = _door('use', _s in (1, 26, 27, 28, 117), True)
+for _s, _t, _r in [(2, 'walk', False), (3, 'walk', False), (4, 'walk', False),
+                   (16, 'walk', False), (29, 'use', False), (42, 'use', True),
+                   (46, 'gun', True), (50, 'use', False), (61, 'use', True),
+                   (63, 'use', True), (75, 'walk', True), (76, 'walk', True),
+                   (86, 'walk', True), (90, 'walk', True), (99, 'use', True),
+                   (103, 'use', False), (105, 'walk', True), (106, 'walk', True),
+                   (107, 'walk', True), (108, 'walk', False), (109, 'walk', False),
+                   (110, 'walk', False), (111, 'use', False), (112, 'use', False),
+                   (113, 'use', False), (114, 'use', True), (115, 'use', True),
+                   (116, 'use', True), (133, 'use', False), (134, 'use', True),
+                   (135, 'use', False), (136, 'use', True), (137, 'use', False)]:
+    LINE_SPECIALS[_s] = _door(_t, _r, False)
+
+# Modelled elsewhere or deliberately not modelled -- counted, never warned about.
+EXIT_SPECIALS = {11, 51, 52, 124}
+IGNORED_SPECIALS = (
+    {7, 8, 100, 127}                                   # stair builders
+    | {6, 25, 49, 57, 73, 77, 141}                     # crushers (never crush the player)
+    | {17, 35, 79, 80, 81, 104, 138, 139}              # light levels
+    | {48, 85}                                         # scrolling textures
+    | {12, 13}                                         # more light levels
+    | {74, 89}                                         # stop a moving platform
+)
+
+
+def sector_neighbours(linedefs, sidedefs, nsectors):
+    """{sector_id: set(neighbouring sector ids)} from two-sided linedefs."""
+    nb = defaultdict(set)
+    for ld in linedefs:
+        s1, s2 = ld[5], ld[6]
+        if s1 == NO_SIDEDEF or s2 == NO_SIDEDEF:
+            continue
+        if s1 >= len(sidedefs) or s2 >= len(sidedefs):
+            continue
+        a, b = sidedefs[s1][5], sidedefs[s2][5]
+        if a == b or not (0 <= a < nsectors) or not (0 <= b < nsectors):
+            continue
+        nb[a].add(b)
+        nb[b].add(a)
+    return nb
+
+
+def floor_action_target(sec_id, spec, sectors_raw, nb):
+    """Where this floor/lift action leaves the sector floor, in DOOM units.
+    Returns the sector own floor height when the action cannot move it."""
+    own_f = sectors_raw[sec_id][0]
+    peers = nb.get(sec_id, ())
+    if spec['kind'] == 'lift':
+        return min([sectors_raw[n][0] for n in peers], default=own_f)
+    to = spec.get('to')
+    if to == 'amt':
+        return own_f + spec['amt']
+    if not peers:
+        return own_f
+    if to == 'lowest':
+        return min(sectors_raw[n][0] for n in peers)
+    if to == 'highest':
+        return max(sectors_raw[n][0] for n in peers)
+    if to == 'nextHigher':
+        higher = [sectors_raw[n][0] for n in peers if sectors_raw[n][0] > own_f]
+        return min(higher) if higher else own_f
+    if to == 'lowestCeil':
+        return min(sectors_raw[n][1] for n in peers)
+    if to == 'lowestCeil8':
+        return min(sectors_raw[n][1] for n in peers) - 8
+    return own_f
+
+
+PACK_STATS = {'acts': defaultdict(int), 'unknown': defaultdict(int),
+              'teleDropped': 0, 'movingSectors': 0, 'loSectors': 0, 'hiSectors': 0}
+
+
 def convert_wad(wad_filename, pack_id, pack_title):
     out_dir = os.path.join('levelPacks', pack_id)
     os.makedirs(out_dir, exist_ok=True)
@@ -277,6 +457,86 @@ def convert_wad(wad_filename, pack_id, pack_title):
                         return round(sectors_raw[s_id][0] * SCALE, 2)
                 return None
 
+            # ---- traversal specials -------------------------------------
+            # Every linedef special that can move a floor or teleport the
+            # player is resolved here, once, into an `act` object and folded
+            # into the target sectors' floor-height envelope (loY..hiY).  The
+            # engine and tests/reachability.js both read the envelope instead
+            # of re-deriving Doom's rules, so they cannot disagree.
+            nb_sectors = sector_neighbours(linedefs, sidedefs, len(sectors_raw))
+            tag_sectors = defaultdict(list)
+            for _i, _s in enumerate(sectors_raw):
+                if _s[6]:
+                    tag_sectors[_s[6]].append(_i)
+
+            # Doom thing 14 is a teleport landing spot; index them by the tag
+            # of the sector they stand in.
+            tele_landing = {}
+            _t14 = [(round(t[0] * SCALE, 2), round(-t[1] * SCALE, 2),
+                     round((360 - t[2]) * math.pi / 180.0, 3))
+                    for t in things_raw if t[3] == 14]
+            if _t14:
+                for _tag, _secs in tag_sectors.items():
+                    for (_dx, _dz, _da) in _t14:
+                        if any(sec_polys.get(s) and point_in_polys(_dx, _dz, sec_polys[s])
+                               for s in _secs):
+                            tele_landing[_tag] = [_dx, _dz, _da]
+                            break
+
+            sec_lo = [s[0] for s in sectors_raw]      # DOOM units
+            sec_hi = [s[0] for s in sectors_raw]
+            line_acts = {}
+            spec_tally = defaultdict(int)
+            unknown_specials = defaultdict(int)
+            tele_dropped = 0
+            for _idx, _ld in enumerate(linedefs):
+                _spec_no, _tag = _ld[3], _ld[4]
+                if not _spec_no:
+                    continue
+                spec = LINE_SPECIALS.get(_spec_no)
+                if spec is None:
+                    if _spec_no not in EXIT_SPECIALS and _spec_no not in IGNORED_SPECIALS:
+                        unknown_specials[_spec_no] += 1
+                    continue
+                if spec['kind'] == 'tele':
+                    dest = tele_landing.get(_tag)
+                    if dest is None:
+                        tele_dropped += 1
+                        continue
+                    line_acts[_idx] = {'kind': 'tele', 'trig': spec['trig'],
+                                       'rep': spec['rep'], 'dest': dest}
+                    spec_tally['tele'] += 1
+                    continue
+                if spec['kind'] == 'door' and spec['local']:
+                    _s2 = _ld[6]
+                    _back = sidedefs[_s2][5] if _s2 != NO_SIDEDEF and _s2 < len(sidedefs) else None
+                    targets = [_back] if _back is not None and 0 <= _back < len(sectors_raw) else []
+                else:
+                    targets = tag_sectors.get(_tag, [])
+                act = {'kind': spec['kind'], 'trig': spec['trig'], 'rep': spec['rep']}
+                if spec['kind'] == 'lift':
+                    act['wait'] = spec['wait']
+                    act['speed'] = spec['speed']
+                elif spec['kind'] == 'floor':
+                    act['dir'] = spec['dir']
+                    act['speed'] = spec['speed']
+                if targets:
+                    act['secs'] = targets
+                if spec['kind'] in ('lift', 'floor'):
+                    for _s in targets:
+                        _t = floor_action_target(_s, spec, sectors_raw, nb_sectors)
+                        if _t < sec_lo[_s]:
+                            sec_lo[_s] = _t
+                        if _t > sec_hi[_s]:
+                            sec_hi[_s] = _t
+                line_acts[_idx] = act
+                spec_tally[spec['kind']] += 1
+
+            # Sectors whose floor can move, and the linedefs that need fs/bs
+            # so the engine can slide their riser mesh with it.
+            moving_sectors = set(_i for _i in range(len(sectors_raw))
+                                 if sec_lo[_i] != sectors_raw[_i][0] or sec_hi[_i] != sectors_raw[_i][0])
+
             sectors_json = []
             rect_fallbacks = []
             for sec_id, sec in enumerate(sectors_raw):
@@ -337,6 +597,12 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     'width': max(1.0, w),
                     'depth': max(1.0, d)
                 })
+                if tag:
+                    sectors_json[-1]['tag'] = tag
+                if sec_lo[sec_id] != floor_h:
+                    sectors_json[-1]['loY'] = round(sec_lo[sec_id] * SCALE, 2)
+                if sec_hi[sec_id] != floor_h:
+                    sectors_json[-1]['hiY'] = round(sec_hi[sec_id] * SCALE, 2)
 
             # Doom movement rules this encodes:
             #   - auto-climb a floor step up to 24 map units, no jump needed
@@ -456,7 +722,44 @@ def convert_wad(wad_filename, pack_id, pack_title):
                     w['loFloor'] = round(bottom_y, 2)
                     w['hiFloor'] = round(top_y, 2)
 
+                act = line_acts.get(idx)
+                if special:
+                    w['special'] = special
+                if tag:
+                    w['tag'] = tag
+                if act:
+                    w['act'] = act
+                    w['ai'] = idx
+                # fs/bs only where something can actually consult them: an
+                # acted-on line, or a riser next to a floor that moves.
+                sec2_for_json = (sidedefs[s2_idx][5]
+                                 if not is_single and s2_idx < len(sidedefs) else -1)
+                if act or sec1_id in moving_sectors or sec2_for_json in moving_sectors:
+                    w['fs'] = sec1_id
+                    w['bs'] = sec2_for_json if sec2_for_json != -1 else -1
+
                 walls_json.append(w)
+
+            # Trigger lines, independent of the wall list.  Most lifts and
+            # every teleporter sit on a two-sided line with no floor step, so
+            # the wall loop above skips them entirely (`h_diff < 1: continue`)
+            # and their action would be lost.  `i` is the linedef index, which
+            # is also `ai` on the wall when one exists, so the engine can keep
+            # a single one-shot flag per linedef.
+            triggers_json = []
+            for _idx, _act in line_acts.items():
+                if _act['kind'] == 'door':
+                    continue            # door sectors are never sealed: nothing to do
+                _ld = linedefs[_idx]
+                if _ld[0] >= len(verts) or _ld[1] >= len(verts):
+                    continue
+                _p1, _p2 = verts[_ld[0]], verts[_ld[1]]
+                triggers_json.append({
+                    'i': _idx,
+                    'p1': [round(_p1[0] * SCALE, 2), round(-_p1[1] * SCALE, 2)],
+                    'p2': [round(_p2[0] * SCALE, 2), round(-_p2[1] * SCALE, 2)],
+                    'act': _act,
+                })
 
             player_spawn = {'pos': [0, 1.2, 0], 'rot': 0}
             for t in things_raw:
@@ -524,6 +827,7 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 "playerSpawn": player_spawn,
                 "sectors": sectors_json,
                 "walls": walls_json,
+                "triggers": triggers_json,
                 "entities": entities_json
             }
 
@@ -541,10 +845,23 @@ def convert_wad(wad_filename, pack_id, pack_title):
                 "entities": len(entities_json)
             })
 
+            for _k, _v in spec_tally.items():
+                PACK_STATS['acts'][_k] += _v
+            for _k, _v in unknown_specials.items():
+                PACK_STATS['unknown'][_k] += _v
+            PACK_STATS['teleDropped'] += tele_dropped
+            PACK_STATS['movingSectors'] += len(moving_sectors)
+            PACK_STATS['loSectors'] += sum(1 for _i in range(len(sectors_raw))
+                                           if sec_lo[_i] != sectors_raw[_i][0])
+            PACK_STATS['hiSectors'] += sum(1 for _i in range(len(sectors_raw))
+                                           if sec_hi[_i] != sectors_raw[_i][0])
+
             print(f"[{pack_id}] Converted Level {map_num} ({map_name}) -> {json_file_path}"
                   f"  [{poly_fallbacks} unclosed chain(s), "
                   f"{len(rect_fallbacks)} rectangle fallback(s), "
-                  f"{nudged} thing(s) nudged out of walls]")
+                  f"{nudged} thing(s) nudged out of walls, "
+                  f"{sum(spec_tally.values())} action(s), "
+                  f"{len(moving_sectors)} moving sector(s)]")
 
     manifest_path = os.path.join(out_dir, 'manifest.json')
     with open(manifest_path, 'w', encoding='utf-8') as mf:
@@ -579,6 +896,16 @@ def convert_all():
     master_path = os.path.join('levelPacks', 'packs.json')
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master_manifest, f, indent=2)
+
+    print("\n--- traversal specials ---")
+    for k in sorted(PACK_STATS['acts'], key=lambda k: -PACK_STATS['acts'][k]):
+        print(f"  {k:6s} {PACK_STATS['acts'][k]}")
+    print(f"  sectors with a lowerable floor (loY): {PACK_STATS['loSectors']}")
+    print(f"  sectors with a raisable floor  (hiY): {PACK_STATS['hiSectors']}")
+    print(f"  teleport lines dropped for want of a landing spot: {PACK_STATS['teleDropped']}")
+    unk = sorted(PACK_STATS['unknown'].items(), key=lambda kv: -kv[1])
+    print(f"  unknown specials ({len(unk)} kinds): " +
+          ", ".join(f"{s}x{n}" for s, n in unk[:15]))
 
     print(f"\nALL WADs CONVERTED SUCCESSFUL! Master manifest saved to {master_path}")
     print("Sectors now carry real boundary polygons; the bounding rectangle is")

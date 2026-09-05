@@ -1,0 +1,278 @@
+{
+ "name": "AI HIDDEN",
+ "skyColor": 526356,
+ "fogColor": 723736,
+ "fogDensity": 0.008,
+ "ambientLight": 4478310,
+ "sunLight": {
+  "color": 8952234,
+  "intensity": 1,
+  "pos": [
+   30,
+   80,
+   -30
+  ]
+ },
+ "playerSpawn": {
+  "pos": [
+   10,
+   0,
+   18
+  ],
+  "rot": 0
+ },
+ "sectors": [
+  {
+   "id": "secA",
+   "polys": [
+    [
+     [
+      0,
+      0
+     ],
+     [
+      20,
+      0
+     ],
+     [
+      20,
+      14
+     ],
+     [
+      0,
+      14
+     ]
+    ]
+   ],
+   "area": 280,
+   "floorY": 0,
+   "ceilY": 6.4,
+   "floorTex": "metal_grate",
+   "ceilTex": "tech_panel",
+   "light": 0.8,
+   "isSky": false,
+   "x": 10,
+   "z": 7,
+   "width": 20,
+   "depth": 14
+  },
+  {
+   "id": "secB",
+   "polys": [
+    [
+     [
+      0,
+      16
+     ],
+     [
+      20,
+      16
+     ],
+     [
+      20,
+      30
+     ],
+     [
+      0,
+      30
+     ]
+    ]
+   ],
+   "area": 280,
+   "floorY": 0,
+   "ceilY": 6.4,
+   "floorTex": "metal_grate",
+   "ceilTex": "tech_panel",
+   "light": 0.8,
+   "isSky": false,
+   "x": 10,
+   "z": 23,
+   "width": 20,
+   "depth": 14
+  }
+ ],
+ "walls": [
+  {
+   "p1": [
+    0,
+    0
+   ],
+   "p2": [
+    20,
+    0
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    20,
+    0
+   ],
+   "p2": [
+    20,
+    14
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    20,
+    14
+   ],
+   "p2": [
+    0,
+    14
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    0,
+    14
+   ],
+   "p2": [
+    0,
+    0
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    0,
+    16
+   ],
+   "p2": [
+    20,
+    16
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    20,
+    16
+   ],
+   "p2": [
+    20,
+    30
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    20,
+    30
+   ],
+   "p2": [
+    0,
+    30
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    0,
+    30
+   ],
+   "p2": [
+    0,
+    16
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  }
+ ],
+ "entities": [
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    6,
+    0,
+    12
+   ],
+   "rot": 0
+  },
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    8,
+    0,
+    12
+   ],
+   "rot": 0
+  },
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    10,
+    0,
+    12
+   ],
+   "rot": 0
+  },
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    12,
+    0,
+    12
+   ],
+   "rot": 0
+  },
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    14,
+    0,
+    12
+   ],
+   "rot": 0
+  },
+  {
+   "type": "soldier",
+   "enemyType": 3004,
+   "pos": [
+    16,
+    0,
+    12
+   ],
+   "rot": 0
+  }
+ ]
+}

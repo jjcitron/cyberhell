@@ -7,8 +7,11 @@
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
   <script src="js/cyber-enemies.js"></script>
+  <script src="js/cyber-ai.js"></script>
   <script src="js/cyber-weapons.js"></script>
   <script src="js/cyber-gore.js"></script>
+  <script src="js/cyber-env.js"></script>
+  <script src="js/cyber-traversal.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -101,6 +104,30 @@
       opacity: 0;
       transition: opacity 0.15s ease-out;
       z-index: 9;
+    }
+
+    /* Dead-end extraction prompt. Its own element so it can persist while
+       showHudMessage keeps timing itself out underneath. */
+    #hud-deadend {
+      position: absolute;
+      top: 64px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #ffd166;
+      text-shadow: 0 0 10px #ff8a00;
+      background: rgba(30, 12, 0, 0.8);
+      border: 1px solid #ff8a00;
+      padding: 6px 18px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      pointer-events: none;
+      z-index: 13;
+      text-transform: uppercase;
+      white-space: nowrap;
     }
 
     /* Message Banner */
@@ -601,6 +628,7 @@
     <div id="damage-flash"></div>
     <div id="pickup-flash"></div>
     <div id="hud-message">SYSTEM ONLINE</div>
+    <div id="hud-deadend"></div>
 
     <!-- Retro-Cyber HUD Status Bar -->
     <div id="hud-bar">
@@ -1389,188 +1417,15 @@ class SoundEngine {
    Creates moody cyberpunk metal, mainframes, hazard signs, and glowing grids
    ========================================================================== */
 class TextureFactory {
-  static create(name) {
+  /* ---- shared drawing helpers (kept tiny and reused so 11 families x up to
+     3 variants doesn't balloon into copy-pasted canvas code) ---- */
+  static ctxFor(size) {
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.height = size;
+    return { canvas, ctx: canvas.getContext('2d') };
+  }
 
-    switch (name) {
-      case 'metal_grate':
-        ctx.fillStyle = '#161a22';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.strokeStyle = '#222d3d';
-        ctx.lineWidth = 4;
-        for (let i = 0; i < 256; i += 32) {
-          ctx.strokeRect(i, 0, 32, 256);
-          ctx.strokeRect(0, i, 256, 32);
-        }
-        ctx.fillStyle = '#00ffee33';
-        for (let x = 16; x < 256; x += 32) {
-          for (let y = 16; y < 256; y += 32) {
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        break;
-
-      case 'blue_grid': // MAP01 North Room Floor
-        ctx.fillStyle = '#060b18';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.strokeStyle = '#0088ff';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = '#00aaff';
-        ctx.shadowBlur = 6;
-        for (let i = 0; i <= 256; i += 64) {
-          ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
-        }
-        ctx.fillStyle = '#0044aa';
-        ctx.fillRect(68, 68, 120, 120);
-        break;
-
-      case 'tech_wall':
-        ctx.fillStyle = '#12161f';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#1e2636';
-        ctx.fillRect(10, 10, 236, 110);
-        ctx.fillRect(10, 136, 236, 110);
-        // Rivets
-        ctx.fillStyle = '#00ffff';
-        [[20,20], [236,20], [20,110], [236,110], [20,146], [236,146], [20,236], [236,236]].forEach(([x,y]) => {
-          ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
-        });
-        // Glowing cyan seam
-        ctx.fillStyle = '#00ffee';
-        ctx.shadowColor = '#00ffff';
-        ctx.shadowBlur = 8;
-        ctx.fillRect(0, 124, 256, 4);
-        break;
-
-      case 'mainframe':
-        ctx.fillStyle = '#090d14';
-        ctx.fillRect(0, 0, 256, 256);
-        // Server slots with blinking LEDs
-        for (let y = 16; y < 240; y += 36) {
-          ctx.fillStyle = '#151d28';
-          ctx.fillRect(16, y, 224, 28);
-          ctx.fillStyle = Math.random() > 0.3 ? '#00ff66' : '#ff0055';
-          ctx.fillRect(28, y + 8, 8, 12);
-          ctx.fillStyle = '#00ffff';
-          ctx.fillRect(44, y + 8, 8, 12);
-          ctx.fillStyle = '#ffaa00';
-          ctx.fillRect(60, y + 8, 8, 12);
-          // Vents
-          ctx.fillStyle = '#080a0e';
-          for (let vx = 90; vx < 220; vx += 12) {
-            ctx.fillRect(vx, y + 6, 6, 16);
-          }
-        }
-        break;
-
-      case 'cyber_rust':
-        ctx.fillStyle = '#261c16';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#3a271c';
-        for (let i = 0; i < 40; i++) {
-          ctx.fillRect(Math.random()*230, Math.random()*230, 20 + Math.random()*30, 15 + Math.random()*20);
-        }
-        ctx.fillStyle = '#130c08';
-        ctx.fillRect(0, 0, 256, 8);
-        ctx.fillRect(0, 248, 256, 8);
-        break;
-
-      case 'hazard':
-        ctx.fillStyle = '#e6b800';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#111';
-        ctx.beginPath();
-        for (let i = -256; i < 512; i += 64) {
-          ctx.moveTo(i, 0);
-          ctx.lineTo(i + 32, 0);
-          ctx.lineTo(i + 32 + 256, 256);
-          ctx.lineTo(i + 256, 256);
-        }
-        ctx.fill();
-        break;
-
-      case 'door_blast':
-        ctx.fillStyle = '#1a222e';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 6;
-        ctx.strokeRect(12, 12, 232, 232);
-        // Hydraulic central handle & hazard border
-        ctx.fillStyle = '#ff9900';
-        ctx.fillRect(24, 24, 208, 16);
-        ctx.fillRect(24, 216, 208, 16);
-        ctx.fillStyle = '#0d131a';
-        ctx.fillRect(64, 80, 128, 96);
-        ctx.fillStyle = '#00ffcc';
-        ctx.font = 'bold 24px Courier';
-        ctx.fillText('UAC ACCESS', 72, 136);
-        break;
-
-      case 'switch_off':
-        ctx.fillStyle = '#18202c';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#ff0044';
-        ctx.shadowColor = '#ff0044';
-        ctx.shadowBlur = 15;
-        ctx.fillRect(80, 80, 96, 96);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 20px Courier';
-        ctx.fillText('OFF', 108, 135);
-        break;
-
-      case 'switch_on':
-        ctx.fillStyle = '#18202c';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#00ff88';
-        ctx.shadowColor = '#00ff88';
-        ctx.shadowBlur = 20;
-        ctx.fillRect(80, 80, 96, 96);
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 20px Courier';
-        ctx.fillText('ON', 114, 135);
-        break;
-
-      case 'toxic_ooze':
-        ctx.fillStyle = '#0a2212';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#00ff44';
-        ctx.shadowColor = '#00ff44';
-        ctx.shadowBlur = 12;
-        for (let i = 0; i < 20; i++) {
-          ctx.beginPath();
-          ctx.arc(Math.random()*256, Math.random()*256, 8 + Math.random()*24, 0, Math.PI*2);
-          ctx.fill();
-        }
-        break;
-
-      case 'city_ruins':
-        ctx.fillStyle = '#080912';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#141828';
-        // Silhouette buildings
-        for (let bx = 0; bx < 256; bx += 32) {
-          const bh = 80 + Math.random() * 120;
-          ctx.fillRect(bx, 256 - bh, 28, bh);
-          // Glowing cyber windows
-          ctx.fillStyle = Math.random() > 0.5 ? '#ff0055' : '#00ffff';
-          for (let wy = 256 - bh + 10; wy < 240; wy += 20) {
-            ctx.fillRect(bx + 6, wy, 4, 6);
-          }
-          ctx.fillStyle = '#141828';
-        }
-        break;
-
-      default:
-        ctx.fillStyle = '#222';
-        ctx.fillRect(0, 0, 256, 256);
-    }
-
+  static finish(canvas) {
     const texture = new THREE.CanvasTexture(canvas);
     texture.generateMipmaps = true;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -1580,7 +1435,335 @@ class TextureFactory {
     texture.wrapT = THREE.RepeatWrapping;
     return texture;
   }
+
+  static grime(ctx, S, amount, tint) {
+    ctx.save();
+    ctx.globalAlpha = amount;
+    ctx.fillStyle = tint || '#000';
+    const n = Math.floor((S * S) / 900);
+    for (let i = 0; i < n; i++) {
+      const x = Math.random() * S, y = Math.random() * S, r = 1 + Math.random() * (S / 90);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  static rivets(ctx, pts, color, r) {
+    ctx.fillStyle = color;
+    pts.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, r || 4, 0, Math.PI * 2); ctx.fill(); });
+  }
+
+  static bevelRect(ctx, x, y, w, h, base, light, dark) {
+    ctx.fillStyle = base; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = light; ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y, 2, h);
+    ctx.fillStyle = dark; ctx.fillRect(x, y + h - 2, w, 2); ctx.fillRect(x + w - 2, y, 2, h);
+  }
+
+  static glowRect(ctx, x, y, w, h, color, blur) {
+    ctx.save();
+    ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = blur || 8;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  static variantCount(name) { return TextureFactory.VARIANTS[name] || 1; }
+  static wrap(v, n) { return ((v % n) + n) % n; }
+
+  static create(name, variant) {
+    const n = TextureFactory.variantCount(name);
+    const v = TextureFactory.wrap(variant || 0, n);
+    const size = TextureFactory.BIG.has(name) ? 512 : 256;
+    const { canvas, ctx } = TextureFactory.ctxFor(size);
+    TextureFactory.paintDiffuse(ctx, size, name, v);
+    return TextureFactory.finish(canvas);
+  }
+
+  // Black canvas with only the glowing elements repainted, for use as an
+  // emissiveMap. Families with nothing to glow return null so the caller
+  // skips the emissive material fields entirely.
+  static createEmissive(name, variant) {
+    if (!TextureFactory.GLOWS.has(name)) return null;
+    const n = TextureFactory.variantCount(name);
+    const v = TextureFactory.wrap(variant || 0, n);
+    const size = TextureFactory.BIG.has(name) ? 512 : 256;
+    const { canvas, ctx } = TextureFactory.ctxFor(size);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size, size);
+    TextureFactory.paintEmissive(ctx, size, name, v);
+    return TextureFactory.finish(canvas);
+  }
+
+  static paintDiffuse(ctx, S, name, v) {
+    const s = S / 256; // scale factor for the 512px "BIG" families
+    switch (name) {
+      case 'metal_grate': { // vent grille (walls) / grated floor
+        const base = v === 2 ? '#1c1712' : '#161a22';
+        ctx.fillStyle = base; ctx.fillRect(0, 0, S, S);
+        if (v === 1) {
+          // Louvered vent-grille slats instead of a dot grid.
+          ctx.strokeStyle = '#232b3a'; ctx.lineWidth = 3 * s;
+          for (let y = 10 * s; y < S; y += 20 * s) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke(); }
+          ctx.fillStyle = '#0009'; for (let y = 4 * s; y < S; y += 20 * s) ctx.fillRect(0, y, S, 6 * s);
+        } else {
+          ctx.strokeStyle = v === 2 ? '#3a2f22' : '#222d3d'; ctx.lineWidth = 4 * s;
+          for (let i = 0; i < S; i += 32 * s) { ctx.strokeRect(i, 0, 32 * s, S); ctx.strokeRect(0, i, S, 32 * s); }
+          ctx.fillStyle = v === 2 ? '#ffaa4433' : '#00ffee33';
+          for (let x = 16 * s; x < S; x += 32 * s) for (let y = 16 * s; y < S; y += 32 * s) { ctx.beginPath(); ctx.arc(x, y, 3 * s, 0, Math.PI * 2); ctx.fill(); }
+        }
+        if (v === 2) TextureFactory.grime(ctx, S, 0.35, '#000');
+        break;
+      }
+
+      case 'blue_grid': // MAP01 hand-built level floor
+        ctx.fillStyle = '#060b18'; ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = '#0088ff'; ctx.lineWidth = 3 * s;
+        ctx.shadowColor = '#00aaff'; ctx.shadowBlur = 6;
+        for (let i = 0; i <= S; i += 64 * s) {
+          ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke();
+        }
+        ctx.fillStyle = '#0044aa'; ctx.fillRect(68 * s, 68 * s, 120 * s, 120 * s);
+        break;
+
+      case 'tech_wall': { // tech panel
+        const seamColor = v === 1 ? '#ff00c8' : (v === 2 ? '#ffaa00' : '#00ffee');
+        const rivetColor = v === 2 ? '#ffaa00' : '#00ffff';
+        ctx.fillStyle = '#12161f'; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = '#1e2636';
+        if (v === 1) { ctx.fillRect(10 * s, 10 * s, 110 * s, 236 * s); ctx.fillRect(136 * s, 10 * s, 110 * s, 236 * s); }
+        else { ctx.fillRect(10 * s, 10 * s, 236 * s, 110 * s); ctx.fillRect(10 * s, 136 * s, 236 * s, 110 * s); }
+        TextureFactory.rivets(ctx, [[20,20],[236,20],[20,110],[236,110],[20,146],[236,146],[20,236],[236,236]].map(([x,y]) => [x*s, y*s]), rivetColor, 4 * s);
+        if (v === 1) TextureFactory.glowRect(ctx, 124 * s, 0, 4 * s, S, seamColor, 8);
+        else TextureFactory.glowRect(ctx, 0, 124 * s, S, 4 * s, seamColor, 8);
+        if (v === 2) TextureFactory.grime(ctx, S, 0.3, '#000');
+        break;
+      }
+
+      case 'mainframe': { // data-server rack
+        ctx.fillStyle = '#090d14'; ctx.fillRect(0, 0, S, S);
+        const rowH = v === 1 ? 46 * s : 36 * s;
+        const ledPalette = v === 2 ? ['#ff0055', '#ff0055', '#ffaa00'] : (v === 1 ? ['#00aaff', '#00ffff', '#0055ff'] : ['#00ff66', '#00ffff', '#ffaa00']);
+        for (let y = 16 * s; y < S - 16 * s; y += rowH) {
+          ctx.fillStyle = '#151d28'; ctx.fillRect(16 * s, y, S - 32 * s, rowH - 8 * s);
+          ledPalette.forEach((c, i) => {
+            ctx.fillStyle = Math.random() > 0.25 ? c : '#111';
+            ctx.fillRect((28 + i * 16) * s, y + 8 * s, 8 * s, 12 * s);
+          });
+          ctx.fillStyle = '#080a0e';
+          for (let vx = 90 * s; vx < S - 30 * s; vx += 12 * s) ctx.fillRect(vx, y + 6 * s, 6 * s, rowH - 20 * s);
+        }
+        if (v === 1) { ctx.strokeStyle = '#1a2230'; ctx.lineWidth = 6 * s; ctx.beginPath(); ctx.moveTo(S - 14 * s, 0); ctx.lineTo(S - 14 * s, S); ctx.stroke(); }
+        if (v === 2) TextureFactory.grime(ctx, S, 0.35, '#000');
+        break;
+      }
+
+      case 'cyber_rust': { // rusted plate (v2 = flesh-tech, hell theme)
+        if (v === 2) {
+          // Organic veined hell-tech plating: pink/red flesh with dark veins.
+          ctx.fillStyle = '#2a0a10'; ctx.fillRect(0, 0, S, S);
+          ctx.fillStyle = '#4a1420';
+          for (let i = 0; i < 30; i++) ctx.fillRect(Math.random() * (S - 20 * s), Math.random() * (S - 20 * s), (15 + Math.random() * 25) * s, (15 + Math.random() * 25) * s);
+          ctx.strokeStyle = '#7a2030'; ctx.lineWidth = 2 * s;
+          for (let i = 0; i < 10; i++) {
+            ctx.beginPath();
+            let x = Math.random() * S, y = Math.random() * S;
+            ctx.moveTo(x, y);
+            for (let j = 0; j < 4; j++) { x += (Math.random() - 0.5) * 60 * s; y += (Math.random() - 0.5) * 60 * s; ctx.lineTo(x, y); }
+            ctx.stroke();
+          }
+          break;
+        }
+        ctx.fillStyle = v === 1 ? '#1c2418' : '#261c16'; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = v === 1 ? '#2e3a24' : '#3a271c';
+        for (let i = 0; i < 40; i++) ctx.fillRect(Math.random() * (S - 26 * s), Math.random() * (S - 20 * s), (20 + Math.random() * 30) * s, (15 + Math.random() * 20) * s);
+        if (v === 1) {
+          ctx.strokeStyle = '#141c10'; ctx.lineWidth = 2 * s;
+          for (let i = 0; i < 8; i++) { ctx.beginPath(); ctx.moveTo(Math.random() * S, 0); ctx.lineTo(Math.random() * S, S); ctx.stroke(); }
+        }
+        ctx.fillStyle = '#130c08'; ctx.fillRect(0, 0, S, 8 * s); ctx.fillRect(0, S - 8 * s, S, 8 * s);
+        break;
+      }
+
+      case 'hazard': { // hazard stripe
+        ctx.fillStyle = v === 1 ? '#ff8800' : '#e6b800'; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = '#111'; ctx.beginPath();
+        for (let i = -S; i < S * 2; i += 64 * s) {
+          ctx.moveTo(i, 0); ctx.lineTo(i + 32 * s, 0); ctx.lineTo(i + 32 * s + S, S); ctx.lineTo(i + S, S);
+        }
+        ctx.fill();
+        if (v === 1) { ctx.fillStyle = '#111'; ctx.font = `bold ${28 * s}px Courier`; ctx.fillText('!', S / 2 - 6 * s, S / 2 + 10 * s); }
+        break;
+      }
+
+      case 'door_blast':
+        ctx.fillStyle = '#1a222e'; ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 6 * s; ctx.strokeRect(12 * s, 12 * s, 232 * s, 232 * s);
+        ctx.fillStyle = '#ff9900'; ctx.fillRect(24 * s, 24 * s, 208 * s, 16 * s); ctx.fillRect(24 * s, 216 * s, 208 * s, 16 * s);
+        ctx.fillStyle = '#0d131a'; ctx.fillRect(64 * s, 80 * s, 128 * s, 96 * s);
+        ctx.fillStyle = '#00ffcc'; ctx.font = `bold ${24 * s}px Courier`; ctx.fillText('UAC ACCESS', 72 * s, 136 * s);
+        break;
+
+      case 'switch_off':
+        ctx.fillStyle = '#18202c'; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = '#ff0044'; ctx.shadowColor = '#ff0044'; ctx.shadowBlur = 15;
+        ctx.fillRect(80 * s, 80 * s, 96 * s, 96 * s);
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${20 * s}px Courier`; ctx.fillText('OFF', 108 * s, 135 * s);
+        break;
+
+      case 'switch_on':
+        ctx.fillStyle = '#18202c'; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = '#00ff88'; ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 20;
+        ctx.fillRect(80 * s, 80 * s, 96 * s, 96 * s);
+        ctx.fillStyle = '#000'; ctx.font = `bold ${20 * s}px Courier`; ctx.fillText('ON', 114 * s, 135 * s);
+        break;
+
+      case 'toxic_ooze': { // v0 toxic, v1 coolant, v2 lava/plasma
+        const bg = v === 1 ? '#081a22' : (v === 2 ? '#220a06' : '#0a2212');
+        const glow = v === 1 ? '#22aaff' : (v === 2 ? '#ff5500' : '#00ff44');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, S, S);
+        if (v === 2) {
+          ctx.strokeStyle = '#180402'; ctx.lineWidth = 3 * s;
+          for (let i = 0; i < 8; i++) { ctx.beginPath(); ctx.moveTo(Math.random() * S, 0); ctx.lineTo(Math.random() * S, S); ctx.stroke(); }
+        }
+        ctx.fillStyle = glow; ctx.shadowColor = glow; ctx.shadowBlur = 12 * s;
+        for (let i = 0; i < 20; i++) { ctx.beginPath(); ctx.arc(Math.random() * S, Math.random() * S, (8 + Math.random() * 24) * s, 0, Math.PI * 2); ctx.fill(); }
+        break;
+      }
+
+      case 'city_ruins': { // v2 leans "concrete" (flat, few windows)
+        ctx.fillStyle = '#080912'; ctx.fillRect(0, 0, S, S);
+        if (v === 2) {
+          ctx.fillStyle = '#15161e'; ctx.fillRect(0, 0, S, S);
+          TextureFactory.bevelRect(ctx, 10 * s, 10 * s, S - 20 * s, S - 20 * s, '#181a24', '#22242e', '#0d0e14');
+          TextureFactory.grime(ctx, S, 0.3, '#000');
+          break;
+        }
+        ctx.fillStyle = '#141828';
+        for (let bx = 0; bx < S; bx += 32 * s) {
+          const bh = (v === 1 ? 100 + Math.random() * 140 : 80 + Math.random() * 120) * s;
+          ctx.fillRect(bx, S - bh, 28 * s, bh);
+          ctx.fillStyle = v === 1 ? (Math.random() > 0.3 ? '#ffaa33' : '#ff5500') : (Math.random() > 0.5 ? '#ff0055' : '#00ffff');
+          for (let wy = S - bh + 10 * s; wy < S - 16 * s; wy += 20 * s) ctx.fillRect(bx + 6 * s, wy, 4 * s, 6 * s);
+          ctx.fillStyle = '#141828';
+        }
+        break;
+      }
+
+      case 'toxic_rock': { // rock / cave
+        const palette = v === 1 ? ['#241a10', '#3a2a18'] : (v === 2 ? ['#141c22', '#22303a'] : ['#1c1a18', '#302c26']);
+        ctx.fillStyle = palette[0]; ctx.fillRect(0, 0, S, S);
+        ctx.fillStyle = palette[1];
+        for (let i = 0; i < 26; i++) {
+          const x = Math.random() * S, y = Math.random() * S, r = (10 + Math.random() * 26) * s;
+          ctx.beginPath(); ctx.moveTo(x, y);
+          for (let a = 0; a < 6; a++) ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.strokeStyle = '#000a'; ctx.lineWidth = 1.5 * s;
+        for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(Math.random() * S, Math.random() * S); ctx.lineTo(Math.random() * S, Math.random() * S); ctx.stroke(); }
+        if (v === 2) TextureFactory.grime(ctx, S, 0.25, '#0af2');
+        break;
+      }
+
+      case 'tech_floor': { // grated / plated tech floor
+        ctx.fillStyle = v === 1 ? '#0c1016' : '#0e131c'; ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = v === 1 ? '#1a2230' : '#22344a'; ctx.lineWidth = 2 * s;
+        for (let i = 0; i <= S; i += 32 * s) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke(); }
+        TextureFactory.rivets(ctx, [[16,16],[240,16],[16,240],[240,240],[128,128]].map(([x,y]) => [x*s, y*s]), v === 1 ? '#334' : '#0af', 3 * s);
+        break;
+      }
+
+      case 'dark_metal': { // v1 = conduit wall (pipe runs)
+        ctx.fillStyle = '#0c0e12'; ctx.fillRect(0, 0, S, S);
+        TextureFactory.bevelRect(ctx, 8 * s, 8 * s, S - 16 * s, S - 16 * s, '#14171d', '#1c2028', '#08090c');
+        if (v === 1) {
+          ctx.strokeStyle = '#20262f'; ctx.lineWidth = 14 * s; ctx.lineCap = 'round';
+          [70, 140, 200].forEach(y => { ctx.beginPath(); ctx.moveTo(0, y * s); ctx.lineTo(S, y * s); ctx.stroke(); });
+          ctx.fillStyle = '#ffaa00';
+          [70, 140, 200].forEach(y => { for (let x = 20 * s; x < S; x += 60 * s) { ctx.beginPath(); ctx.arc(x, y * s, 4 * s, 0, Math.PI * 2); ctx.fill(); } });
+        }
+        break;
+      }
+
+      case 'tech_panel': { // ceiling: v1 = vented panel w/ light strip
+        ctx.fillStyle = '#10141c'; ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = '#1c2534'; ctx.lineWidth = 3 * s;
+        for (let i = 0; i <= S; i += 64 * s) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke(); }
+        if (v === 1) {
+          ctx.fillStyle = '#0a0d12'; for (let x = 20 * s; x < S; x += 40 * s) ctx.fillRect(x, 20 * s, 8 * s, S - 40 * s);
+          TextureFactory.glowRect(ctx, S / 2 - 6 * s, 0, 12 * s, S, '#8fd6ff', 10);
+        }
+        break;
+      }
+
+      default:
+        ctx.fillStyle = '#222'; ctx.fillRect(0, 0, S, S);
+    }
+  }
+
+  // Only the elements that should glow, repainted onto an already-black
+  // canvas for use as emissiveMap. Mirrors the bright/shadowBlur bits above.
+  static paintEmissive(ctx, S, name, v) {
+    const s = S / 256;
+    switch (name) {
+      case 'tech_wall': {
+        const seamColor = v === 1 ? '#ff00c8' : (v === 2 ? '#ffaa00' : '#00ffee');
+        if (v === 1) TextureFactory.glowRect(ctx, 124 * s, 0, 4 * s, S, seamColor, 14);
+        else TextureFactory.glowRect(ctx, 0, 124 * s, S, 4 * s, seamColor, 14);
+        break;
+      }
+      case 'mainframe': {
+        const rowH = v === 1 ? 46 * s : 36 * s;
+        const ledPalette = v === 2 ? ['#ff0055', '#ff0055', '#ffaa00'] : (v === 1 ? ['#00aaff', '#00ffff', '#0055ff'] : ['#00ff66', '#00ffff', '#ffaa00']);
+        for (let y = 16 * s; y < S - 16 * s; y += rowH) {
+          ledPalette.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect((28 + i * 16) * s, y + 8 * s, 8 * s, 12 * s); });
+        }
+        break;
+      }
+      case 'hazard':
+        ctx.fillStyle = v === 1 ? '#ff8800aa' : '#e6b800aa';
+        ctx.fillRect(0, 0, S, S);
+        break;
+      case 'toxic_ooze': {
+        const glow = v === 1 ? '#22aaff' : (v === 2 ? '#ff5500' : '#00ff44');
+        ctx.fillStyle = glow; ctx.shadowColor = glow; ctx.shadowBlur = 16 * s;
+        for (let i = 0; i < 20; i++) { ctx.beginPath(); ctx.arc(Math.random() * S, Math.random() * S, (6 + Math.random() * 18) * s, 0, Math.PI * 2); ctx.fill(); }
+        break;
+      }
+      case 'city_ruins': {
+        if (v === 2) break; // concrete variant has nothing to glow
+        for (let bx = 0; bx < S; bx += 32 * s) {
+          const bh = (80 + Math.random() * 140) * s;
+          ctx.fillStyle = v === 1 ? '#ffaa33' : '#ff0055';
+          for (let wy = S - bh + 10 * s; wy < S - 16 * s; wy += 20 * s) if (Math.random() > 0.4) ctx.fillRect(bx + 6 * s, wy, 4 * s, 6 * s);
+        }
+        break;
+      }
+      case 'door_blast':
+        ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 6 * s; ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 10;
+        ctx.strokeRect(12 * s, 12 * s, 232 * s, 232 * s);
+        ctx.fillStyle = '#00ffcc'; ctx.fillRect(64 * s, 80 * s, 128 * s, 20 * s);
+        break;
+      case 'switch_off':
+        ctx.fillStyle = '#ff0044'; ctx.shadowColor = '#ff0044'; ctx.shadowBlur = 20;
+        ctx.fillRect(80 * s, 80 * s, 96 * s, 96 * s);
+        break;
+      case 'switch_on':
+        ctx.fillStyle = '#00ff88'; ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 24;
+        ctx.fillRect(80 * s, 80 * s, 96 * s, 96 * s);
+        break;
+      case 'tech_panel':
+        if (v === 1) TextureFactory.glowRect(ctx, S / 2 - 6 * s, 0, 12 * s, S, '#8fd6ff', 18);
+        break;
+    }
+  }
 }
+TextureFactory.VARIANTS = {
+  tech_wall: 3, mainframe: 3, cyber_rust: 3, city_ruins: 3, metal_grate: 3,
+  hazard: 2, toxic_ooze: 3, toxic_rock: 3, tech_floor: 2, dark_metal: 2, tech_panel: 2
+};
+TextureFactory.BIG = new Set(['mainframe', 'city_ruins']);
+TextureFactory.GLOWS = new Set(['tech_wall', 'mainframe', 'hazard', 'toxic_ooze', 'city_ruins', 'door_blast', 'switch_off', 'switch_on', 'tech_panel']);
 
 /* ==========================================================================
    FPS WEAPON VIEWMODELS + WEAPONS TABLE -> js/cyber-weapons.js
@@ -1870,6 +2053,10 @@ class CyberDoomEngine {
       this.buildWall(w);
     });
 
+    // Lifts, switch-raised floors, teleporters and the dead-end safety net.
+    // data.walls[i] pairs 1:1 with this.walls[i]; the module relies on that.
+    if (window.CyberTraversal) window.CyberTraversal.init(this, data);
+
     // The extraction switch is what ends the level, so the automap has to be
     // able to point at it.  Every level carries exactly one marked exit; if a
     // map ever ships without one the player is told rather than left hunting.
@@ -1895,9 +2082,15 @@ class CyberDoomEngine {
       const ew = this.exitWalls[0];
       addNeon((ew.p1.x + ew.p2.x) / 2, 2.2, (ew.p1.z + ew.p2.z) / 2, NEON[neonI++ % NEON.length]);
     }
-    const sectorStep = Math.max(1, Math.floor(data.sectors.length / 3));
-    for (let i = 0; i < data.sectors.length && this._levelDynLights.length < 5; i += sectorStep) {
-      const sec = data.sectors[i];
+    // Brightest, most important rooms get the remaining accent lights instead
+    // of an even stride across sector order -- a dim corridor doesn't need a
+    // neon glow it will just wash out, a lit room reads better with one.
+    const brightestSectors = data.sectors
+      .filter(sec => !sec.isSky)
+      .slice()
+      .sort((a, b) => (b.light || 0) - (a.light || 0) || (b.width || 0) * (b.depth || 0) - (a.width || 0) * (a.depth || 0));
+    for (let i = 0; i < brightestSectors.length && this._levelDynLights.length < 5; i++) {
+      const sec = brightestSectors[i];
       const rect = (sec.resolvedFloors && sec.resolvedFloors[0]) || sec;
       if (rect && rect.x !== undefined) {
         const y = Math.min(sec.floorY + 3.5, (sec.ceilY !== undefined ? sec.ceilY : sec.floorY + 6) - 0.5);
@@ -1909,6 +2102,14 @@ class CyberDoomEngine {
     data.entities.forEach(ent => {
       this.spawnEntity(ent);
     });
+
+    // Environment dressing: sky/fog per theme, atmosphere particles, and
+    // instanced props (lights, pipes, crates, racks, cables, signs). Runs
+    // after entities so crate placement can anchor to pickup positions.
+    if (window.CyberEnv) {
+      if (!this._envInited) { window.CyberEnv.init(this.scene, THREE); this._envInited = true; }
+      window.CyberEnv.decorate(data, this);
+    }
 
     // Set Spawn
     const spawnFloor = this.getFloorAt(data.playerSpawn.pos[0], data.playerSpawn.pos[2]);
@@ -1930,15 +2131,62 @@ class CyberDoomEngine {
   // 256x256 canvas every call, which is minutes of work on a 20k-wall map;
   // tiling is baked into the geometry UVs instead of texture.repeat so the
   // same texture object can be shared.
-  levelTexture(name) {
+  levelTexture(name, variant) {
     if (!this._texCache) this._texCache = {};
-    let t = this._texCache[name];
+    const key = `${name}#${variant || 0}`;
+    let t = this._texCache[key];
     if (!t) {
-      t = TextureFactory.create(name);
+      t = TextureFactory.create(name, variant);
       t.anisotropy = 4;
-      this._texCache[name] = t;
+      this._texCache[key] = t;
     }
     return t;
+  }
+
+  // Emissive companion to levelTexture(): same cache discipline, but a miss
+  // can legitimately resolve to null (family has nothing to glow) and that
+  // null is cached too so we don't re-run paintEmissive every call.
+  levelEmissiveTexture(name, variant) {
+    if (!this._texEmCache) this._texEmCache = {};
+    const key = `${name}#${variant || 0}`;
+    if (!(key in this._texEmCache)) {
+      const t = TextureFactory.createEmissive(name, variant);
+      if (t) t.anisotropy = 4;
+      this._texEmCache[key] = t;
+    }
+    return this._texEmCache[key];
+  }
+
+  // Deterministic per-wall/sector variant pick so reloading a level doesn't
+  // shuffle which skin every surface got. Not cryptographic -- just needs to
+  // spread evenly across a family's variant count.
+  static hashVariant(seedStr, count) {
+    if (count <= 1) return 0;
+    let h = 0;
+    for (let i = 0; i < seedStr.length; i++) h = (h * 31 + seedStr.charCodeAt(i)) | 0;
+    return Math.abs(h) % count;
+  }
+
+  // Point-in-polygon test against nearby sectors, used only to tint a wall's
+  // material by the light level of the room it faces. Load-time only (never
+  // called per-frame), so this deliberately duplicates the small even-odd
+  // test from getFloorAt rather than reaching into physics code for it.
+  sectorLightAt(x, z) {
+    if (typeof this.sectorsNear !== 'function') return 0.7;
+    const candidates = this.sectorsNear(x, z);
+    for (let i = 0; i < candidates.length; i++) {
+      const sec = candidates[i];
+      if (!sec.polys || !sec.polys.length) continue;
+      let inside = false;
+      for (const loop of sec.polys) {
+        for (let a = 0, b = loop.length - 1; a < loop.length; b = a++) {
+          const xi = loop[a][0], zi = loop[a][1], xj = loop[b][0], zj = loop[b][1];
+          if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+        }
+      }
+      if (inside) return sec.light !== undefined ? sec.light : 0.7;
+    }
+    return 0.7;
   }
 
   static scaleUVs(geo, su, sv) {
@@ -2009,7 +2257,15 @@ class CyberDoomEngine {
     // ShapeGeometry UVs are the shape's own coordinates, so one tile per 8u.
     CyberDoomEngine.scaleUVs(geo, 1 / 8, 1 / 8);
 
-    const floorMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.floorTex), roughness: 0.8 });
+    const secLight = sec.light !== undefined ? sec.light : 0.7;
+    const secTint = 0.45 + secLight * 0.65;
+    const floorVariant = CyberDoomEngine.hashVariant(sec.floorTex + sec.x + ',' + sec.z, TextureFactory.variantCount(sec.floorTex));
+    const floorEmMap = this.levelEmissiveTexture(sec.floorTex, floorVariant);
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: this.levelTexture(sec.floorTex, floorVariant), roughness: 0.8,
+      color: new THREE.Color().setScalar(secTint),
+      ...(floorEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: floorEmMap, emissiveIntensity: 0.8 } : {})
+    });
     floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
     const floorMesh = new THREE.Mesh(geo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -2018,12 +2274,19 @@ class CyberDoomEngine {
     // Tagged so tests can raycast the rendered floor and compare it with
     // getFloorAt -- the two disagreeing is exactly the fall-through bug.
     floorMesh.userData.floorY = sec.floorY;
+    // Moving sectors (lifts, switch-raised floors) slide this mesh; see
+    // js/cyber-traversal.js. getFloorAt already reads sec.floorY live.
+    sec._floorMesh = floorMesh;
     this.scene.add(floorMesh);
 
     if (!sec.isSky) {
       // Same geometry, seen from below: BackSide flips the normal for us.
+      const ceilVariant = CyberDoomEngine.hashVariant(sec.ceilTex + sec.x + ',' + sec.z, TextureFactory.variantCount(sec.ceilTex));
+      const ceilEmMap = this.levelEmissiveTexture(sec.ceilTex, ceilVariant);
       const ceilMat = new THREE.MeshStandardMaterial({
-        map: this.levelTexture(sec.ceilTex), roughness: 0.8, side: THREE.BackSide
+        map: this.levelTexture(sec.ceilTex, ceilVariant), roughness: 0.8, side: THREE.BackSide,
+        color: new THREE.Color().setScalar(secTint),
+        ...(ceilEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: ceilEmMap, emissiveIntensity: 0.8 } : {})
       });
       const ceilMesh = new THREE.Mesh(geo, ceilMat);
       ceilMesh.rotation.x = -Math.PI / 2;
@@ -2066,7 +2329,14 @@ class CyberDoomEngine {
     rects.forEach(rect => {
       const { x, z, width, depth } = rect;
       const floorGeo = CyberDoomEngine.scaleUVs(new THREE.PlaneGeometry(width, depth), width / 8, depth / 8);
-      const floorMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.floorTex), roughness: 0.8 });
+      const secTint = 0.45 + (sec.light !== undefined ? sec.light : 0.7) * 0.65;
+      const floorVariant = CyberDoomEngine.hashVariant(sec.floorTex + x + ',' + z, TextureFactory.variantCount(sec.floorTex));
+      const floorEmMap = this.levelEmissiveTexture(sec.floorTex, floorVariant);
+      const floorMat = new THREE.MeshStandardMaterial({
+        map: this.levelTexture(sec.floorTex, floorVariant), roughness: 0.8,
+        color: new THREE.Color().setScalar(secTint),
+        ...(floorEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: floorEmMap, emissiveIntensity: 0.8 } : {})
+      });
       floorMat.polygonOffset = true; floorMat.polygonOffsetFactor = 1; floorMat.polygonOffsetUnits = 1;
       const floorMesh = new THREE.Mesh(floorGeo, floorMat);
       floorMesh.rotation.x = -Math.PI / 2;
@@ -2077,7 +2347,13 @@ class CyberDoomEngine {
 
       // Ceiling (if not open sky)
       if (!sec.isSky) {
-        const ceilMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(sec.ceilTex), roughness: 0.8 });
+        const ceilVariant = CyberDoomEngine.hashVariant(sec.ceilTex + x + ',' + z, TextureFactory.variantCount(sec.ceilTex));
+        const ceilEmMap = this.levelEmissiveTexture(sec.ceilTex, ceilVariant);
+        const ceilMat = new THREE.MeshStandardMaterial({
+          map: this.levelTexture(sec.ceilTex, ceilVariant), roughness: 0.8,
+          color: new THREE.Color().setScalar(secTint),
+          ...(ceilEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: ceilEmMap, emissiveIntensity: 0.8 } : {})
+        });
         const ceilMesh = new THREE.Mesh(floorGeo, ceilMat);
         ceilMesh.rotation.x = Math.PI / 2;
         ceilMesh.position.set(x, sec.ceilY, z);
@@ -2107,7 +2383,14 @@ class CyberDoomEngine {
     const centerY = baseBottomY - PAD + totalHeight / 2;
 
     const wallGeo = CyberDoomEngine.scaleUVs(new THREE.BoxGeometry(len, totalHeight, 0.4), len / 4, totalHeight / 4);
-    const wallMat = new THREE.MeshStandardMaterial({ map: this.levelTexture(w.tex), roughness: 0.7 });
+    const wallLight = this.sectorLightAt(midX, midZ);
+    const wallVariant = CyberDoomEngine.hashVariant(w.tex + midX + ',' + midZ, TextureFactory.variantCount(w.tex));
+    const wallEmMap = this.levelEmissiveTexture(w.tex, wallVariant);
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: this.levelTexture(w.tex, wallVariant), roughness: 0.7,
+      color: new THREE.Color().setScalar(0.45 + wallLight * 0.65),
+      ...(wallEmMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: wallEmMap, emissiveIntensity: 0.8 } : {})
+    });
     const wallMesh = new THREE.Mesh(wallGeo, wallMat);
 
     wallMesh.position.set(midX, centerY, midZ);
@@ -2429,7 +2712,14 @@ class CyberDoomEngine {
       sx = c.x; sz = c.z;
       break;
     }
-    group.position.set(sx, hoverY, sz);
+    // The un-stick above can move the body into a different sector, so the
+    // floor has to be read at where it ENDED UP. Reading it at ent.pos left
+    // enemies that never move carrying another sector's height, which put
+    // flyers below their own floor instead of hovering over it.
+    const rest = this.getFloorAt(sx, sz);
+    const floorY = rest.inside ? rest.floorY : baseY;
+    const restY = floorY + (st0 && st0.fly ? ENEMY_HOVER : 0);
+    group.position.set(sx, restY, sz);
     group.rotation.y = ent.rot || 0;
     this.scene.add(group);
     this.enableShadowsOn(group);
@@ -2453,7 +2743,7 @@ class CyberDoomEngine {
       limbs: group.userData.limbs || null,
       stats: st,
       radius: 0.6,
-      floorY: baseY,
+      floorY: floorY,
       bobT: Math.random() * Math.PI * 2
     });
   }
@@ -3238,6 +3528,11 @@ class CyberDoomEngine {
         }
       }
 
+      // Lift / raising floor / teleporter on this linedef.
+      if (window.CyberTraversal && window.CyberTraversal.fire(this, hitWall, 'use')) {
+        this.showHudMessage("MECHANISM ACTIVATED");
+      }
+
       // Operate Switch
       if (hitWall.isSwitch) {
         this.sound.playSwitch();
@@ -3278,6 +3573,9 @@ class CyberDoomEngine {
      ========================================================================== */
   updatePhysics(delta) {
     if (!this.isRunning) return;
+
+    // Lifts and raising floors settle before anything reads getFloorAt.
+    if (window.CyberTraversal) window.CyberTraversal.update(this, delta);
 
     // Movement vector calculation
     const moveDir = new THREE.Vector3();
@@ -3337,13 +3635,29 @@ class CyberDoomEngine {
       resolved = candidate;
     }
 
-    if (leftKnownFloor) {
+    // MANTLE. Killing horizontal speed the instant a ledge refuses the step
+    // is what made ledges unclimbable: you jumped, the first airborne frame
+    // stopped you dead, and you dropped straight back down. On the ground it
+    // still earns its keep (it stops you grinding along a cliff face). In the
+    // air, keep the momentum so that as the jump lifts your feet the same
+    // ledge becomes a legal step. Apex is 7.5^2/(2*22) = 1.28 units, so with
+    // the 1.2 auto-climb measured from the feet the effective mantle is about
+    // 2.4 units -- one Doom jump onto a ledge, which is what Doom players do.
+    if (leftKnownFloor && this.player.onGround) {
       this.player.velocity.x = 0;
       this.player.velocity.z = 0;
     }
 
+    const prevX = this.camera.position.x, prevZ = this.camera.position.z;
     this.camera.position.x = resolved.x;
     this.camera.position.z = resolved.z;
+    if (window.CyberTraversal) {
+      // Walkover lines (teleporters, most lifts) fire on the step just taken;
+      // use lines fire on touch as well as on [E], because a switch the
+      // player brushed past and did not notice is a stuck room later.
+      window.CyberTraversal.onMove(this, prevX, prevZ, resolved.x, resolved.z);
+      window.CyberTraversal.assist(this, delta);
+    }
 
     // Sector Floor Clamping
     const floor = this.getFloorAt(this.camera.position.x, this.camera.position.z);
@@ -3377,6 +3691,14 @@ class CyberDoomEngine {
 
     // Viewmodel Bob & Sway Update
     this.viewmodels.update(delta, isMoving && this.player.onGround);
+
+    // Dead-end safety net: the offline walk model says whether the exit is
+    // still reachable from this cell, taking every lift and teleporter into
+    // account. If it is not, offer an extraction rather than let the player
+    // hunt a way out that does not exist.
+    if (window.CyberTraversal) {
+      this.showDeadEndHint(window.CyberTraversal.checkStuck(this, delta, !!this.keys['KeyE']));
+    }
 
     // Check Item Pickups
     this.checkPickups();
@@ -3654,6 +3976,7 @@ class CyberDoomEngine {
         this.projectiles = [];
         this.particles = [];
         if (window.CyberGore) window.CyberGore.clear();
+        if (window.CyberEnv) window.CyberEnv.clear();
         this.loadLevel(mapData);
         // buildWall doesn't carry ledge-riser data onto the runtime wall
         // objects it builds; attach it here (mapData.walls and this.walls
@@ -3779,10 +4102,18 @@ class CyberDoomEngine {
   separateEnemies() {
     const CELL = 1.5;
     const buckets = new Map();
+    // Each overlap costs two moveEnemy calls (wall push-out + floor test), so
+    // this is the most expensive thing in a horde. Only the fight in front of
+    // the player is worth paying for; a pack shuffling 60 units away out of
+    // sight can overlap until it arrives.
+    const RANGE = 45 * 45;
+    const cam = this.camera.position;
     for (const e of this.enemies) {
       // Only movers need separating; dormant enemies stay where the map put
       // them, and the megamaps keep thousands of them packed in closets.
       if (e.state !== 'CHASE') continue;
+      const ex = e.group.position.x - cam.x, ez = e.group.position.z - cam.z;
+      if (ex * ex + ez * ez > RANGE) continue;
       const k = Math.floor(e.group.position.x / CELL) + ',' + Math.floor(e.group.position.z / CELL);
       let a = buckets.get(k);
       if (!a) buckets.set(k, a = []);
@@ -3808,7 +4139,11 @@ class CyberDoomEngine {
             let dx = b.group.position.x - a.group.position.x;
             let dz = b.group.position.z - a.group.position.z;
             let d = Math.hypot(dx, dz);
-            if (d >= want) continue;
+            // Each resolved pair is two moveEnemy calls, and each of those is a
+            // wall push-out plus a floor lookup. A crowd is mostly pairs that
+            // barely graze, and nudging those apart by a few centimetres is
+            // invisible, so leave them alone.
+            if (d >= want - 0.08) continue;
             if (d < 0.0001) { dx = Math.cos(n * 2.4); dz = Math.sin(n * 2.4); d = 1; n++; }
             const push = (want - d) / 2;
             this.moveEnemy(a, (-dx / d) * push, (-dz / d) * push);
@@ -3819,97 +4154,73 @@ class CyberDoomEngine {
     }
   }
 
+  // The whole enemy brain lives in js/cyber-ai.js (perception, nav grid and
+  // flow field, roles, flanking, attack budget, pain). It drives moveEnemy,
+  // enemyAttack and separateEnemies below; this stays a one-line hand-off so
+  // the AI can be swapped or tuned without touching the engine.
   updateEnemies(delta) {
-    const pPos = this.camera.position;
-
-    this.enemies.forEach(enemy => {
-      if (enemy.state === 'DEAD') return;
-
+    if (window.CyberAI) { window.CyberAI.update(this, delta); return; }
+    // Fallback with the AI module missing: hold everyone on their floor so
+    // nothing sinks through the world.
+    for (const enemy of this.enemies) {
+      if (enemy.state === 'DEAD') continue;
       const ePos = enemy.group.position;
-      const dist = ePos.distanceTo(pPos);
-
-      // Line of Sight / Detection
-      if (enemy.state === 'IDLE') {
-        if (dist < 18) {
-          enemy.state = 'CHASE';
-        }
-      }
-
-      if (enemy.state === 'CHASE') {
-        // Face Player
-        const angle = Math.atan2(pPos.x - ePos.x, pPos.z - ePos.z);
-        enemy.group.rotation.y = angle;
-
-        // Move toward player if not too close
-        if (dist > (enemy.type === 'soldier' ? 7.0 : 4.0)) {
-          const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
-          this.moveEnemy(enemy, forward.x * enemy.speed * delta, forward.z * enemy.speed * delta);
-          // walking animation (borrowed walk cycle style from weapon-fighting)
-          {
-            const w = enemy.walkT + delta * (enemy.type==='soldier'? 9 : 7);
-            enemy.walkT = w;
-            const s = Math.sin(w), c = Math.cos(w);
-            const L = enemy.limbs;
-            if(L){
-              L.leftLeg.rotation.x = s * 0.65; L.rightLeg.rotation.x = -s * 0.65;
-              L.leftArm.rotation.x = -s * 0.55; L.rightArm.rotation.x = s * 0.55;
-              // elbows/knees bend more on forward swing
-              L.leftLeg.userData.lower.rotation.x = Math.max(0, s) * 0.9;
-              L.rightLeg.userData.lower.rotation.x = Math.max(0, -s) * 0.9;
-              L.leftArm.userData.lower.rotation.x = Math.max(0, -s) * 0.7;
-              L.rightArm.userData.lower.rotation.x = Math.max(0, s) * 0.7;
-              // slight vertical bob (keep base height)
-              // enemy.group.position.y is managed by floor clamping elsewhere
-            }
-          }
-        } else {
-          // Attack state
-          enemy.attackCooldown -= delta;
-          if (enemy.attackCooldown <= 0) {
-            this.enemyAttack(enemy);
-            enemy.attackCooldown = enemy.type === 'soldier' ? 1.6 : 2.2;
-          }
-        }
-      }
-
-      // Vertical placement. Walkers sit on their sector floor; flyers hover
-      // over it with a slow bob and ignore ledges entirely.
       if (enemy.floorY === undefined) {
         const f0 = this.getFloorAt(ePos.x, ePos.z);
         enemy.floorY = f0.inside ? f0.floorY : ePos.y;
       }
-      if (enemy.stats && enemy.stats.fly) {
-        enemy.bobT = (enemy.bobT || 0) + delta * 1.6;
-        ePos.y = enemy.floorY + ENEMY_HOVER + Math.sin(enemy.bobT) * 0.18;
-      } else {
-        ePos.y = enemy.floorY;
-      }
-    });
-
-    this.separateEnemies();
+      ePos.y = enemy.floorY + ((enemy.stats && enemy.stats.fly) ? ENEMY_HOVER : 0);
+    }
   }
 
+  // Fires whatever the type's stat line says, not whatever the converter
+  // happened to label it: Demons and Spectres are 'monster' entities but
+  // bite, and the Spider Mastermind is a 'monster' that shoots hitscan.
+  // The AI decides WHEN; this decides WHAT leaves the muzzle.
   enemyAttack(enemy) {
-    if (enemy.type === 'soldier') {
-      // Hitscan blaster
-      this.sound.playPistol();
-      if (Math.random() > 0.35) { // 65% accuracy
-        this.damagePlayer(8);
-      }
-    } else if (enemy.type === 'monster') {
-      // Fireball by default; a per-type attack stat (set by the enemies
-      // agent on enemy.stats.attack) can upgrade this to a plasma or laser
-      // bolt without touching the AI/state-machine code above.
-      const kind = (enemy.stats && (enemy.stats.attack === 'laser' || enemy.stats.attack === 'plasma'))
-        ? enemy.stats.attack
-        : 'fireball';
-      this.sound.playMonsterFireball();
-      const from = enemy.group.position.clone();
-      // Flyers already sit at hover height, so the shot leaves from there.
-      from.y += (enemy.stats && enemy.stats.fly) ? 0.2 : 1.0;
-      const dir = new THREE.Vector3().subVectors(this.camera.position, from).normalize();
-      this.spawnProjectile({ from, dir, kind, owner: 'enemy' });
+    const st = enemy.stats || {};
+    const ai = enemy.ai || {};
+    const attack = st.attack || (enemy.type === 'soldier' ? 'hitscan' : 'fireball');
+    const scale = (window.CyberAI && window.CyberAI.TUNING.damageScale) || 1;
+    const dmg = Math.max(1, Math.round((st.damage || 8) * scale));
+
+    if (attack === 'melee') {
+      // Only lands if it is still on top of you when the swing connects.
+      this.sound.playMechanicalClick();
+      const d = enemy.group.position.distanceTo(this.camera.position);
+      if (d <= (st.range || 2.5) + 0.6) this.damagePlayer(dmg);
+      return;
     }
+
+    if (attack === 'hitscan') {
+      this.sound.playPistol();
+      const d = enemy.group.position.distanceTo(this.camera.position);
+      const range = st.range || 22;
+      // Accurate up close, ragged at the edge of its range, and worse
+      // against a player who is actually moving.
+      const acc = (window.CyberAI && window.CyberAI.TUNING.accuracy) || 1;
+      const speed = this.player.velocity ? Math.hypot(this.player.velocity.x, this.player.velocity.z) : 0;
+      let hit = (0.88 - (d / range) * 0.38 - Math.min(0.18, speed * 0.016)) * acc;
+      hit = Math.max(0.15, Math.min(0.92, hit));
+      if (Math.random() < hit) this.damagePlayer(dmg);
+      return;
+    }
+
+    // Projectile kinds: fireball / plasma / laser.
+    const kind = (attack === 'laser' || attack === 'plasma') ? attack : 'fireball';
+    this.sound.playMonsterFireball();
+    const from = enemy.group.position.clone();
+    // Flyers already sit at hover height, so the shot leaves from there.
+    from.y += (st.fly) ? 0.2 : 1.0;
+    // Lead the shot by the flight time the AI worked out, so a strafing
+    // player is not simply immune to everything slow.
+    const aim = this.camera.position.clone();
+    if (ai.lead && this.player.velocity) {
+      aim.x += this.player.velocity.x * ai.lead;
+      aim.z += this.player.velocity.z * ai.lead;
+    }
+    const dir = new THREE.Vector3().subVectors(aim, from).normalize();
+    this.spawnProjectile({ from, dir, kind, owner: 'enemy', damage: dmg });
   }
 
   /* -------------------------------------------------------------------
@@ -3985,8 +4296,11 @@ class CyberDoomEngine {
     this.spawnBlood(gorePos, { enemy, amount, dir: gorePos.clone().sub(this.camera.position).normalize() });
     // Whiten the enemy's emissive accents for a beat so the hit reads on the body itself.
     if (window.CyberEnemies && enemy.group) window.CyberEnemies.flash(enemy.group);
-    if (enemy.hp <= 0) this.killEnemy(enemy);
-    else enemy.state = 'CHASE';
+    if (enemy.hp <= 0) { this.killEnemy(enemy); return; }
+    enemy.state = 'CHASE';
+    // Wake, remember where the shot came from, and stagger on a big hit
+    // (sets enemy.flinchT, which the pose code reads).
+    if (window.CyberAI) window.CyberAI.onDamage(this, enemy, amount);
   }
 
   updateProjectiles(delta) {
@@ -4190,6 +4504,7 @@ class CyberDoomEngine {
       }
     }
     if (window.CyberGore) window.CyberGore.update(delta, (x, z) => this.getFloorAt(x, z));
+    if (window.CyberEnv) window.CyberEnv.update(delta);
   }
 
   /* ==========================================================================
@@ -4224,6 +4539,14 @@ class CyberDoomEngine {
     const pf = document.getElementById('pickup-flash');
     pf.style.opacity = '1';
     setTimeout(() => { pf.style.opacity = '0'; }, 150);
+  }
+
+  // Persistent one-liner for the dead-end net. Null hides it.
+  showDeadEndHint(msg) {
+    const el = document.getElementById('hud-deadend');
+    if (!el) return;
+    if (msg) { el.innerText = msg; el.style.opacity = '1'; }
+    else if (el.style.opacity !== '0') { el.style.opacity = '0'; }
   }
 
   showHudMessage(msg) {

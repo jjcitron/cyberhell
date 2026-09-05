@@ -45,9 +45,13 @@ CELL = 0.25
 P_RADIUS = 0.55
 USE_RANGE = 4.0          # how close the player must get to press a switch
 STEP_UP_MAX = 1.2        # Doom's 24-unit free auto-climb, at SCALE 0.05.
-                         # Same constant as index.html and reachability.js:
+                         # Same constant as index.html and js/cyber-traversal.js:
                          # climbing more than this is blocked, dropping is not,
-                         # so the walk graph is directed.
+                         # so the walk graph is directed.  Lifts and raising
+                         # floors move, so each cell carries an envelope
+                         # (lo, hi) instead of one height and the rule becomes
+                         # "the destination floor can COME to within one climb
+                         # of the floor you are standing on".
 EXIT_SPECIALS = (11, 51, 52, 124)
 EXIT_SWITCH_ID = 'sw_exit_game'
 
@@ -107,6 +111,20 @@ def read_exit_lines(wad_path):
 # --------------------------------------------------------------------------
 # Reachability, mirroring the engine's movement rules.
 # --------------------------------------------------------------------------
+
+def sec_lo(sec):
+    """Lowest floor height this sector can reach (lifts, lowering floors).
+    Mirrors sectorLo in js/cyber-traversal.js."""
+    f = sec.get('floorY', 0.0)
+    return min(sec['loY'], f) if 'loY' in sec else f
+
+
+def sec_hi(sec):
+    """Highest floor height this sector can reach (raising floors, a lift at
+    rest). Mirrors sectorHi in js/cyber-traversal.js."""
+    f = sec.get('floorY', 0.0)
+    return max(sec['hiY'], f) if 'hiY' in sec else f
+
 
 def wall_pts(w):
     return float(w['p1'][0]), float(w['p1'][1]), float(w['p2'][0]), float(w['p2'][1])
@@ -190,10 +208,14 @@ class Reach:
             j0, j1 = self.cj(r['z'] - r['depth'] / 2), self.cj(r['z'] + r['depth'] / 2)
             free[max(0, j0):min(self.h, j1 + 1), max(0, i0):min(self.w, i1 + 1)] = True
         self.fy = np.zeros((self.h, self.w), dtype=np.float32)
+        self.lo = np.zeros((self.h, self.w), dtype=np.float32)
+        self.hi = np.zeros((self.h, self.w), dtype=np.float32)
         for sec in level.get('sectors', []):
             if sec.get('polys'):
-                # Scanline per sector so every cell carries its floor height.
-                self.fill_loops(free, sec['polys'], sec['floorY'])
+                # Scanline per sector so every cell carries its floor height
+                # and the envelope its floor can be moved through.
+                self.fill_loops(free, sec['polys'], sec['floorY'],
+                                sec_lo(sec), sec_hi(sec))
         for sec in level.get('sectors', []):
             if sec.get('polys'):
                 continue
@@ -203,8 +225,10 @@ class Reach:
             for r in srects:
                 i0, i1 = self.ci(r['x'] - r['width'] / 2), self.ci(r['x'] + r['width'] / 2)
                 j0, j1 = self.cj(r['z'] - r['depth'] / 2), self.cj(r['z'] + r['depth'] / 2)
-                self.fy[max(0, j0):min(self.h, j1 + 1),
-                        max(0, i0):min(self.w, i1 + 1)] = sec.get('floorY', 0.0)
+                sl = slice(max(0, j0), min(self.h, j1 + 1)), slice(max(0, i0), min(self.w, i1 + 1))
+                self.fy[sl] = sec.get('floorY', 0.0)
+                self.lo[sl] = sec_lo(sec)
+                self.hi[sl] = sec_hi(sec)
 
         xs = self.min_x + np.arange(self.w) * CELL
         zs = self.min_z + np.arange(self.h) * CELL
@@ -225,7 +249,33 @@ class Reach:
             sub &= ~(d < P_RADIUS)
         self.free = free
 
-    def fill_loops(self, free, loops, floor_y=None):
+        # Teleporter linedefs are one-way edges: standing on the trigger puts
+        # you at the landing spot, whatever the height difference.
+        self.tele = {}
+        for w in level.get('walls', []):
+            act = w.get('act')
+            if not act or act.get('kind') != 'tele' or not act.get('dest'):
+                continue
+            dk = self.snap(act['dest'][0], act['dest'][1])
+            if dk is None:
+                continue
+            dkk = dk[1] * self.w + dk[0]
+            ax, az, bx, bz = wall_pts(w)
+            pad = int(math.ceil((P_RADIUS + CELL) / CELL)) + 1
+            i0 = max(0, self.ci(min(ax, bx)) - pad)
+            i1 = min(self.w, self.ci(max(ax, bx)) + pad + 1)
+            j0 = max(0, self.cj(min(az, bz)) - pad)
+            j1 = min(self.h, self.cj(max(az, bz)) + pad + 1)
+            if i0 >= i1 or j0 >= j1:
+                continue
+            d = seg_dist_grid(self.px[j0:j1, i0:i1], self.pz[j0:j1, i0:i1], ax, az, bx, bz)
+            ok = (d <= P_RADIUS + CELL) & self.free[j0:j1, i0:i1]
+            for jj, ii in zip(*np.nonzero(ok)):
+                k = int((j0 + jj) * self.w + (i0 + ii))
+                if k != dkk:
+                    self.tele[k] = dkk
+
+    def fill_loops(self, free, loops, floor_y=None, lo=None, hi=None):
         buckets = {}
         edges = []
         for loop in loops:
@@ -258,6 +308,8 @@ class Reach:
                     free[j, i0:i1 + 1] = True
                     if floor_y is not None:
                         self.fy[j, i0:i1 + 1] = floor_y
+                        self.lo[j, i0:i1 + 1] = floor_y if lo is None else lo
+                        self.hi[j, i0:i1 + 1] = floor_y if hi is None else hi
 
     @staticmethod
     def blocking(level):
@@ -294,35 +346,40 @@ class Reach:
         passes over millions of cells."""
         w, h = self.w, self.h
         free = self.free.reshape(-1)
-        fy = self.fy.reshape(-1)
         dist = np.full(h * w, -1, dtype=np.int32)
         start = sj * w + si
         dist[start] = 0
         queue = deque([start])
         dl = dist.tolist()          # python lists: ~5x faster than numpy item access
-        fl = fy.tolist()
+        lol = self.lo.reshape(-1).tolist()
+        hil = self.hi.reshape(-1).tolist()
         fr = free.tolist()
+        tele = self.tele
         while queue:
             k = queue.popleft()
             d = dl[k] + 1
-            here = fl[k]
+            here = hil[k]
             i = k % w
             if i + 1 < w:
                 n = k + 1
-                if fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                if fr[n] and dl[n] < 0 and lol[n] - here <= STEP_UP_MAX + 1e-3:
                     dl[n] = d
                     queue.append(n)
             if i > 0:
                 n = k - 1
-                if fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+                if fr[n] and dl[n] < 0 and lol[n] - here <= STEP_UP_MAX + 1e-3:
                     dl[n] = d
                     queue.append(n)
             n = k + w
-            if n < h * w and fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+            if n < h * w and fr[n] and dl[n] < 0 and lol[n] - here <= STEP_UP_MAX + 1e-3:
                 dl[n] = d
                 queue.append(n)
             n = k - w
-            if n >= 0 and fr[n] and dl[n] < 0 and fl[n] - here <= STEP_UP_MAX + 1e-3:
+            if n >= 0 and fr[n] and dl[n] < 0 and lol[n] - here <= STEP_UP_MAX + 1e-3:
+                dl[n] = d
+                queue.append(n)
+            n = tele.get(k)
+            if n is not None and dl[n] < 0:
                 dl[n] = d
                 queue.append(n)
         self.dist = np.array(dl, dtype=np.int32).reshape(h, w)

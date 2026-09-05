@@ -29,6 +29,82 @@ function matAccent(c = 0xff6600, e = 0xff3300) {
   return new THREE.MeshStandardMaterial({ color: c, emissive: e, emissiveIntensity: 0.35, roughness: 0.4 });
 }
 
+/* Shared detail kit -------------------------------------------------------
+   Everything here is geometry only: worn edges are darker chamfer strips,
+   screws are tiny spheres, and every hidden helper (muzzle flashes, ejected
+   cases, sparks) is tagged hideInPickup so buildPickupMesh leaves it off. */
+let _detailGeo = null;
+function detailGeo() {
+  if (!_detailGeo) {
+    _detailGeo = {
+      rivet: new THREE.SphereGeometry(0.006, 5, 4),
+      flashCone: new THREE.ConeGeometry(0.05, 0.20, 6),
+      flashBlade: new THREE.BoxGeometry(0.12, 0.010, 0.016),
+      flashRing: new THREE.TorusGeometry(0.05, 0.012, 4, 10),
+      case_: new THREE.CylinderGeometry(0.011, 0.011, 0.032, 6)
+    };
+  }
+  return _detailGeo;
+}
+function matWorn() {
+  return new THREE.MeshStandardMaterial({ color: 0x090d12, metalness: 0.65, roughness: 0.45 });
+}
+function matSteel() {
+  return new THREE.MeshStandardMaterial({ color: 0x7d8894, metalness: 0.95, roughness: 0.28 });
+}
+function matFlash(c = 0xffd27a) {
+  return new THREE.MeshStandardMaterial({
+    color: 0x100c04, emissive: c, emissiveIntensity: 1.9, transparent: true, opacity: 0.85, depthWrite: false
+  });
+}
+/** A darker chamfer strip along an edge — reads as wear without a texture. */
+function edge(parent, w, h, d, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matWorn());
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+function rivets(parent, n, x, y, z, dz) {
+  const g = detailGeo().rivet, mat = matSteel();
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(g, mat);
+    m.position.set(x, y, z + i * dz);
+    parent.add(m);
+  }
+}
+/** Pooled muzzle flash. kind: 'star' | 'wide' | 'ring'. Hidden until fired. */
+function muzzleFlash(kind, color) {
+  const D = detailGeo(), g = new THREE.Group(), mat = matFlash(color);
+  const cone = new THREE.Mesh(D.flashCone, mat);
+  cone.rotation.x = -Math.PI / 2;
+  g.add(cone);
+  if (kind === 'star') {
+    const b1 = new THREE.Mesh(D.flashBlade, mat);
+    const b2 = new THREE.Mesh(D.flashBlade, mat);
+    b2.rotation.z = Math.PI / 2;
+    g.add(b1, b2);
+  } else if (kind === 'wide') {
+    cone.scale.set(1.7, 0.55, 1.7);
+  } else if (kind === 'ring') {
+    const r = new THREE.Mesh(D.flashRing, mat);
+    g.add(r);
+    cone.scale.set(0.6, 1.5, 0.6);
+  }
+  g.visible = false;
+  g.traverse(o => { o.userData.hideInPickup = true; });
+  g.userData.hideInPickup = true;
+  return g;
+}
+/** Pooled ejected case: one mesh per weapon, flown on an arc after a shot. */
+function ejectCase(color) {
+  const m = new THREE.Mesh(detailGeo().case_, new THREE.MeshStandardMaterial({
+    color: color, metalness: 0.85, roughness: 0.35
+  }));
+  m.visible = false;
+  m.userData.hideInPickup = true;
+  return m;
+}
+
 /* Chain path for the Cyber Ripper: a stadium (two straights + two arcs)
    traced around the guide bar.  s in [0,1) -> [y, z] in local bar space. */
 function stadiumPoint(s, halfLen, r) {
@@ -66,6 +142,14 @@ class WeaponViewmodels {
     this.heat = 0;        // repeater vent glow, 0..1
     this.charge = 0;      // energy rifle capacitor, 0..1
     this.chainPhase = 0;
+    this.flashT = 0;      // muzzle flash countdown, seconds
+    this.ejectT = 0;      // ejected case flight, 1 -> 0
+    this.pumpT = 0;       // shotgun pump cycle, 1 -> 0
+    this.irisT = 0;       // energy rifle muzzle iris, 1 -> 0
+    this.hammerT = 0;     // pistol hammer fall, 1 -> 0
+    this.revKick = 0;     // chainsaw rev-up kick, 1 -> 0
+    this._prevRev = false;
+    this.emitterIdx = 0;  // repeater alternates its two emitters
 
     this.buildWeapons();
     this.setWeapon('pistol');
@@ -154,10 +238,44 @@ class WeaponViewmodels {
     const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.13, 0.02), matAccent(0xff2200, 0xff0000));
     flywheel.add(spoke);
 
-    g.add(body, grip, bar, c1, c2, battery, batteryShell, motor, flywheel);
+    // Worn chamfer strips along the housing, screws, and a top vent bank.
+    edge(g, 0.235, 0.02, 0.5, 0, 0.11, 0.12);
+    edge(g, 0.235, 0.02, 0.5, 0, -0.15, 0.12);
+    rivets(g, 4, 0.112, 0.02, -0.02, 0.09);
+    const vents = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const v = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.03), matEnergy(0.5));
+      v.position.set(0, 0.115, 0.0 + i * 0.06);
+      vents.add(v);
+    }
+    // Bar detail: guide slot, nose sprocket cover, and a front handle bar.
+    const barSlot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, halfLen * 1.5), matWorn());
+    barSlot.position.set(0, 0, -0.55);
+    const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.05, 8), matGun(0x6d7883));
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, 0, -0.97);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.014, 5, 12), matDark());
+    handle.rotation.y = Math.PI / 2;
+    handle.position.set(0, 0.02, -0.05);
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.09, 6), matGun(0x5a6470));
+    exhaust.rotation.z = Math.PI / 2;
+    exhaust.position.set(-0.12, 0.05, 0.3);
+    // Sparks thrown off the bar under load.
+    const sparks = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.07, 4), matFlash(0xfff0a0));
+      sp.position.set((i % 2 ? 0.05 : -0.05), 0.02 + (i * 0.03), -0.9 - i * 0.03);
+      sparks.add(sp);
+    }
+    sparks.visible = false;
+    sparks.traverse(o => { o.userData.hideInPickup = true; });
+    sparks.userData.hideInPickup = true;
+
+    g.add(body, grip, bar, barSlot, nose, handle, exhaust, c1, c2, battery, batteryShell, motor, flywheel, vents, sparks);
     g.position.set(0.16, -0.25, -0.6);
     g.scale.setScalar(0.62);
-    return { mesh: g, baseZ: -0.5, teeth, halfLen, chainR, battery, flywheel, conduits: [c1, c2], recoil: 0.5 };
+    return { mesh: g, baseZ: -0.5, teeth, halfLen, chainR, battery, flywheel, conduits: [c1, c2],
+             bar, sparks, sawVents: vents, recoil: 0.5, sway: { amp: 1.0, freq: 1.0, roll: 0.010 } };
   }
 
   /* 2. PISTOL — Cyber 9mm, unchanged behaviour, bullets. */
@@ -172,9 +290,52 @@ class WeaponViewmodels {
     grip.position.set(0, -0.12, 0.1);
     const accent = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.02, 0.1), matAccent());
     accent.position.set(0, -0.05, 0.02);
-    g.add(slide, barrel, grip, accent);
-    g.position.set(0.2, -0.2, -0.5);
-    return { mesh: g, baseZ: -0.55, slide, recoil: 1.0 };
+
+    // Slide serrations, frame rail and worn top edges.
+    for (let i = 0; i < 5; i++) {
+      const ser = new THREE.Mesh(new THREE.BoxGeometry(0.084, 0.055, 0.008), matWorn());
+      ser.position.set(0, 0.005, 0.12 + i * 0.022);
+      slide.add(ser);
+    }
+    edge(slide, 0.082, 0.008, 0.4, 0, 0.05, 0);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.018, 0.16), matWorn());
+    rail.position.set(0, -0.06, -0.08);
+    // Iron sights: rear notch and a glowing front post.
+    const rear = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.016, 0.016), matDark());
+    rear.position.set(0, 0.058, 0.17);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.02, 0.014), matEnergy(1.2));
+    front.position.set(0, 0.058, -0.16);
+    slide.add(rear, front);
+    // Hammer, trigger and guard.
+    const hammer = new THREE.Group();
+    const hMesh = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.05, 0.016), matSteel());
+    hMesh.position.y = 0.025;
+    hammer.add(hMesh);
+    hammer.position.set(0, 0.01, 0.19);
+    const trigger = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.045, 0.012), matSteel());
+    trigger.position.set(0, -0.06, 0.09);
+    const guard = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.008, 4, 10, Math.PI), matDark());
+    guard.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+    guard.position.set(0, -0.08, 0.09);
+    // Magazine base plate and a chamber-loaded indicator.
+    const magPlate = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.016, 0.12), matSteel());
+    magPlate.position.set(0, -0.225, 0.14);
+    magPlate.rotation.x = -0.3;
+    const chamber = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.03), matEnergy(1.4));
+    chamber.position.set(0.043, 0.02, 0.06);
+    rivets(g, 3, 0.038, -0.1, 0.04, 0.05);
+
+    const flash = muzzleFlash('star', 0xffd27a);
+    flash.position.set(0, 0.03, -0.26);
+    const shell = ejectCase(0xcaa24a);
+
+    g.add(slide, barrel, grip, accent, rail, hammer, trigger, guard, magPlate, chamber, flash, shell);
+    // The pistol sat unscaled and at the shallowest depth of the six, so it
+    // filled a third of the screen as an unreadable slab. Matched to the rest.
+    g.position.set(0.19, -0.2, -0.52);
+    g.scale.setScalar(0.72);
+    return { mesh: g, baseZ: -0.55, slide, hammer, flash, shell, ejectFrom: new THREE.Vector3(0.05, 0.04, 0.1),
+             recoil: 1.0, sway: { amp: 0.85, freq: 1.15, roll: 0.006 } };
   }
 
   /* 3. MACHINEGUN — rotary cluster, belt-fed, bullets. */
@@ -221,10 +382,48 @@ class WeaponViewmodels {
     const coolant = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.3), matEnergy(0.8));
     coolant.position.set(0.075, 0.04, -0.12);
 
-    g.add(receiver, grip, cluster, drum, belt, coolant);
+    // Barrel shroud with vent slots, wrapped around the cluster.
+    const shroud = new THREE.Group();
+    const shroudBody = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.3, 10, 1, true), matGun(0x2f3a46));
+    shroudBody.rotation.x = Math.PI / 2;
+    shroud.add(shroudBody);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.18), matWorn());
+      slot.position.set(Math.cos(a) * 0.072, Math.sin(a) * 0.072, 0);
+      shroud.add(slot);
+    }
+    shroud.position.set(0, 0.01, -0.3);
+    // Top rail, carry handle, foregrip and cooling fins.
+    const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.014, 0.3), matWorn());
+    topRail.position.set(0, 0.08, 0.03);
+    const carry = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.01, 4, 10, Math.PI), matDark());
+    carry.rotation.set(0, Math.PI / 2, 0);
+    carry.position.set(0, 0.09, 0.05);
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.11, 0.09), matDark());
+    fore.position.set(0, -0.11, -0.13);
+    fore.rotation.x = 0.18;
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.01), matGun(0x3a4653));
+      fin.position.set(0, -0.02, -0.05 + i * 0.05);
+      receiver.add(fin);
+    }
+    edge(g, 0.145, 0.014, 0.4, 0, 0.06, 0.08);
+    edge(g, 0.145, 0.014, 0.4, 0, -0.1, 0.08);
+    rivets(g, 4, 0.073, -0.02, -0.04, 0.06);
+    // Belt feed cover over the drum.
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.12), matGun(0x36414d));
+    cover.position.set(-0.09, -0.04, 0.13);
+
+    const flash = muzzleFlash('star', 0xffc46a);
+    flash.position.set(0, 0.01, -0.68);
+    flash.scale.setScalar(0.9);
+
+    g.add(receiver, grip, cluster, drum, belt, coolant, shroud, topRail, carry, fore, cover, flash);
     g.position.set(0.18, -0.24, -0.55);
     g.scale.setScalar(0.85);
-    return { mesh: g, baseZ: -0.55, cluster, drum, recoil: 0.55 };
+    return { mesh: g, baseZ: -0.55, cluster, drum, belt, flash, receiver,
+             recoil: 0.55, sway: { amp: 1.25, freq: 0.82, roll: 0.014 } };
   }
 
   /* 4. SHOTGUN — Trench Scattergun, shells. */
@@ -241,9 +440,49 @@ class WeaponViewmodels {
     body.position.set(0, -0.04, 0.1);
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.02), matEnergy(1.0));
     sight.position.set(0, 0.08, -0.62);
-    g.add(b1, b2, pump, body, sight);
+
+    // Ribbed heat shield over the barrels, and a rear notch to sight through.
+    const shield = new THREE.Group();
+    for (let i = 0; i < 7; i++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.02), matGun(0x39424f));
+      rib.position.set(0, 0.075, -0.58 + i * 0.09);
+      shield.add(rib);
+    }
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.62), matGun(0x39424f));
+    spine.position.set(0, 0.075, -0.3);
+    shield.add(spine);
+    const notch = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.018, 0.018), matDark());
+    notch.position.set(0, 0.08, 0.02);
+    // Pump ribs so the cycle reads, plus a wrist stock and shell loops.
+    for (let i = 0; i < 4; i++) {
+      const pr = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.012, 0.016), matWorn());
+      pr.position.set(0, 0.048, -0.07 + i * 0.045);
+      pump.add(pr);
+    }
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.14, 0.2), matDark());
+    stock.position.set(0, -0.09, 0.36);
+    stock.rotation.x = -0.16;
+    const loops = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.05, 6), matAccent(0xd4452a, 0x551000));
+      sh.rotation.z = Math.PI / 2;
+      sh.position.set(0.062, -0.02 + i * 0.001, 0.16 + i * 0.045);
+      loops.add(sh);
+    }
+    edge(g, 0.105, 0.014, 0.4, 0, 0.035, 0.1);
+    edge(g, 0.105, 0.014, 0.4, 0, -0.115, 0.1);
+    rivets(g, 3, 0.052, -0.04, 0.02, 0.06);
+    const breach = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.05), matEnergy(0.2));
+    breach.position.set(0.045, 0.0, -0.05);
+
+    const flash = muzzleFlash('wide', 0xffb454);
+    flash.position.set(0, 0.04, -0.72);
+    const shell = ejectCase(0xb03a22);
+
+    g.add(b1, b2, pump, body, sight, shield, notch, stock, loops, breach, flash, shell);
     g.position.set(0.18, -0.22, -0.6);
-    return { mesh: g, baseZ: -0.55, pump, recoil: 2.2 };
+    return { mesh: g, baseZ: -0.55, pump, flash, shell, breach, ejectFrom: new THREE.Vector3(0.06, 0.02, -0.02),
+             recoil: 2.2, sway: { amp: 1.15, freq: 0.9, roll: 0.012 } };
   }
 
   /* 5. ENERGY RIFLE — single heavy bolt, scoped, capacitor coil. */
@@ -283,10 +522,49 @@ class WeaponViewmodels {
     lens.position.set(0, 0.11, 0.07);
     lens.rotation.y = Math.PI;
 
-    g.add(body, stock, grip, barrel, coil, muzzle, scope, lens);
+    // Scope mounts and a glowing reticle behind the lens.
+    for (let i = 0; i < 2; i++) {
+      const mount = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.02), matGun(0x2b3542));
+      mount.position.set(0, 0.07, -0.12 + i * 0.14);
+      g.add(mount);
+    }
+    // Capacitor cell with a window that tracks the charge.
+    const cell = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.09, 0.14), matGun(0x212b36));
+    cell.position.set(0, -0.11, 0.02);
+    const window_ = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.05), matEnergy(0.6));
+    window_.position.set(0, -0.11, 0.02);
+    // Cooling fins along the receiver, worn top and bottom edges.
+    for (let i = 0; i < 5; i++) {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.045, 0.01), matGun(0x2f3a47));
+      fin.position.set(0, 0.02, 0.0 + i * 0.05);
+      g.add(fin);
+    }
+    edge(g, 0.105, 0.012, 0.45, 0, 0.05, 0.12);
+    edge(g, 0.105, 0.012, 0.45, 0, -0.09, 0.12);
+    rivets(g, 3, 0.052, -0.02, 0.06, 0.06);
+    // Muzzle iris: four petals that swing open on the shot.
+    const iris = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const petal = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.035), matGun(0x6f7f92));
+      petal.position.set(Math.cos(a) * 0.038, Math.sin(a) * 0.038, 0);
+      petal.rotation.z = a;
+      petal.userData.a = a;
+      iris.add(petal);
+    }
+    iris.position.set(0, 0.015, -0.96);
+    // Vent that puffs after a shot.
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.07), matEnergy(0.3));
+    vent.position.set(0.055, 0.06, 0.2);
+
+    const flash = muzzleFlash('ring', 0x8ff6ff);
+    flash.position.set(0, 0.015, -1.0);
+
+    g.add(body, stock, grip, barrel, coil, muzzle, scope, lens, cell, window_, iris, vent, flash);
     g.position.set(0.17, -0.23, -0.55);
     g.scale.setScalar(0.64);
-    return { mesh: g, baseZ: -0.5, coil, muzzle, recoil: 1.7 };
+    return { mesh: g, baseZ: -0.5, coil, muzzle, iris, vent, cellWindow: window_, flash,
+             recoil: 1.7, sway: { amp: 1.1, freq: 0.86, roll: 0.011 } };
   }
 
   /* 6. ENERGY REPEATER — compact twin emitters, vents glow with heat. */
@@ -324,22 +602,56 @@ class WeaponViewmodels {
     const core = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.12), matEnergy(0.8));
     core.position.set(0, 0.05, 0.14);
 
-    g.add(body, grip, core);
+    // Coils spiralling up each emitter tube.
+    for (let i = 0; i < 2; i++) {
+      for (let r = 0; r < 3; r++) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.008, 4, 10), matEnergy(0.45));
+        ring.position.set(i ? 0.055 : -0.055, 0.02, -0.2 - r * 0.1);
+        g.add(ring);
+      }
+    }
+    // Removable cell under the body, top rail, and worn edges.
+    const cell = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.1), matGun(0x232d39));
+    cell.position.set(0, -0.09, -0.02);
+    const cellGlow = new THREE.Mesh(new THREE.BoxGeometry(0.104, 0.022, 0.05), matEnergy(0.7));
+    cellGlow.position.set(0, -0.09, -0.02);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.016, 0.2), matWorn());
+    rail.position.set(0, 0.075, 0.02);
+    edge(g, 0.185, 0.014, 0.34, 0, 0.055, 0.06);
+    edge(g, 0.185, 0.014, 0.34, 0, -0.075, 0.06);
+    rivets(g, 3, 0.093, -0.03, -0.02, 0.06);
+
+    const flashes = [];
+    for (let i = 0; i < 2; i++) {
+      const f = muzzleFlash('ring', 0x8ff6ff);
+      f.scale.setScalar(0.72);
+      f.position.set(i ? 0.055 : -0.055, 0.02, -0.56);
+      flashes.push(f);
+      g.add(f);
+    }
+
+    g.add(body, grip, core, cell, cellGlow, rail);
     g.position.set(0.18, -0.24, -0.52);
     g.scale.setScalar(0.88);
-    return { mesh: g, baseZ: -0.55, emitters, vents, core, recoil: 0.35 };
+    return { mesh: g, baseZ: -0.55, emitters, vents, core, cellGlow, flashes,
+             recoil: 0.35, sway: { amp: 0.95, freq: 1.05, roll: 0.008 } };
   }
 
   /* Pickup mesh: the viewmodel again, scaled up so it reads across a room. */
   buildPickupMesh(key) {
     const src = this.weapons[key] || this.weapons['pistol'];
     const clone = src.mesh.clone(true);
-    clone.traverse(o => { o.visible = true; });
+    // Muzzle flashes, sparks and ejected cases stay hidden on the floor model.
+    clone.traverse(o => { o.visible = !o.userData.hideInPickup; });
     clone.position.set(0, 0, 0);
-    clone.rotation.set(0, 0, 0);
+    clone.rotation.set(0.22, 0, 0.14);   // tipped up so it reads as a weapon, not a stick
     clone.scale.setScalar(1.9);
     const wrap = new THREE.Group();
     wrap.add(clone);
+    // Centre it on the wrap so a spin turns about the weapon, not about its grip.
+    const box = new THREE.Box3().setFromObject(clone);
+    const c = box.getCenter(new THREE.Vector3());
+    clone.position.sub(c);
     return wrap;
   }
 
@@ -364,9 +676,23 @@ class WeaponViewmodels {
     if (cur) {
       if (cur.cluster) this.spinSpeed = 28;
       if (cur.slide) cur.slide.position.z = 0.09;
-      if (cur.pump) cur.pump.position.z = -0.16;
-      if (cur.coil) this.charge = 0;
+      if (cur.pump) { cur.pump.position.z = -0.16; this.pumpT = 1; }
+      if (cur.coil) { this.charge = 0; this.irisT = 1; }
       if (cur.vents) this.heat = Math.min(1, this.heat + 0.22);
+      if (cur.hammer) this.hammerT = 1;
+      if (cur.shell) this.ejectT = 1;
+      if (cur.flashes) this.emitterIdx ^= 1;
+
+      // Muzzle flash: a fresh roll and scale every shot so repeats differ.
+      this.flashT = 0.06;
+      const fl = cur.flashes ? cur.flashes[this.emitterIdx] : cur.flash;
+      if (fl) {
+        if (cur.flashes) cur.flashes.forEach(f => { f.visible = false; });
+        fl.visible = true;
+        fl.rotation.z = Math.random() * Math.PI * 2;
+        const sc = (fl.userData.baseScale ??= fl.scale.x);
+        fl.scale.setScalar(sc * (0.8 + Math.random() * 0.5 + intensity * 0.12));
+      }
     }
     clearTimeout(this._muzzleTimer);
     this._muzzleTimer = setTimeout(() => { this.muzzleLight.intensity = 0; }, 60);
@@ -387,9 +713,23 @@ class WeaponViewmodels {
     this.spinSpeed = THREE.MathUtils.lerp(this.spinSpeed, 0, delta * 3);
     this.heat = Math.max(0, this.heat - delta * 0.5);
     this.charge = Math.min(1, this.charge + delta * 1.6);
+    this.flashT = Math.max(0, this.flashT - delta);
+    this.ejectT = Math.max(0, this.ejectT - delta * 2.6);
+    this.pumpT = Math.max(0, this.pumpT - delta * 1.9);
+    this.irisT = Math.max(0, this.irisT - delta * 5);
+    this.hammerT = Math.max(0, this.hammerT - delta * 9);
+    this.revKick = Math.max(0, this.revKick - delta * 4);
+    if (this.sawRev && !this._prevRev) this.revKick = 1;
+    this._prevRev = this.sawRev;
 
     const cur = this.weapons[this.currentKey];
     if (!cur) return;
+
+    // Muzzle flash lives for a few frames only.
+    if (!this.flashT) {
+      if (cur.flash) cur.flash.visible = false;
+      if (cur.flashes) cur.flashes.forEach(f => { f.visible = false; });
+    }
 
     let jitterX = 0, jitterY = 0;
     if (this.currentKey === 'chainsaw' && this.sawRunning) {
@@ -398,10 +738,32 @@ class WeaponViewmodels {
       jitterY = (Math.random() - 0.5) * amp;
     }
 
-    cur.mesh.position.x = (cur.mesh.userData.baseX ??= cur.mesh.position.x) + jitterX;
-    cur.mesh.position.y = -0.22 + bobY - this.recoilOffset * 0.5 + jitterY;
+    // Idle sway varies per weapon: heavy guns swing slower and wider, and
+    // each one rolls a little as it settles.
+    const sway = cur.sway || { amp: 1, freq: 1, roll: 0.008 };
+    const sx = Math.cos(this.bobTimer * sway.freq) * 0.015 * sway.amp;
+    const sy = Math.sin(this.bobTimer * sway.freq * 2) * 0.015 * sway.amp;
+    cur.mesh.position.x = (cur.mesh.userData.baseX ??= cur.mesh.position.x) + jitterX + sx * 0.35;
+    cur.mesh.position.y = -0.22 + sy - this.recoilOffset * 0.5 + jitterY;
     // Long weapons need a deeper base or their stock clips the near plane.
-    cur.mesh.position.z = (cur.baseZ ?? -0.55) + bobX + this.recoilOffset;
+    cur.mesh.position.z = (cur.baseZ ?? -0.55) + sx + this.recoilOffset;
+    cur.mesh.rotation.z = Math.sin(this.bobTimer * sway.freq * 0.5) * sway.roll;
+    cur.mesh.rotation.x = -this.recoilOffset * 0.9 + Math.sin(this.bobTimer * sway.freq * 0.33) * sway.roll * 0.5;
+
+    // Ejected case flies out on an arc and disappears.
+    if (cur.shell && cur.ejectFrom) {
+      const e = this.ejectT;
+      cur.shell.visible = e > 0.02;
+      if (cur.shell.visible) {
+        const t = 1 - e;
+        cur.shell.position.set(
+          cur.ejectFrom.x + t * 0.22,
+          cur.ejectFrom.y + t * 0.16 - t * t * 0.55,
+          cur.ejectFrom.z + t * 0.10
+        );
+        cur.shell.rotation.set(t * 9, t * 6, t * 4);
+      }
+    }
 
     // Chainsaw: teeth travel the stadium path, flywheel spins, battery glows.
     if (cur.teeth) {
@@ -413,36 +775,86 @@ class WeaponViewmodels {
         cur.teeth[i].rotation.x = Math.atan2(y, 0.2);
       }
       cur.flywheel.rotation.y += delta * (this.sawRunning ? (this.sawRev ? 40 : 22) : 0);
+      // Rev kick when the trigger first bites, then a wobble under load.
+      const load = this.sawRunning ? (this.sawRev ? 1 : 0.35) : 0;
+      cur.mesh.rotation.x += this.revKick * 0.16;
+      cur.mesh.rotation.z += this.revKick * -0.10;
+      if (cur.bar) {
+        cur.bar.rotation.z = Math.sin(this.bobTimer * 9) * 0.012 * load + this.revKick * 0.05;
+        cur.bar.position.y = Math.sin(this.bobTimer * 14) * 0.006 * load;
+      }
+      if (cur.sparks) {
+        cur.sparks.visible = this.sawRev && this.sawRunning;
+        if (cur.sparks.visible) {
+          cur.sparks.rotation.z = Math.random() * Math.PI * 2;
+          cur.sparks.scale.setScalar(0.6 + Math.random() * 0.8);
+        }
+      }
+      if (cur.sawVents) {
+        cur.sawVents.children.forEach((v, i) => {
+          v.material.emissiveIntensity = 0.2 + load * (0.5 + Math.abs(Math.sin(this.bobTimer * 6 + i)) * 0.8);
+        });
+      }
       const glow = this.sawEnergyFrac;
       cur.battery.material.emissiveIntensity = 0.08 + glow * 0.55;
       cur.battery.material.color.setRGB(0.0, glow * 0.55, glow * 0.5 + 0.05);
       cur.conduits.forEach(c => { c.material.emissiveIntensity = this.sawRunning ? 0.6 + Math.random() * 0.7 : 0.15; });
     }
 
-    // Machinegun barrel spin-down.
+    // Machinegun barrel spin-down, receiver shudder and creeping belt.
     if (cur.cluster) {
       cur.cluster.rotation.z += delta * this.spinSpeed;
       cur.drum.rotation.x += delta * this.spinSpeed * 0.3;
+      const shud = Math.min(1, this.spinSpeed / 28);
+      if (cur.receiver) {
+        cur.receiver.position.x = (Math.random() - 0.5) * 0.006 * shud;
+        cur.receiver.position.y = -0.02 + (Math.random() - 0.5) * 0.006 * shud;
+      }
+      if (cur.belt) {
+        cur.belt.position.z = -((this.bobTimer * 0.02 * shud) % 0.024);
+        cur.belt.position.y = -((this.bobTimer * 0.02 * shud) % 0.024) * 0.8;
+      }
     }
 
-    // Pistol slide / shotgun pump return.
+    // Pistol slide blow-back and hammer fall.
     if (cur.slide) cur.slide.position.z = THREE.MathUtils.lerp(cur.slide.position.z, 0, delta * 14);
-    if (cur.pump) cur.pump.position.z = THREE.MathUtils.lerp(cur.pump.position.z, -0.28, delta * 10);
+    if (cur.hammer) cur.hammer.rotation.x = -0.9 * (1 - this.hammerT);
+    // Shotgun pump cycles back over the first half of the reload, then forward.
+    if (cur.pump) {
+      const c = this.pumpT;
+      const stroke = c > 0.5 ? (1 - c) * 2 : c * 2;   // 0 -> 1 -> 0
+      cur.pump.position.z = -0.28 + stroke * 0.14;
+      if (cur.breach) cur.breach.material.emissiveIntensity = 0.1 + stroke * 1.6;
+    }
 
-    // Energy rifle capacitor charge glow between shots.
+    // Energy rifle: coils charge in sequence, iris opens on the shot, vent puffs.
     if (cur.coil) {
       const c = this.charge;
       cur.coil.children.forEach((r, i) => {
         r.material.emissiveIntensity = 0.15 + Math.max(0, c - i * 0.2) * 1.6;
       });
       cur.muzzle.material.emissiveIntensity = 0.2 + c * 1.4;
+      if (cur.cellWindow) cur.cellWindow.material.emissiveIntensity = 0.2 + c * 1.3;
+      if (cur.iris) {
+        const open = this.irisT;
+        cur.iris.children.forEach(pt => {
+          pt.position.x = Math.cos(pt.userData.a) * (0.038 + open * 0.03);
+          pt.position.y = Math.sin(pt.userData.a) * (0.038 + open * 0.03);
+        });
+      }
+      if (cur.vent) cur.vent.material.emissiveIntensity = 0.15 + this.irisT * 1.8;
     }
 
-    // Repeater heat vents.
+    // Repeater heat vents; the emitter that just fired burns brighter.
     if (cur.vents) {
-      cur.vents.forEach(v => { v.material.emissiveIntensity = this.heat * 1.8; });
+      const shimmer = 1 + Math.sin(this.bobTimer * 11) * 0.25 * this.heat;
+      cur.vents.forEach(v => { v.material.emissiveIntensity = this.heat * 1.8 * shimmer; });
       cur.core.material.emissiveIntensity = 0.4 + this.heat;
-      cur.emitters.forEach(e => { e.material.emissiveIntensity = 0.6 + this.heat * 1.2; });
+      if (cur.cellGlow) cur.cellGlow.material.emissiveIntensity = 0.3 + this.heat * 1.1;
+      cur.emitters.forEach((e, i) => {
+        const hot = (i === this.emitterIdx && this.flashT > 0) ? 1.8 : 0;
+        e.material.emissiveIntensity = 0.6 + this.heat * 1.2 + hot;
+      });
     }
   }
 }

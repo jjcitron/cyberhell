@@ -1,0 +1,184 @@
+{
+ "name": "AI FAN",
+ "skyColor": 526356,
+ "fogColor": 723736,
+ "fogDensity": 0.008,
+ "ambientLight": 4478310,
+ "sunLight": {
+  "color": 8952234,
+  "intensity": 1,
+  "pos": [
+   30,
+   80,
+   -30
+  ]
+ },
+ "playerSpawn": {
+  "pos": [
+   17,
+   0,
+   17
+  ],
+  "rot": 0
+ },
+ "sectors": [
+  {
+   "id": "secR",
+   "polys": [
+    [
+     [
+      0,
+      0
+     ],
+     [
+      34,
+      0
+     ],
+     [
+      34,
+      34
+     ],
+     [
+      0,
+      34
+     ]
+    ]
+   ],
+   "area": 1156,
+   "floorY": 0,
+   "ceilY": 6.4,
+   "floorTex": "metal_grate",
+   "ceilTex": "tech_panel",
+   "light": 0.8,
+   "isSky": false,
+   "x": 17,
+   "z": 17,
+   "width": 34,
+   "depth": 34
+  }
+ ],
+ "walls": [
+  {
+   "p1": [
+    0,
+    0
+   ],
+   "p2": [
+    34,
+    0
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    34,
+    0
+   ],
+   "p2": [
+    34,
+    34
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    34,
+    34
+   ],
+   "p2": [
+    0,
+    34
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  },
+  {
+   "p1": [
+    0,
+    34
+   ],
+   "p2": [
+    0,
+    0
+   ],
+   "bottomY": 0,
+   "topY": 6.4,
+   "h": 6.4,
+   "tex": "tech_wall",
+   "solid": true
+  }
+ ],
+ "entities": [
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    16,
+    0,
+    2.2
+   ],
+   "rot": 0
+  },
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    17,
+    0,
+    2.6
+   ],
+   "rot": 0
+  },
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    18,
+    0,
+    2.2
+   ],
+   "rot": 0
+  },
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    16.4,
+    0,
+    3.6
+   ],
+   "rot": 0
+  },
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    17.6,
+    0,
+    3.6
+   ],
+   "rot": 0
+  },
+  {
+   "type": "monster",
+   "enemyType": 3001,
+   "pos": [
+    17,
+    0,
+    4.4
+   ],
+   "rot": 0
+  }
+ ]
+}
