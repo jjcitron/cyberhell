@@ -192,3 +192,8 @@ Trigger binding is by value, not position: `triggers[].i` is matched against a w
 ORDER still matters because sector `fs`/`bs` attachment walks `data.walls` and `engine.walls` in
 lockstep by index. `tests/reachability.js` `floorMetrics()` takes ~8 min on `dv/json2` (23M
 cells at CELL=0.25); `analyze()` alone is ~0.9 s.
+
+Editor-core lead adds: sector indices appear in four places (`triggers[].act.secs`,
+`walls[].act.secs`, `walls[].fs`, `walls[].bs`); the door flag is `isDoor` (+`doorId`, `closed`);
+walls also carry `ledge/loFloor/hiFloor/stepUp`, `special`, `tag`, `isExit`, `act`. A trigger
+without a wall is normal for walkover lines.
