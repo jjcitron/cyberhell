@@ -117,20 +117,40 @@
       lastX: 0, lastY: 0, clock: null
     };
 
+    // Builds a WebGLRenderer wired with our context-loss/click/fly-cam
+    // handlers. Broken out because the panel is mounted while its tab is
+    // hidden (0-size) -- a renderer created and first-sized at 0 is left with
+    // a stale/broken backbuffer in at least Chromium+swiftshader (renders
+    // successfully, shows nothing, confirmed by rendering the same scene
+    // through a freshly-created renderer and getting correct pixels). Cheapest
+    // fix: build the real renderer lazily, once the container has an actual
+    // visible size (see onResize's first-real-size branch).
+    function createRenderer(container, w, h) {
+      var r = new THREE.WebGLRenderer({ antialias: true });
+      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      r.setSize(w, h, false);
+      r.domElement.style.display = 'block';
+      r.domElement.oncontextmenu = function (e) { e.preventDefault(); };
+      r.domElement.addEventListener('webglcontextlost', function (e) { e.preventDefault(); }, false);
+      r.domElement.addEventListener('webglcontextrestored', function () {
+        if (state.level) buildLevel(state.level, false);
+      }, false);
+      wireFlyCamera(r.domElement, container);
+      wireClickSelect(r.domElement);
+      return r;
+    }
+
     function init(container) {
       state.container = container;
       container.style.position = container.style.position || 'relative';
       container.style.overflow = 'hidden';
       container.tabIndex = 0;
 
-      var renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       var w = container.clientWidth || 400, h = container.clientHeight || 300;
-      renderer.setSize(w, h, false);
-      renderer.domElement.style.display = 'block';
-      renderer.domElement.oncontextmenu = function (e) { e.preventDefault(); };
+      var renderer = createRenderer(container, w, h);
       container.appendChild(renderer.domElement);
       state.renderer = renderer;
+      state.gotRealSize = false;
 
       var scene = new THREE.Scene();
       state.scene = scene;
@@ -158,9 +178,6 @@
       ro.observe(container);
       state.resizeObserver = ro;
 
-      wireFlyCamera(renderer.domElement, container);
-      wireClickSelect(renderer.domElement);
-
       state.clock = new THREE.Clock();
       window.__cyberPreview3DDebug = state; // introspection hook for QA, harmless in prod
       requestAnimationFrame(animate);
@@ -173,7 +190,18 @@
 
     function onResize() {
       var w = state.container.clientWidth || 1, h = state.container.clientHeight || 1;
-      state.renderer.setSize(w, h, false);
+      // First time the panel gets an actual visible size (it mounts inside a
+      // hidden tab), swap in a fresh renderer instead of resizing the one
+      // built at 0-size -- see createRenderer's comment for why.
+      if (!state.gotRealSize && w > 20 && h > 20) {
+        state.gotRealSize = true;
+        var fresh = createRenderer(state.container, w, h);
+        state.container.replaceChild(fresh.domElement, state.renderer.domElement);
+        state.renderer.dispose();
+        state.renderer = fresh;
+      } else {
+        state.renderer.setSize(w, h, false);
+      }
       state.persp.aspect = w / h;
       state.persp.updateProjectionMatrix();
       fitOrtho();
