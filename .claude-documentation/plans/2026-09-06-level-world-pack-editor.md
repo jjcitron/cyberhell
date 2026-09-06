@@ -113,3 +113,16 @@ through the editor model yields identical JSON.
 4. Fresh-context evaluator uses the editor end to end (create pack, edit a converted level, custom
    enemy, MIDI, save-as, test in game) and grades it. 5. Push `main`, Vercel READY.
 6. Stop: ask Joel to provision Blob + Neon; then run the migration and flip the game boot to the API.
+
+## Status log
+
+- 2026-09-06 05:10 EDT — all six lanes merged on `master` (df043dd): editor shell + 2D map + local
+  storage + test-in-game (197/197 zero-diff round trip, field census gate), 3D preview (one
+  InstancedMesh for 20k walls), enemy editor (15/15 rigs byte-identical under the look layer,
+  custom enemies resolved by the engine), MIDI composer (SMF writer/reader, 5 presets, level.music
+  override, cue table unchanged for all 197 levels), validator (198/198 canonical clean, 16 unit
+  tests), cloud API on fs + blob/neon stores (14/14 API tests, migration dry-run idempotent).
+  Integration fixes: fs store writes under /tmp on Vercel; static pack list fetched from the
+  deployment origin when not bundled. Open: editor-core pass 2 (vertex insert/delete, holes,
+  multi-drag, entity nudge, packs.json in save-into-repo, panel visibility bug), validation pass 2
+  (e2e against the real shell). Provisioning of Blob + Neon awaits Joel.
