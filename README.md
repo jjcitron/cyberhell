@@ -124,3 +124,16 @@ POST   /api/publish/:packId {published}
 Levels are content-addressed: saving stores the JSON under its sha256 and records a version row, so
 history is free and re-saving unchanged content costs nothing. `GET /api/packs/:id` returns the same
 manifest shape the repo files use, which is why the game's loader needed no changes.
+
+### Re-running the migration from the deployment
+
+`BLOB_READ_WRITE_TOKEN` is a sensitive variable, so it cannot be pulled locally. The migration
+therefore also runs inside the deployment:
+
+```bash
+curl -X POST -H "x-migrate-key: $MIGRATE_KEY" "https://cyberhell.acidlemon.com/api/admin/migrate?pack=pack1"
+# ?dryRun=1 reports without writing; omit ?pack= to run every pack (watch the function timeout)
+```
+
+`MIGRATE_KEY` is a production env var set on 2026-09-06; rotate or remove it when the canonical
+set is settled. The first run seeded 197 levels across 7 packs.

@@ -149,3 +149,11 @@ validator 17/17, API 14/14, MIDI 2/2, enemy look/custom/selection all pass, qa-e
 collision 21/21, mobile ALL PASS. Pushed to `main`. Remaining: Joel provisions Blob + Neon per
 README "Editor storage", then `node tools/migrate_levels_to_blob.mjs` moves the canonical level
 sets to Blob (repo copies stay as the reference) and the game boots from `/api/packs`.
+- 2026-09-06 06:25 EDT — provisioned with Joel's permission: Neon (his integration) + existing
+  Blob store linked; SESSION_SECRET / ADMIN_EMAIL / APP_URL / MIGRATE_KEY set on production; CLI
+  linked; three store fixes (Neon 0.x call form, SQL comment stripping, /tmp on Vercel); the Blob
+  token is sensitive and cannot be pulled, so the migration runs via POST /api/admin/migrate
+  inside the deployment: 197 levels created across 7 packs, re-run reports all unchanged. Prod
+  `/api/packs` now serves the canonical list from the store; the game boots from it with the
+  static fallback intact. Mailgun is not configured: sign-in magic links are printed to the
+  function logs (`vercel logs`), fine for a single admin.
