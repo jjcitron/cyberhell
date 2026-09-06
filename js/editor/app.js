@@ -146,21 +146,21 @@
         var input;
         if (f.type === 'select') {
           input = el('select');
-          var group = null;
+          // Groups are looked up by label, not opened on every label change,
+          // so options carrying the same group still land together however the
+          // caller ordered them. Order of first appearance sets group order.
+          var groups = {};
           (f.options || []).forEach(function (o) {
             var opt = el('option', { value: o.value }, o.label);
             if (o.disabled) opt.disabled = true;
-            if (o.group) {
-              if (!group || group.label !== o.group) {
-                group = el('optgroup');
-                group.label = o.group;
-                input.appendChild(group);
-              }
-              group.appendChild(opt);
-            } else {
-              group = null;
-              input.appendChild(opt);
+            if (!o.group) { input.appendChild(opt); return; }
+            var g = groups[o.group];
+            if (!g) {
+              g = groups[o.group] = el('optgroup');
+              g.label = o.group;
+              input.appendChild(g);
             }
+            g.appendChild(opt);
           });
           if (f.value != null) input.value = f.value;
         } else {
