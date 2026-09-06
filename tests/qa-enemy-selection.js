@@ -120,7 +120,7 @@ void q;
       hp.value = '404';
       hp.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await page.evaluate(`${btn('Save')}.click()`);
+    await page.evaluate(`${btn('Save to level')}.click()`);
     await page.waitForTimeout(200);
 
     const armed = await page.evaluate(() => {
@@ -259,6 +259,119 @@ void q;
       !!spawned && spawned.hp === 404 && spawned.customId === after.defs[0], JSON.stringify(spawned));
     ok('CH-SEL-6 no page errors in the game', gameErrors.length === 0, gameErrors.slice(0, 2).join(' | '));
     await gamePage.close();
+
+    /* ---- pack enemy library -------------------------------------------- */
+    // CH-PACK-1  Save to pack persists through storage.saveEnemy.
+    await page.evaluate(`${btn('Save to pack')}.click()`);
+    await page.waitForTimeout(400);
+    const packSaved = await page.evaluate(async () => {
+      const ed = window.CyberEditor;
+      const rows = await ed.storage.listEnemies(ed.packId);
+      return {
+        packId: ed.packId,
+        stored: rows.map(r => r.id),
+        live: Object.keys(ed.pack.customEnemies || {}),
+        fromPack: !!(ed.pack.customEnemies || {})[rows[0] && rows[0].id] &&
+          ed.pack.customEnemies[rows[0].id].fromPack === true
+      };
+    });
+    console.log('-- pack library: ' + JSON.stringify(packSaved));
+    ok('CH-PACK-1 Save to pack writes storage.listEnemies',
+      packSaved.stored.length === 1 && packSaved.stored[0] === 'selection-brute', JSON.stringify(packSaved.stored));
+    ok('CH-PACK-1 the live pack carries it, marked fromPack',
+      packSaved.live.indexOf('selection-brute') >= 0 && packSaved.fromPack, JSON.stringify(packSaved.live));
+
+    // CH-PACK-2  A different level in the same pack sees it.
+    const second = await page.evaluate(async () => {
+      const ed = window.CyberEditor;
+      const pack = await ed.storage.getPack('pack1');
+      const other = pack.levels[1];
+      await ed.openLevel('pack1', other.id);
+      const groups = Array.prototype.slice.call(document.querySelectorAll('#ed-panel-enemies optgroup'))
+        .map(g => g.label + ':' + Array.prototype.slice.call(g.children).map(o => o.value).join('|'));
+      return {
+        levelId: other.id,
+        levelDefs: Object.keys(ed.level.customEnemies || {}),
+        packDefs: Object.keys(ed.pack.customEnemies || {}),
+        groups: groups.filter(g => g.indexOf('Base types') !== 0)
+      };
+    });
+    console.log('-- second level: ' + JSON.stringify(second));
+    ok('CH-PACK-2 opening another level hydrates the pack library from storage',
+      second.packDefs.indexOf('selection-brute') >= 0 && second.levelDefs.length === 0,
+      JSON.stringify(second.packDefs) + ' level=' + JSON.stringify(second.levelDefs));
+    ok('CH-PACK-2 the panel lists it under Pack library',
+      second.groups.some(g => g.indexOf('Pack library:custom:selection-brute') === 0), JSON.stringify(second.groups));
+
+    // CH-PACK-3  Use it on an entity in this second level, then Test in game.
+    const target = await page.evaluate(() => {
+      const es = window.CyberEditor.level.entities;
+      for (let i = 0; i < es.length; i++) if (es[i].enemyType !== undefined) return i;
+      return -1;
+    });
+    await page.evaluate(i => window.CyberEditor.select('entity', i), target);
+    await page.evaluate(() => {
+      const sel = document.querySelector('#ed-panel-enemies select');
+      sel.value = 'custom:selection-brute';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(200);
+    await page.evaluate(`${btn('Use for selected')}.click()`);
+    await page.waitForTimeout(200);
+
+    const draft = await page.evaluate(async () => {
+      const ed = window.CyberEditor;
+      const lv = ed.levelForGame();
+      var sent = await ed.testInGame().catch(function (e) { return 'failed: ' + e.message; });
+      return {
+        entType: ed.level.entities.filter(e => e.enemyType === 'custom:selection-brute').length,
+        inLevel: Object.keys(ed.level.customEnemies || {}).length,
+        inDraft: Object.keys(lv.customEnemies || {}),
+        draftHp: lv.customEnemies['selection-brute'].stats.hp,
+        draftFromPack: lv.customEnemies['selection-brute'].fromPack === true,
+        sent: sent
+      };
+    });
+    console.log('-- draft: ' + JSON.stringify(draft));
+    ok('CH-PACK-3 the entity uses the pack def', draft.entType === 1, String(draft.entType));
+    ok('CH-PACK-3 the level itself stays clean of the pack def', draft.inLevel === 0, String(draft.inLevel));
+    ok('CH-PACK-3 testInGame wrote the draft', draft.sent === true, String(draft.sent));
+    ok('CH-PACK-3 the draft carries the pack def, marked',
+      draft.inDraft.indexOf('selection-brute') >= 0 && draft.draftHp === 404 && draft.draftFromPack,
+      JSON.stringify(draft.inDraft));
+
+    // CH-PACK-4  The draft actually boots and spawns it.
+    // The draft handoff is IndexedDB, which is per browser context, so the
+    // game has to boot in the editor's own context — reuse its page.
+    const errorsBefore = errors.length;
+    const draftPage = page;
+    await draftPage.goto(`http://127.0.0.1:${PORT}/index.html?draft=1`, { waitUntil: 'load' });
+    await draftPage.waitForFunction(() => !!(window.cyberEngine && window.cyberEngine.levelData), { timeout: 30000 });
+    const inGame = await draftPage.waitForFunction(() => {
+      const e = window.cyberEngine;
+      if (!e.enemies || !e.enemies.length) return false;
+      const rec = e.enemies.filter(x => x.enemyType === 'custom:selection-brute')[0];
+      return rec ? { hp: rec.hp, typeId: rec.group.userData.enemyTypeId, customId: rec.group.userData.customEnemyId } : false;
+    }, null, { timeout: 20000 }).then(h => h.jsonValue()).catch(() => null);
+    const draftState = await draftPage.evaluate(() => {
+      const e = window.cyberEngine;
+      const ents = (e.levelData.entities || []).filter(x => typeof x.enemyType === 'string');
+      return {
+        name: e.levelData.name,
+        customKeys: Object.keys(e.levelData.customEnemies || {}),
+        customEnts: ents.length,
+        enemies: (e.enemies || []).length,
+        types: Array.from(new Set((e.enemies || []).map(x => x.enemyType))).slice(0, 6)
+      };
+    });
+    console.log('-- draft page state: ' + JSON.stringify(draftState));
+    console.log('-- draft in game: ' + JSON.stringify(inGame));
+    ok('CH-PACK-4 Test in game spawns the pack enemy at its pack stats',
+      !!inGame && inGame.hp === 404 && inGame.customId === 'selection-brute', JSON.stringify(inGame));
+    const draftErrors = errors.slice(errorsBefore);
+    ok('CH-PACK-4 no page errors on the draft boot', draftErrors.length === 0, draftErrors.slice(0, 2).join(' | '));
+    await draftPage.screenshot({ path: path.join(SHOTS, '_enemy_editor_packdraft.png') });
+
   } finally {
     await browser.close();
     server.close();

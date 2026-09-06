@@ -269,7 +269,7 @@ const PARITY = function () {
       name.value = 'Test Brute';
       name.dispatchEvent(new Event('input', { bubbles: true }));
       const buttons = Array.prototype.slice.call(p.querySelectorAll('button'));
-      buttons.filter(b => b.textContent === 'Save')[0].click();
+      buttons.filter(b => b.textContent === 'Save to level')[0].click();
       buttons.filter(b => b.textContent === 'Use for selected')[0].click();
     });
     await page.waitForTimeout(500);

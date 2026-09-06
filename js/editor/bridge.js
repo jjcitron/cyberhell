@@ -11,7 +11,9 @@
   function install(ed) {
     ed.testInGame = function () {
       if (!ed.level) { ed.toast('no level open', 'bad'); return Promise.resolve(false); }
-      var draft = JSON.parse(JSON.stringify(ed.level));
+      // levelForGame folds the pack's enemy library in — the engine only ever
+      // reads customEnemies off the level it is handed.
+      var draft = ed.levelForGame();
       return ed.storage.putDraft(draft).then(function () {
         window.open('index.html?draft=1', '_blank');
         ed.toast('draft sent to the game', 'ok');
