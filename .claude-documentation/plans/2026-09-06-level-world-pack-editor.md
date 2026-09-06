@@ -128,3 +128,11 @@ through the editor model yields identical JSON.
   deployment origin when not bundled. Open: editor-core pass 2 (vertex insert/delete, holes,
   multi-drag, entity nudge, packs.json in save-into-repo, panel visibility bug), validation pass 2
   (e2e against the real shell). Provisioning of Blob + Neon awaits Joel.
+- 2026-09-06 05:30 EDT — pass-2/3 fixes merged (a922aea): vertex insert/delete, holes, multi-drag,
+  spawn nudge, repo save with packs.json, bottom drawer for wide panels, auto-open last level,
+  auth as an ordinary panel (no fixed overlay, no API probe on static hosts), 3D panel sizes itself
+  in the shell (verified in a headed GPU browser: walls, floors, pickups render). Game fix: a later
+  level load wins over a slower earlier fetch (mobile-start gate was flaky on that race). Gates:
+  round-trip 197/197, exits 198/198, collision 21/21, mobile ALL PASS x3, api 14/14, validator
+  17/17, qa-editor 6/6, enemy look 15/15, custom enemy 13/13, MIDI 2/2. Open: cloud adapter wired
+  to the shell (cloud-api pass 3), end-to-end evaluation, push.
