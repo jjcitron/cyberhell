@@ -153,8 +153,33 @@
   // Any level whose pack or slot cannot be read still gets music.
   const FALLBACK_THEME = ['ch-01', 'ch-14'];
 
+  /* A level authored in the editor can carry its own cue:
+       level.music = { file: 'midi/x.mid' | url, data: <base64 SMF>, name }
+     That assignment outranks the pack/map heuristic below. It lives in one
+     appended slot on the track list (id 'level-custom') so the pause menu, the
+     index lookups and selectTrack() all see it as an ordinary cue; the slot is
+     popped again the moment a level without music is attached, which is what
+     keeps every existing level's resolution bit-for-bit unchanged. */
+  const CUSTOM_ID = 'level-custom';
+
   const indexById = {};
   CYBER_TRACKS.forEach((t, i) => { indexById[t.id] = i; });
+
+  function levelMusic(level) {
+    if (!level || typeof level !== 'object') return null;
+    const m = level.music;
+    if (!m || typeof m !== 'object') return null;
+    if (!m.file && !m.url && !m.data) return null;
+    return m;
+  }
+
+  function base64ToBytes(b64) {
+    const clean = String(b64).replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+    const bin = atob(clean);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
 
   const isContextual = (id) => CONTEXTUAL_CUES.indexOf(id) !== -1;
   const isLevelEligible = (id) => !isContextual(id) && id !== TITLE_CUE;
@@ -247,6 +272,9 @@
          the two settle in whatever order the browser chooses and can leave the
          sequencer running against a suspended (frozen) clock. */
       this.actxOp = Promise.resolve();
+
+      // Editor preview (playBytes) has the transport instead of the level cue.
+      this.previewing = false;
 
       this.initSynth();
       this.setupUnlockListener();
@@ -343,6 +371,8 @@
 
     render() {
       if (this.desiredIndex === null) return;
+      // An editor preview owns the synth until it is stopped.
+      if (this.previewing) return;
       // The pause gate outranks everything: while it is held the tab must be
       // silent, and resumeForGame() calls render() again on the way back.
       if (this.heldByPause) return;
@@ -358,6 +388,17 @@
       if (!track) return Promise.reject(new Error('no such cue'));
       if (this.buffers[index]) return Promise.resolve(this.buffers[index]);
       if (this.pending[index]) return this.pending[index];
+
+      // A level cue authored in the editor carries its bytes inline.
+      if (track.data) {
+        try {
+          this.buffers[index] = base64ToBytes(track.data).buffer;
+          return Promise.resolve(this.buffers[index]);
+        } catch (e) {
+          return Promise.reject(new Error('bad inline cue'));
+        }
+      }
+      if (!track.file) return Promise.reject(new Error('cue has no source'));
 
       const p = new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -446,12 +487,83 @@
       return assignmentFor(file, name);
     }
 
-    // Called by the engine every time a level's geometry is loaded.
-    attachLevel(file, name) {
+    /* Install / refresh the level's own cue in the shared track list.
+       Returns its index. */
+    setCustomCue(m) {
+      let idx = indexById[CUSTOM_ID];
+      const entry = {
+        id: CUSTOM_ID,
+        file: m.file || m.url || null,
+        data: m.data || null,
+        title: m.name || 'Level Music',
+        mood: 'level cue',
+        bpm: m.bpm || 0,
+        custom: true
+      };
+      if (idx === undefined) {
+        idx = this.tracks.length;
+        this.tracks.push(entry);
+        indexById[CUSTOM_ID] = idx;
+      } else {
+        this.tracks[idx] = entry;
+      }
+      // Whatever was cached belonged to the previous level's cue.
+      delete this.buffers[idx];
+      delete this.pending[idx];
+      if (this.loadedIndex === idx) this.loadedIndex = null;
+      return idx;
+    }
+
+    clearCustomCue() {
+      const idx = indexById[CUSTOM_ID];
+      if (idx === undefined) return;
+      // Only ever the last slot, so dropping it cannot shift any other index.
+      this.tracks.splice(idx, 1);
+      delete indexById[CUSTOM_ID];
+      delete this.buffers[idx];
+      delete this.pending[idx];
+      if (this.loadedIndex === idx) this.loadedIndex = null;
+      Object.keys(this.levelChoice).forEach(k => {
+        if (this.levelChoice[k] === idx) delete this.levelChoice[k];
+      });
+      if (this.currentIndex >= this.tracks.length) this.currentIndex = indexById[FALLBACK_THEME[0]];
+      if (this.desiredIndex !== null && this.desiredIndex >= this.tracks.length) this.desiredIndex = null;
+    }
+
+    /* Called by the engine every time a level's geometry is loaded.
+       Signatures, all supported: (file, name) as before, (file, name, level),
+       or (level) / (file, level) when the editor has the level object. */
+    attachLevel(file, name, level) {
+      if (file && typeof file === 'object') {
+        level = file;
+        file = level.file || level.path || null;
+        name = level.name || null;
+      } else if (name && typeof name === 'object') {
+        level = name;
+        name = level.name || null;
+      }
+
       const a = assignmentFor(file, name);
       this.levelKey = a.key;
       this.levelAssignment = a;
-      this.levelTrackIndices = a.ids.map(id => indexById[id]).filter(i => i !== undefined);
+      const heuristic = a.ids.map(id => indexById[id]).filter(i => i !== undefined);
+
+      const music = levelMusic(level);
+      if (music) {
+        const ci = this.setCustomCue(music);
+        // The level's own cue leads; the heuristic cues stay behind it so the
+        // pause menu can still walk the pack.
+        this.levelTrackIndices = [ci].concat(heuristic.filter(i => i !== ci));
+        this.levelKey = a.key + '#' + (music.name || music.file || music.url || 'inline');
+        this.levelAssignment = {
+          key: this.levelKey, packId: a.packId, slot: a.slot,
+          ids: [CUSTOM_ID].concat(a.ids), music: music.name || music.file || music.url || 'inline'
+        };
+      } else {
+        this.clearCustomCue();
+        this.levelTrackIndices = a.ids.map(id => indexById[id]).filter(i => i !== undefined);
+      }
+
       if (this.mode === 'level') {
         this.setDesired(this.trackForLevel());
       } else {
@@ -463,7 +575,7 @@
     // this level if they made one, otherwise the head of the assignment.
     trackForLevel() {
       const remembered = this.levelChoice[this.levelKey];
-      if (typeof remembered === 'number') return remembered;
+      if (typeof remembered === 'number' && this.tracks[remembered]) return remembered;
       if (this.levelTrackIndices.length) return this.levelTrackIndices[0];
       return indexById[FALLBACK_THEME[0]];
     }
@@ -626,6 +738,67 @@
     }
 
     /* ----------------------------------------------------------------------
+       EDITOR PREVIEW
+       Raw SMF bytes straight into the synth, bypassing the cue table entirely.
+       The composer needs to hear an unsaved song, so there is nothing to fetch
+       and nothing to assign; the level transport is superseded (playGen bump)
+       and left stopped until stopPreview() hands it back.
+       ---------------------------------------------------------------------- */
+    playBytes(bytes, opts) {
+      const o = opts || {};
+      if (!this.synth || !bytes) return false;
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      if (!u8.length) return false;
+
+      const gen = ++this.playGen;
+      this.previewing = true;
+      this.heldByPause = false;
+      this.isPlaying = false;
+      this.playingIndex = null;
+      this.loadedIndex = null;
+      this.ensureUnlocked();
+
+      const go = () => {
+        if (gen !== this.playGen) return;
+        const actx = this.synth.actx;
+        if (actx && actx.state !== 'running') return;
+        this.synth.stopMIDI();
+        this.synth.loadMIDI(u8);
+        this.synth.setLoop(o.loop === false ? 0 : 1);
+        this.synth.setMasterVol(this.isMuted ? 0 : this.volume);
+        this.synth.playMIDI();
+        this.notify();
+      };
+      const actx = this.synth.actx;
+      if (actx && actx.state === 'suspended') this.resumeContext().then(go, go);
+      else go();
+      return true;
+    }
+
+    stopPreview() {
+      ++this.playGen;
+      this.previewing = false;
+      this.isPlaying = false;
+      this.playingIndex = null;
+      this.loadedIndex = null;
+      if (this.synth) this.synth.stopMIDI();
+      this.notify();
+    }
+
+    // Playhead source for the composer: tick position straight off the synth.
+    previewStatus() {
+      const s = (this.synth && this.synth.getPlayStatus) ? this.synth.getPlayStatus() : null;
+      return {
+        previewing: !!this.previewing,
+        playing: !!(s && s.play),
+        curTick: s ? s.curTick : 0,
+        maxTick: s ? s.maxTick : 0,
+        volume: this.volume,
+        muted: this.isMuted
+      };
+    }
+
+    /* ----------------------------------------------------------------------
        UI HOOK. The player owns no DOM: the pause menu subscribes and renders.
        ---------------------------------------------------------------------- */
     onChange(fn) {
@@ -667,13 +840,40 @@
     tracks: CYBER_TRACKS,
     contextualCues: CONTEXTUAL_CUES,
     titleCue: TITLE_CUE,
+    customCueId: CUSTOM_ID,
     isLevelEligible: isLevelEligible,
     assignmentFor: assignmentFor,
     indexById: indexById
   };
 
+  /* Editor-facing facade. The composer previews unsaved songs and lists the
+     built-in cues through this; it never touches the level transport itself. */
+  function ensurePlayer() {
+    if (!window.cyberMidi) window.cyberMidi = new CyberMidiPlayer();
+    return window.cyberMidi;
+  }
+  window.CyberMidi = {
+    player: ensurePlayer,
+    playBytes: (bytes, opts) => ensurePlayer().playBytes(bytes, opts),
+    stop: () => ensurePlayer().stopPreview(),
+    setVolume: (v) => ensurePlayer().setVolume(v),
+    status: () => ensurePlayer().previewStatus(),
+    // Assignment dropdown source: the 26 shipped cues, never the custom slot.
+    listCues: () => CYBER_TRACKS.filter(t => !t.custom).map(t => ({
+      id: t.id,
+      file: t.file,
+      name: t.title,
+      mood: t.mood,
+      bpm: t.bpm,
+      levelEligible: isLevelEligible(t.id)
+    }))
+  };
+
   window.addEventListener('DOMContentLoaded', () => {
-    window.cyberMidi = new CyberMidiPlayer();
+    if (!window.cyberMidi) window.cyberMidi = new CyberMidiPlayer();
+    // Editor pages host the synth for previews only; there is no attract screen
+    // there, so they set CYBER_NO_TITLE_THEME and get silence until asked.
+    if (window.CYBER_NO_TITLE_THEME) return;
     // Title / attract theme. Silent until the first user gesture unlocks audio.
     window.cyberMidi.armTitleTheme();
   });
