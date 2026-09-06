@@ -13,6 +13,10 @@
   --ok: #44dd88;
 }
 * { box-sizing: border-box; }
+/* An inline display: on an element beats the UA's [hidden] rule, so a panel
+   that sets both stays visible. Lanes do exactly that (the auth overlay ships
+   hidden=true and display:flex in one cssText), so make hidden mean hidden. */
+[hidden] { display: none !important; }
 html, body {
   margin: 0; height: 100%; overflow: hidden;
   background: var(--ink); color: var(--text);
@@ -74,8 +78,27 @@ input[type=text], input[type=number] { background: var(--ink); }
 }
 #ed-tools button b { font-size: 15px; font-weight: normal; }
 
-#ed-centre { flex: 1 1 0; position: relative; min-width: 200px; background: #04060a; }
-#ed-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+#ed-centre {
+  flex: 1 1 0; position: relative; min-width: 200px; min-height: 0;
+  display: flex; flex-direction: column; background: #04060a;
+}
+#ed-drawer {
+  flex: 0 0 auto; display: flex; flex-direction: column;
+  border-top: 1px solid var(--line); background: var(--ink2);
+  max-height: 40%; min-height: 0;
+}
+#ed-drawer[hidden] { display: none; }
+#ed-drawer-bar { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+#ed-drawer-tabs { display: flex; flex: 1; overflow-x: auto; }
+#ed-drawer-tabs button {
+  border: 0; border-radius: 0; background: transparent; padding: 5px 10px;
+  border-bottom: 2px solid transparent; color: var(--dim); white-space: nowrap;
+}
+#ed-drawer-tabs button.active { color: var(--neon); border-bottom-color: var(--neon); }
+#ed-drawer-toggle { border: 0; background: transparent; padding: 4px 10px; }
+#ed-drawer-panels { flex: 1 1 auto; min-height: 0; max-height: 260px; overflow: auto; }
+#ed-drawer.collapsed #ed-drawer-panels { display: none; }
+#ed-canvas { display: block; flex: 1 1 0; width: 100%; min-height: 140px; cursor: crosshair; }
 #ed-canvas.panning { cursor: grabbing; }
 
 /* width is fixed: a wide panel (the MIDI piano roll, a 3D preview canvas) must
