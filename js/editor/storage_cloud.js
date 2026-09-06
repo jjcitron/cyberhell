@@ -37,7 +37,10 @@
       id: 'cloud',
       name: 'Cloud',
 
+      // Same rule as index.html and auth_ui.js: only ask where an API can exist, so a plain
+      // static host never eats a 404 for a request that could not have succeeded.
       async available() {
+        if (location.protocol !== 'https:' && location.port !== '5305') return false;
         try { await json('/api/packs'); return true; } catch { return false; }
       },
 
@@ -109,17 +112,8 @@
 
   window.CyberCloudStorage = { create: createAdapter, toBase64 };
 
-  // Register with the editor as soon as it exists, whichever order the scripts load in.
-  function register() {
-    const ed = window.CyberEditor;
-    if (!ed || !ed.storage) return false;
-    ed.storage.backends = ed.storage.backends || {};
-    ed.storage.backends.cloud = ed.storage.backends.cloud || createAdapter();
-    return true;
-  }
-  if (!register()) {
-    window.addEventListener('cybereditor-ready', register);
-    let tries = 0;
-    const poll = setInterval(() => { if (register() || ++tries > 100) clearInterval(poll); }, 100);
-  }
+  // Not wired into CyberEditor yet: the merged editor's `ed.storage` is a single adapter with
+  // different signatures (loadLevel(packId, levelId), saveLevel(packId, levelId, level, opts),
+  // plus exportLevel/importLevelFile/saveIntoRepo). Swapping this in as-is would break the
+  // editor, so it stays available on window until the signatures are reconciled.
 })();
