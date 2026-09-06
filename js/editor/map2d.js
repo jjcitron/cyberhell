@@ -125,6 +125,13 @@
       var tool = self.ed.activeTool;
       if (tool && tool.onPointerUp) tool.onPointerUp(e, self.screenToWorld(p.px, p.py), p);
     }
+    c.addEventListener('dblclick', function (e) {
+      var tool = self.ed.activeTool;
+      if (!tool || !tool.onDoubleClick) return;
+      var p = self._local(e);
+      tool.onDoubleClick(e, self.screenToWorld(p.px, p.py), p);
+    });
+
     c.addEventListener('pointerup', up);
     c.addEventListener('pointercancel', function () { self._pan = null; c.classList.remove('panning'); });
 
