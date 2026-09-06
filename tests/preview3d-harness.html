@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>preview3d harness</title>
+<style>
+  html,body { margin:0; height:100%; background:#111; color:#ddd; font:12px sans-serif; }
+  #layout { display:flex; height:100vh; }
+  #left { width:220px; overflow:auto; padding:8px; background:#181818; }
+  #right { flex:1; position:relative; }
+  #status { position:absolute; bottom:4px; left:4px; z-index:3; background:#000c; padding:4px 8px; }
+  button { display:block; margin:4px 0; width:100%; }
+</style>
+</head>
+<body>
+<div id="layout">
+  <div id="left">
+    <div>Level: <span id="levelName">(loading)</span></div>
+    <button id="loadPack1">Load pack1 / json1</button>
+    <button id="loadDvBig">Load dv / json2 (biggest)</button>
+    <button id="mutate">Mutate level (fire level-changed)</button>
+    <div id="status"></div>
+  </div>
+  <div id="right"></div>
+</div>
+
+<script src="../js/three.min.js"></script>
+<script>
+  // ---- minimal CyberEditor stub, matching the contract preview3d.js expects ----
+  (function () {
+    var listeners = {};
+    var panelHost = document.getElementById('right');
+    window.CyberEditor = {
+      level: null,
+      selection: { kind: null, index: -1 },
+      on: function (evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+      fire: function (evt) { (listeners[evt] || []).forEach(function (fn) { fn(); }); },
+      select: function (kind, index) {
+        window.CyberEditor.selection = { kind: kind, index: index };
+        document.getElementById('status').textContent = 'selected ' + kind + ' #' + index;
+        window.CyberEditor.fire('selection-changed');
+      },
+      registerPanel: function (opts) {
+        var el = document.createElement('div');
+        el.style.cssText = 'position:absolute;inset:0;';
+        panelHost.appendChild(el);
+        if (opts.mount) opts.mount(el);
+        return el;
+      }
+    };
+    window.dispatchEvent(new CustomEvent('cybereditor-ready'));
+  })();
+
+  function loadLevel(url, cb) {
+    fetch(url).then(function (r) { return r.json(); }).then(function (json) {
+      window.CyberEditor.level = json;
+      document.getElementById('levelName').textContent = json.name + ' (' + (json.sectors||[]).length + ' sec / ' + (json.walls||[]).length + ' walls / ' + (json.entities||[]).length + ' ents)';
+      window.CyberEditor.fire('level-loaded');
+      if (cb) cb();
+    });
+  }
+
+  window.__previewEvents = [];
+  window.addEventListener('preview3d-rebuilt', function (e) {
+    window.__previewEvents.push(e.detail);
+    document.getElementById('status').textContent = 'rebuilt in ' + e.detail.ms.toFixed(1) + 'ms (' + e.detail.sectors + ' sec, ' + e.detail.walls + ' walls, ' + e.detail.entities + ' ents)';
+  });
+
+  document.getElementById('loadPack1').onclick = function () { loadLevel('../levelPacks/pack1/json1.json'); };
+  document.getElementById('loadDvBig').onclick = function () { loadLevel('../levelPacks/dv/json2.json'); };
+  document.getElementById('mutate').onclick = function () {
+    if (!window.CyberEditor.level) return;
+    // Tweak something trivial and fire level-changed, same as editor-core would
+    // after an edit -- exercises the debounced incremental-rebuild path.
+    window.CyberEditor.level.fogDensity = (window.CyberEditor.level.fogDensity || 0.01) + 0.002;
+    window.CyberEditor.fire('level-changed');
+  };
+
+  // auto-load the small level on boot
+  loadLevel('../levelPacks/pack1/json1.json');
+</script>
+<script src="../js/editor/preview3d.js"></script>
+</body>
+</html>
