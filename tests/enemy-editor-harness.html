@@ -43,7 +43,8 @@
   window.CyberEditor = {
     level: level,
     pack: { name: 'harness pack', customEnemies: {} },
-    selection: level.entities[0],
+    selection: { kind: 'entity', index: 0 },   // the shell's real contract
+    packId: 'harness',
     on: function (evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
     emit: function (evt) { (listeners[evt] || []).forEach(function (f) { f(level); }); },
     apply: function (mutator, label) {
@@ -52,6 +53,13 @@
       this.emit('level-changed');
     },
     toast: function (m) { log('toast: ' + m); },
+    ask: function (title, label, value) { log('ask: ' + title); return Promise.resolve(value || null); },
+    confirm: function (title) { log('confirm: ' + title); return Promise.resolve(true); },
+    storage: {
+      saveEnemy: function (packId, def) { log('storage.saveEnemy ' + packId + '/' + def.id); return Promise.resolve(def); },
+      deleteEnemy: function () { return Promise.resolve(); },
+      listEnemies: function () { return Promise.resolve([]); }
+    },
     registerPanel: function (spec) {
       var dock = document.getElementById('dock');
       var t = document.createElement('div');

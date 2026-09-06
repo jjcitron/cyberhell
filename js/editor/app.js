@@ -351,6 +351,27 @@
 
   /* ---- level lifecycle --------------------------------------------------- */
 
+  /* The engine reads customEnemies off the LEVEL, so a pack-level def has to
+     ride along on every level that leaves the editor — draft, save or export.
+     Marked fromPack so the panel can tell the two apart and so a re-save never
+     promotes a pack def into a level def. A real level def of the same id
+     wins; a stale baked copy does not. */
+  ed.levelForGame = function () {
+    if (!ed.level) return null;
+    var lv = JSON.parse(JSON.stringify(ed.level));
+    var packDefs = (ed.pack && ed.pack.customEnemies) || null;
+    if (!packDefs) return lv;
+    lv.customEnemies = lv.customEnemies || {};
+    Object.keys(packDefs).forEach(function (k) {
+      var cur = lv.customEnemies[k];
+      if (cur && !cur.fromPack) return;
+      var copy = JSON.parse(JSON.stringify(packDefs[k]));
+      copy.fromPack = true;
+      lv.customEnemies[k] = copy;
+    });
+    return lv;
+  };
+
   ed.setLevel = function (level, packId, levelId, pack) {
     ed.level = level;
     ed.packId = packId || null;
@@ -370,6 +391,15 @@
 
   ed.openLevel = function (packId, levelId) {
     return ed.storage.getPack(packId).then(function (pack) {
+      // The pack record and its enemy library live in different stores.
+      return ed.storage.listEnemies(packId).catch(function () { return []; }).then(function (rows) {
+        if (pack) {
+          pack.customEnemies = {};
+          (rows || []).forEach(function (r) { if (r && r.def) pack.customEnemies[r.id] = r.def; });
+        }
+        return pack;
+      });
+    }).then(function (pack) {
       return ed.storage.loadLevel(packId, levelId).then(function (json) {
         ed.setLevel(json, packId, levelId, pack);
         try { localStorage.setItem(LAST_KEY, JSON.stringify({ packId: packId, levelId: levelId })); } catch (err) {}
@@ -385,7 +415,7 @@
   ed.saveLevel = function () {
     if (!ed.level) { ed.toast('no level open', 'bad'); return Promise.resolve(null); }
     if (!ed.packId || !ed.levelId) return ed.saveLevelAs();
-    return ed.storage.saveLevel(ed.packId, ed.levelId, ed.level, { note: 'editor save' })
+    return ed.storage.saveLevel(ed.packId, ed.levelId, ed.levelForGame(), { note: 'editor save' })
       .then(function (r) { ed.dirty = false; ed.toast('saved', 'ok'); ed._status(); ed.emit('pack-changed', {}); return r; })
       .catch(function (err) { ed.toast(err.message, 'bad'); return null; });
   };
@@ -441,7 +471,7 @@
   };
 
   ed._saveLevelAs = function (packId, name) {
-    return ed.storage.saveLevelAs(packId, name, ed.level).then(function (r) {
+    return ed.storage.saveLevelAs(packId, name, ed.levelForGame()).then(function (r) {
       return ed.openLevel(packId, r.levelId).then(function () {
         ed.toast('saved as ' + name, 'ok');
         return r;
@@ -576,7 +606,7 @@
         { label: 'Save as…', onClick: function () { ed.saveLevelAs(); } },
         { label: 'Export JSON', onClick: function () {
             if (!ed.level) { ed.toast('no level open', 'bad'); return; }
-            ed.storage.exportLevel(ed.level).then(function (n) { ed.toast('exported ' + n, 'ok'); });
+            ed.storage.exportLevel(ed.levelForGame()).then(function (n) { ed.toast('exported ' + n, 'ok'); });
           } },
         { label: 'Import JSON…', onClick: function () { ed.importLevel(); } },
         { label: 'Save into repo…', onClick: function () {

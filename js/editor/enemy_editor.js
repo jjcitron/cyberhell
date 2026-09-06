@@ -77,14 +77,27 @@
     return (ed.level.entities || [])[sel.index] || null;
   }
 
+  /** Split the two libraries. A level def and a pack def can share an id; the
+      level's wins, which is also how the engine resolves it. Defs the editor
+      baked into a saved level (fromPack) belong to the pack, not the level. */
+  function tables() {
+    var ed = window.CyberEditor;
+    var level = {}, pack = {}, k;
+    var raw = (ed && ed.level && ed.level.customEnemies) || {};
+    for (k in raw) {
+      if (!raw[k]) continue;
+      if (raw[k].fromPack) pack[k] = raw[k]; else level[k] = raw[k];
+    }
+    var live = (ed && ed.pack && ed.pack.customEnemies) || {};
+    for (k in live) pack[k] = live[k];       // the pack store beats a baked copy
+    return { level: level, pack: pack };
+  }
+
   /** Pack defs first, level defs on top — the same order the engine uses. */
   function customTable() {
-    var ed = window.CyberEditor;
-    var out = {}, k;
-    var pack = ed && ed.pack && ed.pack.customEnemies;
-    var lvl = ed && ed.level && ed.level.customEnemies;
-    if (pack) for (k in pack) out[k] = pack[k];
-    if (lvl) for (k in lvl) out[k] = lvl[k];
+    var t = tables(), out = {}, k;
+    for (k in t.pack) out[k] = t.pack[k];
+    for (k in t.level) out[k] = t.level[k];
     return out;
   }
 
@@ -202,11 +215,13 @@
     r.appendChild(lf);
 
     var row2 = el('div', 'row');
-    this.btnSave = el('button', 'pri', 'Save');
+    this.btnSave = el('button', 'pri', 'Save to level');
+    this.btnPack = el('button', null, 'Save to pack');
     this.btnDel = el('button', null, 'Delete');
     this.btnExp = el('button', null, 'Export');
     this.btnImp = el('button', null, 'Import');
-    [this.btnSave, this.btnDel, this.btnExp, this.btnImp].forEach(function (b) { row2.appendChild(b); });
+    [this.btnSave, this.btnPack, this.btnDel, this.btnExp, this.btnImp]
+      .forEach(function (b) { row2.appendChild(b); });
     r.appendChild(row2);
     this.note = el('div', 'lbl', '');
     r.appendChild(this.note);
@@ -215,6 +230,7 @@
     this.btnUse.addEventListener('click', function () { self.useForSelected(); });
     this.btnPlace.addEventListener('click', function () { self.placeNew(); });
     this.btnSave.addEventListener('click', function () { self.save(); });
+    this.btnPack.addEventListener('click', function () { self.saveToPack(); });
     this.btnDel.addEventListener('click', function () { self.remove(); });
     this.btnExp.addEventListener('click', function () { self.exportDef(); });
     this.btnImp.addEventListener('click', function () { self.importDef(); });
@@ -241,21 +257,23 @@
   };
 
   Panel.prototype.refreshList = function (keep) {
-    var CE = window.CyberEnemies;
+    var self = this, CE = window.CyberEnemies;
     if (!CE) return;
     var prev = this.pick.value;
     this.pick.innerHTML = '';
-    var tbl = customTable(), keys = Object.keys(tbl);
-    if (keys.length) {
-      var gC = el('optgroup');
-      gC.label = 'Custom';
+    var t = tables();
+    [['Level enemies', t.level], ['Pack library', t.pack]].forEach(function (pair) {
+      var keys = Object.keys(pair[1]);
+      if (!keys.length) return;
+      var g = el('optgroup');
+      g.label = pair[0];
       keys.forEach(function (k) {
-        var o = el('option', null, (tbl[k].name || k) + '  (custom)');
+        var o = el('option', null, pair[1][k].name || k);
         o.value = 'custom:' + k;
-        gC.appendChild(o);
+        g.appendChild(o);
       });
-      this.pick.appendChild(gC);
-    }
+      self.pick.appendChild(g);
+    });
     var gBase = el('optgroup');
     gBase.label = 'Base types';
     CE.listTypes().forEach(function (t) {
@@ -359,19 +377,54 @@
     toast('New definition — press Save to store it on the level');
   };
 
+  Panel.prototype.ensureId = function () {
+    var d = this.def;
+    if (d.id) return d.id;
+    var base = slug(d.name), tbl = customTable(), id = base, n = 2;
+    while (tbl[id]) id = base + '-' + (n++);
+    d.id = id;
+    return id;
+  };
+
+  /** The pack library: persisted through storage.saveEnemy, and mirrored onto
+      the live pack object so levelForGame() bakes it into every level the
+      editor hands the game. */
+  Panel.prototype.saveToPack = function () {
+    var self = this, ed = window.CyberEditor, d = this.def;
+    if (!ed || !d) return;
+    if (!ed.packId) { toast('Open a level from a pack first', 'bad'); return; }
+    this.ensureId();
+    var def = clone(d);
+    def.fromPack = true;
+    ed.pack = ed.pack || {};
+    ed.pack.customEnemies = ed.pack.customEnemies || {};
+    ed.pack.customEnemies[def.id] = def;
+    if (window.CyberEnemies) {
+      var t = {}; t[def.id] = def;
+      window.CyberEnemies.registerCustom(t);
+    }
+    ed.emit('pack-changed', { pack: ed.pack });
+    self.refreshList();
+    self.pick.value = 'custom:' + def.id;
+    self.note.textContent = 'custom:' + def.id + ' (pack)';
+    self.syncSelection();
+    ed.storage.saveEnemy(ed.packId, def).then(function () {
+      toast('Saved ' + (def.name || def.id) + ' to ' + ed.packId, 'ok');
+    }).catch(function (err) {
+      toast('Pack save failed: ' + err.message, 'bad');
+    });
+  };
+
   Panel.prototype.save = function () {
     var ed = window.CyberEditor, d = this.def;
     if (!ed || !d) return;
-    if (!d.id) {
-      var base = slug(d.name), tbl = customTable(), id = base, n = 2;
-      while (tbl[id]) id = base + '-' + (n++);
-      d.id = id;
-    }
+    this.ensureId();
     var def = clone(d);
+    delete def.fromPack;   // copying a pack def down makes it the level's own
     ed.apply(function (level) {
       level.customEnemies = level.customEnemies || {};
       level.customEnemies[def.id] = def;
-    }, 'Save enemy ' + (def.name || def.id));
+    }, 'save enemy ' + (def.name || def.id));
     if (window.CyberEnemies) {
       var t = {};
       t[def.id] = def;
@@ -387,15 +440,26 @@
   Panel.prototype.remove = function () {
     var ed = window.CyberEditor, d = this.def;
     if (!ed || !d || !d.id) { toast('Nothing saved to delete'); return; }
-    var self = this, id = d.id;
-    ed.confirm('Delete enemy', 'Delete "' + (d.name || id) + '" from this level?').then(function (yes) {
+    var self = this, id = d.id, t = tables();
+    var inLevel = !!t.level[id], inPack = !!t.pack[id];
+    var where = inLevel && inPack ? 'this level and the pack library'
+      : (inPack ? 'the pack library' : 'this level');
+    ed.confirm('Delete enemy', 'Delete "' + (d.name || id) + '" from ' + where + '?').then(function (yes) {
       if (!yes) return;
-      ed.apply(function (level) {
-        if (level.customEnemies) delete level.customEnemies[id];
-      }, 'delete enemy ' + id);
+      if (inLevel || inPack) {
+        // The baked fromPack copy lives on the level too, so clear both.
+        ed.apply(function (level) {
+          if (level.customEnemies) delete level.customEnemies[id];
+        }, 'delete enemy ' + id);
+      }
+      if (inPack) {
+        if (ed.pack && ed.pack.customEnemies) delete ed.pack.customEnemies[id];
+        if (ed.packId) ed.storage.deleteEnemy(ed.packId, id).catch(function () {});
+        ed.emit('pack-changed', { pack: ed.pack });
+      }
       self.refreshList();
       self.selectType(self.pick.value);
-      toast('Deleted ' + id, 'ok');
+      toast('Deleted ' + id + ' from ' + where, 'ok');
     });
   };
 
