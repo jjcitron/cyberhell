@@ -4335,9 +4335,13 @@ class CyberDoomEngine {
   // Returns the load promise so callers (and tests) can await the build
   // instead of polling for levelData to change.
   loadLevelFromFile(filePath, notify = true) {
+    // A later load must win: a slow manifest fetch finishing after the player already picked
+    // another level used to rebuild the scene (and the remembered selection) with stale data.
+    const seq = (this._loadSeq = (this._loadSeq || 0) + 1);
     return fetch(filePath)
       .then(res => res.json())
       .then(mapData => {
+        if (seq !== this._loadSeq) return;
         this.resetLevelScene();
         this.loadLevel(mapData);
         // buildWall doesn't carry ledge-riser data onto the runtime wall
