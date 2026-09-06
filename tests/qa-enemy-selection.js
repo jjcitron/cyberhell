@@ -72,6 +72,12 @@ void q;
   };
 
   try {
+    // Native prompt/confirm must never reach the page — the shell has dialogs.
+    await page.addInitScript(() => {
+      window.__native = [];
+      window.prompt = function () { window.__native.push('prompt'); return null; };
+      window.confirm = function () { window.__native.push('confirm'); return false; };
+    });
     await page.goto(`http://127.0.0.1:${PORT}/editor.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.CyberEditor && window.CyberEditor.openLevel), { timeout: 20000 });
     await page.evaluate(() => window.CyberEditor.openLevel('pack1', 'json1'));
@@ -173,6 +179,56 @@ void q;
     ok('CH-SEL-4 picker preloaded with the custom type', placed.value === 'custom:' + after.defs[0], String(placed.value));
     ok('CH-SEL-4 shell customEnemies() reads the object map', placed.libraryList.join(',') === after.defs.join(','),
       JSON.stringify(placed.libraryList));
+
+    // CH-SEL-7 — Export, Import and Delete go through CyberEditor.dialog.
+    await page.evaluate(`${btn('Export')}.click()`);
+    await page.waitForTimeout(150);
+    const exported = await page.evaluate(() => {
+      const d = document.querySelector('dialog.ed-dialog[open]');
+      const v = d && d.querySelector('input[name=value]');
+      const def = v ? JSON.parse(v.value) : null;
+      if (d) d.close();
+      return { open: !!d, id: def && def.id, hp: def && def.stats.hp };
+    });
+    ok('CH-SEL-7 Export opens the shell dialog with the def JSON',
+      exported.open && exported.hp === 404, JSON.stringify(exported));
+
+    await page.evaluate(`${btn('Import')}.click()`);
+    await page.waitForTimeout(150);
+    const imported = await page.evaluate(() => {
+      const d = document.querySelector('dialog.ed-dialog[open]');
+      if (!d) return { open: false };
+      const v = d.querySelector('input[name=value]');
+      v.value = JSON.stringify({ id: '', name: 'Imported One', base: 3001, stats: { hp: 55 }, role: 'caster' });
+      d.querySelector('button.primary').click();
+      return { open: true };
+    });
+    await page.waitForTimeout(200);
+    const importedName = await page.evaluate(() =>
+      document.querySelector('#ed-panel-enemies input[type=text]').value);
+    ok('CH-SEL-7 Import reads the dialog value', imported.open && importedName === 'Imported One', importedName);
+
+    // Import left an unsaved def loaded; go back to the saved one to delete it.
+    await page.evaluate(() => {
+      const sel = document.querySelector('#ed-panel-enemies select');
+      sel.value = 'custom:selection-brute';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(150);
+    await page.evaluate(`${btn('Delete')}.click()`);
+    await page.waitForTimeout(150);
+    const deleting = await page.evaluate(() => {
+      const d = document.querySelector('dialog.ed-dialog[open]');
+      if (d) d.close();   // cancel: the def must survive
+      return !!d;
+    });
+    await page.waitForTimeout(150);
+    const stillThere = await page.evaluate(() => Object.keys(window.CyberEditor.level.customEnemies || {}).length);
+    ok('CH-SEL-7 Delete confirms first and cancelling keeps the def', deleting && stillThere === 1,
+      `dialog=${deleting} defs=${stillThere}`);
+
+    const native = await page.evaluate(() => window.__native);
+    ok('CH-SEL-7 no native prompt or confirm reached the page', native.length === 0, native.join(','));
 
     ok('CH-SEL-6 no page errors in the editor', errors.length === 0, errors.slice(0, 2).join(' | '));
 
