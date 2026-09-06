@@ -1,0 +1,16 @@
+{
+  "name": "cyberhell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cyberhell - static Three.js FPS with a cloud level/pack editor on Vercel.",
+  "type": "module",
+  "scripts": {
+    "dev:api": "node tools/dev_api_server.mjs",
+    "migrate": "node tools/migrate_levels_to_blob.mjs",
+    "test:api": "node --test tests/api.test.mjs"
+  },
+  "dependencies": {
+    "@vercel/blob": "^0.27.0",
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}
