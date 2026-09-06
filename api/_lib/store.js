@@ -140,15 +140,20 @@ function neonStore() {
     ready = (async () => {
       const q = await sql();
       const text = await fs.readFile(path.join(process.cwd(), 'db', 'schema.sql'), 'utf8');
+      // Strip comments first: a ';' inside a comment used to split the file mid-sentence.
       const statements = text
+        .split(/\r?\n/).map((l) => l.replace(/--.*$/, '')).join(' ')
         .split(';')
-        .map((s) => s.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim())
+        .map((s) => s.trim())
         .filter(Boolean);
-      for (const stmt of statements) await q.query(stmt);
+      for (const stmt of statements) await run(q, stmt);
     })();
     return ready;
   }
-  const q = async (text, params = []) => { await init(); return (await sql()).query(text, params); };
+  // @neondatabase/serverless 0.x exposes the plain-call form sql(text, params); 1.x adds
+  // sql.query(text, params). Accept either so a driver bump does not break the store.
+  const run = (s, text, params = []) => (typeof s.query === 'function' ? s.query(text, params) : s(text, params));
+  const q = async (text, params = []) => { await init(); return run(await sql(), text, params); };
   const rows = async (text, params) => { const r = await q(text, params); return r.rows || r; };
   const one = async (text, params) => (await rows(text, params))[0] || null;
 
