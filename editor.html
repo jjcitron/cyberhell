@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cyberhell Editor</title>
+<link rel="stylesheet" href="css/editor.css">
+</head>
+<body>
+<div id="ed-root">
+
+  <div id="ed-menubar">
+    <span class="ed-brand">CYBERHELL EDITOR</span>
+    <!-- File / Edit / View are inserted here by app.js registerMenu(); other
+         lanes' menus land in the same place, before this anchor. -->
+    <span id="ed-menu-anchor"></span>
+    <span class="ed-spacer"></span>
+    <button id="ed-test-btn" title="Write the draft to IndexedDB and open the game on it">▶ Test in game</button>
+  </div>
+
+  <div id="ed-body">
+    <div id="ed-tools"></div>
+
+    <div id="ed-centre">
+      <div id="ed-toolbar" style="display:none;position:absolute;top:0;left:0;right:0;z-index:10;gap:6px;align-items:center;padding:4px 8px;background:#0c1018e8;border-bottom:1px solid #1e2a3d;flex-wrap:wrap;"></div>
+      <canvas id="ed-canvas"></canvas>
+    </div>
+
+    <div id="ed-right">
+      <div id="ed-tabs"></div>
+      <div id="ed-panels"></div>
+    </div>
+  </div>
+
+  <div id="ed-bottom"><span id="ed-status"></span></div>
+</div>
+<div id="ed-toasts"></div>
+
+<!-- Vendored engine libraries, reused by the 3D preview and the composer. -->
+<script src="js/three.min.js"></script>
+<script src="js/webaudio-tinysynth.js"></script>
+<script src="js/cyber-enemies.js"></script>
+
+<!-- Editor core (this lane). -->
+<script src="js/editor/model.js"></script>
+<script src="js/editor/undo.js"></script>
+<script src="js/editor/storage_local.js"></script>
+<script src="js/editor/map2d.js"></script>
+<script src="js/editor/tools.js"></script>
+<script src="js/editor/panels.js"></script>
+<script src="js/editor/bridge.js"></script>
+<script src="js/editor/app.js"></script>
+
+<!-- Other lanes. These files may not exist yet; a 404 on a classic script is a
+     no-op, and every one of them registers itself through window.CyberEditor,
+     so a missing lane simply means a missing panel. -->
+<script src="js/shared/level_validate.js"></script>
+<script src="js/editor/preview3d.js"></script>
+<script src="js/editor/enemy_editor.js"></script>
+<script src="js/editor/midi_writer.js"></script>
+<script src="js/editor/midi_composer.js"></script>
+<script src="js/editor/validate_panel.js"></script>
+<script src="js/editor/storage_cloud.js"></script>
+<script src="js/editor/auth_ui.js"></script>
+</body>
+</html>
