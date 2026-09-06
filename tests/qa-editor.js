@@ -111,22 +111,57 @@ function skip(name, reason) { results.push({ name, ok: true, skip: true, detail:
 
       let hasEditor = false;
       try {
-        await page.waitForFunction(() => !!(window.CyberEditor && typeof window.CyberEditor.openLevel === 'function'), { timeout: 5000 });
+        await page.waitForFunction(() => !!(window.CyberEditor && typeof window.CyberEditor.openLevel === 'function' && window.CyberEditor.storage), { timeout: 5000 });
         hasEditor = true;
       } catch (e) { /* fall through to skip below */ }
 
       if (!hasEditor) {
-        skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'window.CyberEditor.openLevel never appeared within 5s');
+        skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'window.CyberEditor.openLevel/storage never appeared within 5s');
         skip('QA-ED-2 Test in game boots the draft in index.html with no page errors', 'no CyberEditor to produce a draft from');
       } else {
-        // CyberEditor.openLevel(packId, levelId) -- app.js's documented contract.
-        let openErr = null;
-        await page.evaluate(({ p, l }) => window.CyberEditor.openLevel(p, l), { p: 'pack1', l: 'json1' }).catch(e => { openErr = String(e); });
+        // Discover pack1's first level id via the real storage API (not a
+        // hardcoded guess), then CyberEditor.openLevel(packId, levelId).
+        let openErr = null, levelId = null;
+        try {
+          const found = await page.evaluate(async () => {
+            const packs = await window.CyberEditor.storage.listPacks();
+            const p1 = packs.find(p => p.id === 'pack1');
+            if (!p1) throw new Error('pack1 not in storage.listPacks()');
+            const pack = await window.CyberEditor.storage.getPack(p1.id);
+            const first = pack.levels && pack.levels[0];
+            if (!first) throw new Error('pack1 has no levels');
+            return first.id;
+          });
+          levelId = found;
+          await page.evaluate(({ l }) => window.CyberEditor.openLevel('pack1', l), { l: levelId });
+        } catch (e) { openErr = String(e); }
+
         await page.addScriptTag({ url: '/js/shared/level_validate.js' });
-        const r = openErr ? null : await page.evaluate(() => window.LevelValidate.validateLevel(window.CyberEditor.level, { quick: false }));
-        record('QA-ED-1 CyberEditor.openLevel("pack1","json1") + validateLevel(CyberEditor.level) has 0 errors',
-          !openErr && r && r.errors && r.errors.length === 0,
-          openErr || (r ? JSON.stringify((r.errors || []).slice(0, 3)) : 'validateLevel returned nothing'));
+        const check = openErr ? null : await page.evaluate(() => ({
+          name: window.CyberEditor.level && window.CyberEditor.level.name,
+          result: window.LevelValidate.validateLevel(window.CyberEditor.level, { quick: false })
+        }));
+        record('QA-ED-1 storage.listPacks/getPack -> openLevel("pack1", "' + levelId + '") sets CyberEditor.level.name and validates 0 errors',
+          !openErr && !!(check && check.name) && check.result.errors.length === 0,
+          openErr || (check ? 'name=' + JSON.stringify(check.name) + ' errors=' + JSON.stringify(check.result.errors.slice(0, 3)) : 'no result'));
+
+        if (!openErr) {
+          // Click the Validate tab and confirm the panel actually rendered a
+          // stats footer -- proves validate_panel.js is wired into the real
+          // editor shell, not just that the module function works in isolation.
+          const clicked = await page.evaluate(() => {
+            const tab = document.querySelector('#ed-tabs button[data-panel="validate"]');
+            if (!tab) return false;
+            tab.click();
+            return true;
+          });
+          const statsText = clicked ? await page.evaluate(() => {
+            const el = document.querySelector('#ed-panel-validate .lv-stats');
+            return el ? el.textContent : null;
+          }) : null;
+          record('QA-ED-1 clicking the Validate tab shows a populated stats footer',
+            clicked && !!statsText && /sectors/.test(statsText), 'tab found=' + clicked + ' statsText=' + JSON.stringify(statsText));
+        }
 
         if (openErr) {
           skip('QA-ED-2 Test in game boots the draft in index.html with no page errors', 'CyberEditor.openLevel failed: ' + openErr);
