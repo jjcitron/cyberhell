@@ -187,7 +187,9 @@
   // 'levelPacks/pack3/json7.json' -> 'pack3'; the boot level -> 'builtin'.
   function packIdFromFile(file) {
     if (!file) return 'builtin';
-    const m = /levelPacks\/([A-Za-z0-9_-]+)\//.exec(file);
+    // Static corpus: 'levelPacks/<pack>/<file>'. Cloud corpus (after the migration):
+    // '/api/levels/<pack>__<levelId>/json'.
+    const m = /levelPacks\/([A-Za-z0-9_-]+)\//.exec(file) || /\/api\/levels\/([A-Za-z0-9-]+)__/.exec(file);
     return m ? m[1] : 'builtin';
   }
 
