@@ -3026,7 +3026,72 @@ class CyberDoomEngine {
           .catch(err => console.warn("Manifest fetch notice:", err));
       };
 
-      fetch('levelPacks/packs.json')
+      // ---- editor bridge -------------------------------------------------
+      // editor.html's "Test in game" writes the level to IndexedDB
+      // (db 'cyberhell-editor', store 'drafts', key 'current') and opens this
+      // page as index.html?draft=1. In that mode the draft replaces the pack
+      // manifest entirely; nothing else about booting changes.
+      const draftMode = /(^|[?&])draft=1(&|$)/.test(location.search);
+      const bootEditorDraft = () => {
+        let req;
+        try { req = indexedDB.open('cyberhell-editor', 1); }
+        catch (err) { console.warn('Editor draft notice:', err); return; }
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('drafts')) db.createObjectStore('drafts');
+        };
+        req.onerror = () => console.warn('Editor draft notice:', req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          let get;
+          try { get = db.transaction('drafts', 'readonly').objectStore('drafts').get('current'); }
+          catch (err) { db.close(); console.warn('Editor draft notice:', err); return; }
+          get.onsuccess = () => {
+            const data = get.result;
+            db.close();
+            const title = document.getElementById('overlay-title');
+            const subtitle = document.getElementById('overlay-subtitle');
+            if (!data) {
+              if (title) title.innerText = 'NO EDITOR DRAFT';
+              if (subtitle) subtitle.innerText = 'Open editor.html and press Test in game.';
+              return;
+            }
+            this.resetLevelScene();
+            this.loadLevel(data);
+            // Same ledge fixup loadLevelFromFile does -- buildWall drops it.
+            if (data.walls) {
+              data.walls.forEach((w, i) => {
+                const rw = this.walls[i];
+                if (rw && w.ledge) { rw.ledge = true; rw.hiFloor = w.hiFloor; }
+              });
+            }
+            this.checkAllWeaponsOption();
+            if (window.cyberMidi) window.cyberMidi.attachLevel(null, data.name);
+            if (title) title.innerText = data.name || 'EDITOR DRAFT';
+            if (subtitle) {
+              subtitle.innerText = `DRAFT | SECTORS: ${data.sectors ? data.sectors.length : 0} | WALLS: ${data.walls ? data.walls.length : 0} | ENTITIES: ${data.entities ? data.entities.length : 0}`;
+            }
+            if (packSelect) {
+              packSelect.innerHTML = '';
+              const popt = document.createElement('option');
+              popt.textContent = 'Editor draft';
+              packSelect.appendChild(popt);
+              packSelect.disabled = true;
+            }
+            if (levelSelect) {
+              levelSelect.innerHTML = '';
+              const opt = document.createElement('option');
+              opt.textContent = (data.name || 'EDITOR DRAFT') + ' [draft]';
+              levelSelect.appendChild(opt);
+              levelSelect.disabled = true;
+            }
+          };
+          get.onerror = () => { db.close(); console.warn('Editor draft notice:', get.error); };
+        };
+      };
+
+      if (draftMode) bootEditorDraft();
+      else fetch('levelPacks/packs.json')
         .then(res => res.json())
         .then(packs => {
           this.allPacks = packs;
