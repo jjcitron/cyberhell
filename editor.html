@@ -24,6 +24,15 @@
     <div id="ed-centre">
       <div id="ed-toolbar" style="display:none;position:absolute;top:0;left:0;right:0;z-index:10;gap:6px;align-items:center;padding:4px 8px;background:#0c1018e8;border-bottom:1px solid #1e2a3d;flex-wrap:wrap;"></div>
       <canvas id="ed-canvas"></canvas>
+      <!-- side:'bottom' panels land here: a collapsible drawer with a capped
+           height, so a bottom panel can never eat the map. -->
+      <div id="ed-drawer" hidden>
+        <div id="ed-drawer-bar">
+          <div id="ed-drawer-tabs"></div>
+          <button id="ed-drawer-toggle" title="Collapse / expand">▾</button>
+        </div>
+        <div id="ed-drawer-panels"></div>
+      </div>
     </div>
 
     <div id="ed-right">

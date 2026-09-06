@@ -18,6 +18,8 @@
 (function () {
   'use strict';
 
+  var LAST_KEY = 'cyberhell.editor.lastLevel';
+
   function el(tag, attrs, text) {
     var n = document.createElement(tag);
     if (attrs) Object.keys(attrs).forEach(function (k) {
@@ -39,6 +41,7 @@
     tools: [],
     activeTool: null,
     _panels: [],
+    _bottomPanels: [],
     _events: {}
   };
 
@@ -112,8 +115,9 @@
   /* ---- panels / tools / menus ------------------------------------------- */
 
   ed.registerPanel = function (spec) {
-    var tabs = document.getElementById('ed-tabs');
-    var panels = document.getElementById('ed-panels');
+    var bottom = spec.side === 'bottom';
+    var tabs = document.getElementById(bottom ? 'ed-drawer-tabs' : 'ed-tabs');
+    var panels = document.getElementById(bottom ? 'ed-drawer-panels' : 'ed-panels');
     // The outer .ed-panel is the shell's; the inner element is the lane's to do
     // whatever it likes with. Lanes have overwritten className and set inline
     // display on what they were handed, which used to leak their UI through
@@ -125,17 +129,29 @@
     tab.addEventListener('click', function () { ed.showPanel(spec.id); });
     tabs.appendChild(tab);
     panels.appendChild(shell);
-    ed._panels.push(spec.id);
-    if (ed._panels.length === 1) ed.showPanel(spec.id);
+    if (bottom) {
+      document.getElementById('ed-drawer').hidden = false;
+      ed._bottomPanels.push(spec.id);
+      if (ed._bottomPanels.length === 1) ed.showPanel(spec.id);
+      if (ed.map) ed.map.resize();
+    } else {
+      ed._panels.push(spec.id);
+      if (ed._panels.length === 1) ed.showPanel(spec.id);
+    }
     if (spec.mount) { try { spec.mount(body); } catch (err) { console.error('[editor] panel mount failed: ' + spec.id, err); } }
     return body;
   };
 
+  /* Side and bottom are independent tab groups: showing one never hides the
+     other, and a panel is only ever visible in the group it was registered in. */
   ed.showPanel = function (id) {
-    Array.prototype.forEach.call(document.querySelectorAll('#ed-tabs button'), function (b) {
+    var group = ed._bottomPanels.indexOf(id) >= 0 ? 'bottom' : 'side';
+    var tabSel = group === 'bottom' ? '#ed-drawer-tabs button' : '#ed-tabs button';
+    var panelSel = group === 'bottom' ? '#ed-drawer-panels .ed-panel' : '#ed-panels .ed-panel';
+    Array.prototype.forEach.call(document.querySelectorAll(tabSel), function (b) {
       b.classList.toggle('active', b.getAttribute('data-panel') === id);
     });
-    Array.prototype.forEach.call(document.querySelectorAll('.ed-panel'), function (p) {
+    Array.prototype.forEach.call(document.querySelectorAll(panelSel), function (p) {
       p.classList.toggle('active', p.id === 'ed-panel-' + id);
     });
   };
@@ -217,6 +233,7 @@
     return ed.storage.getPack(packId).then(function (pack) {
       return ed.storage.loadLevel(packId, levelId).then(function (json) {
         ed.setLevel(json, packId, levelId, pack);
+        try { localStorage.setItem(LAST_KEY, JSON.stringify({ packId: packId, levelId: levelId })); } catch (err) {}
         ed.toast('opened ' + (json.name || levelId), 'ok');
         return json;
       });
@@ -459,9 +476,27 @@
       e.returnValue = '';
     });
 
+    var drawerToggle = document.getElementById('ed-drawer-toggle');
+    if (drawerToggle) drawerToggle.addEventListener('click', function () {
+      var d = document.getElementById('ed-drawer');
+      d.classList.toggle('collapsed');
+      drawerToggle.textContent = d.classList.contains('collapsed') ? '▴' : '▾';
+      ed.map.resize();
+    });
+
     ed._syncUndoButtons();
     ed._status();
     ed.requestRedraw();
+
+    // Open something rather than showing an empty canvas: last level if there
+    // is one, else pack1 level 1. Failure is not fatal, the editor still boots.
+    ed.showPanel('packs');
+    var last = null;
+    try { last = JSON.parse(localStorage.getItem(LAST_KEY)); } catch (err) {}
+    var target = (last && last.packId && last.levelId) ? last : { packId: 'pack1', levelId: 'json1' };
+    ed.openLevel(target.packId, target.levelId).catch(function () {
+      if (target.packId !== 'pack1') return ed.openLevel('pack1', 'json1').catch(function () {});
+    });
   }
 
   window.CyberEditor = ed;
