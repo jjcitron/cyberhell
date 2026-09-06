@@ -387,13 +387,16 @@
   Panel.prototype.remove = function () {
     var ed = window.CyberEditor, d = this.def;
     if (!ed || !d || !d.id) { toast('Nothing saved to delete'); return; }
-    var id = d.id;
-    ed.apply(function (level) {
-      if (level.customEnemies) delete level.customEnemies[id];
-    }, 'Delete enemy ' + id);
-    this.refreshList();
-    this.selectType(this.pick.value);
-    toast('Deleted ' + id);
+    var self = this, id = d.id;
+    ed.confirm('Delete enemy', 'Delete "' + (d.name || id) + '" from this level?').then(function (yes) {
+      if (!yes) return;
+      ed.apply(function (level) {
+        if (level.customEnemies) delete level.customEnemies[id];
+      }, 'delete enemy ' + id);
+      self.refreshList();
+      self.selectType(self.pick.value);
+      toast('Deleted ' + id, 'ok');
+    });
   };
 
   /** Button state follows the shell's selection, so it never lies. */
@@ -435,17 +438,24 @@
   };
 
   Panel.prototype.exportDef = function () {
+    var ed = window.CyberEditor;
     var txt = JSON.stringify(this.def, null, 2);
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      try { navigator.clipboard.writeText(txt); } catch (e) { /* clipboard blocked */ }
+      // Rejects (not throws) when the page lacks clipboard permission, so the
+      // catch has to be on the promise or it surfaces as a page error.
+      try { navigator.clipboard.writeText(txt).catch(function () {}); } catch (e) {}
     }
-    if (window.prompt) window.prompt('Enemy definition JSON (copy)', txt);
-    toast('Definition exported');
+    ed.ask('Export enemy', 'Definition JSON', txt, 'Already copied to the clipboard.');
+    toast('Definition exported', 'ok');
   };
 
   Panel.prototype.importDef = function () {
-    var txt = window.prompt('Paste an enemy definition JSON', '');
-    if (!txt) return;
+    var self = this;
+    window.CyberEditor.ask('Import enemy', 'Definition JSON', '', 'Paste a definition exported from this panel.')
+      .then(function (txt) { if (txt) self.applyImport(txt); });
+  };
+
+  Panel.prototype.applyImport = function (txt) {
     try {
       var d = JSON.parse(txt);
       if (d.base === undefined) throw new Error('missing base');
