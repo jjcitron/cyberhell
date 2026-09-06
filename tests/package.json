@@ -1,0 +1,4 @@
+{
+  "//": "The repo root package.json sets \"type\": \"module\" for the api/ functions. These QA scripts are CommonJS (require), so this scopes tests/ back. tests/*.mjs is unaffected.",
+  "type": "commonjs"
+}

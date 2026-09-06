@@ -3104,9 +3104,32 @@ class CyberDoomEngine {
         };
       };
 
+      // Pack list: the editor API first (it serves the canonical packs plus anything a creator
+      // has published), falling back to the static levelPacks copy. Same JSON shape either way,
+      // so nothing downstream changes.
+      //
+      // The probe only runs where an API can exist: the https deployment, or the local dev
+      // server on :5305. A plain static host (python -m http.server, the QA harness) is never
+      // asked for /api/*, because a 404 there costs a console error for a request that could
+      // never have succeeded.
+      const apiPossible = location.protocol === 'https:' || location.port === '5305';
+      const fetchStaticPacks = () => fetch('levelPacks/packs.json').then(res => res.json());
+      const fetchPackList = () => {
+        if (!apiPossible) return fetchStaticPacks();
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 1500);
+        return fetch('/api/packs', { signal: ctrl.signal })
+          .then(res => (res.ok ? res.json() : Promise.reject(new Error('api ' + res.status))))
+          .then(packs => {
+            if (!Array.isArray(packs) || !packs.length) throw new Error('empty pack list');
+            return packs;
+          })
+          .finally(() => clearTimeout(timer))
+          .catch(fetchStaticPacks);
+      };
+
       if (draftMode) bootEditorDraft();
-      else fetch('levelPacks/packs.json')
-        .then(res => res.json())
+      else fetchPackList()
         .then(packs => {
           this.allPacks = packs;
           packSelect.innerHTML = '';
