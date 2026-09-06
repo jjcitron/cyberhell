@@ -1,9 +1,12 @@
 /* ===========================================================================
    undo.js — command stack.
 
-   Full-snapshot undo: every apply() clones the level before the mutator runs.
-   A big converted level is ~1-3 MB of JSON, so the stack is capped at 40 steps.
-   ponytail: full snapshots, switch to JSON-patch deltas only if memory bites.
+   Full-snapshot undo, capped by ESTIMATED BYTES rather than step count, because
+   levels differ by two orders of magnitude: pack1/json1 is ~850 walls, dv/json2
+   is ~20k. 40 steps of the latter would be hundreds of MB. The budget keeps 40
+   steps on an ordinary level and silently fewer on a monster one.
+   ponytail: element-count size estimate, no stringify (that would cost more than
+   the clone it measures); switch to JSON-patch deltas only if this still bites.
    =========================================================================== */
 (function () {
   'use strict';
@@ -13,13 +16,35 @@
     this.set = opts.set;          // (level) -> void
     this.onChange = opts.onChange || function () {};
     this.limit = opts.limit || 40;
+    this.budget = opts.budget || 64 * 1024 * 1024;   // bytes of retained history
     this.past = [];
     this.future = [];
+    this.bytes = 0;
   }
+
+  /* Rough retained size of one level snapshot. Per-element constants are the
+     measured average JSON size of each record type in the corpus. */
+  function estimateBytes(level) {
+    if (!level) return 0;
+    return 2048 +
+      (level.walls || []).length * 140 +
+      (level.sectors || []).length * 420 +
+      (level.entities || []).length * 90 +
+      (level.triggers || []).length * 130;
+  }
+
+  UndoStack.prototype._trim = function () {
+    while (this.past.length > this.limit ||
+           (this.past.length > 1 && this.bytes > this.budget)) {
+      var dropped = this.past.shift();
+      this.bytes -= dropped.bytes;
+    }
+  };
 
   UndoStack.prototype.reset = function () {
     this.past.length = 0;
     this.future.length = 0;
+    this.bytes = 0;
     this.onChange();
   };
 
@@ -35,8 +60,10 @@
       this.set(before);
       throw err;
     }
-    this.past.push({ level: before, label: label || 'edit' });
-    if (this.past.length > this.limit) this.past.shift();
+    var size = estimateBytes(before);
+    this.past.push({ level: before, label: label || 'edit', bytes: size });
+    this.bytes += size;
+    this._trim();
     this.future.length = 0;
     this.onChange();
     return true;
@@ -50,7 +77,8 @@
   UndoStack.prototype.undo = function () {
     if (!this.past.length) return null;
     var entry = this.past.pop();
-    this.future.push({ level: JSON.parse(JSON.stringify(this.get())), label: entry.label });
+    this.bytes -= entry.bytes;
+    this.future.push({ level: JSON.parse(JSON.stringify(this.get())), label: entry.label, bytes: entry.bytes });
     this.set(entry.level);
     this.onChange();
     return entry.label;
@@ -59,7 +87,8 @@
   UndoStack.prototype.redo = function () {
     if (!this.future.length) return null;
     var entry = this.future.pop();
-    this.past.push({ level: JSON.parse(JSON.stringify(this.get())), label: entry.label });
+    this.past.push({ level: JSON.parse(JSON.stringify(this.get())), label: entry.label, bytes: entry.bytes });
+    this.bytes += entry.bytes;
     this.set(entry.level);
     this.onChange();
     return entry.label;

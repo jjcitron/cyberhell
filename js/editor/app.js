@@ -114,11 +114,17 @@
   ed.registerPanel = function (spec) {
     var tabs = document.getElementById('ed-tabs');
     var panels = document.getElementById('ed-panels');
-    var body = el('div', { class: 'ed-panel', id: 'ed-panel-' + spec.id });
+    // The outer .ed-panel is the shell's; the inner element is the lane's to do
+    // whatever it likes with. Lanes have overwritten className and set inline
+    // display on what they were handed, which used to leak their UI through
+    // every other tab -- owning the wrapper makes tab visibility unbreakable.
+    var shell = el('div', { class: 'ed-panel', id: 'ed-panel-' + spec.id });
+    var body = el('div');
+    shell.appendChild(body);
     var tab = el('button', { 'data-panel': spec.id }, spec.title);
     tab.addEventListener('click', function () { ed.showPanel(spec.id); });
     tabs.appendChild(tab);
-    panels.appendChild(body);
+    panels.appendChild(shell);
     ed._panels.push(spec.id);
     if (ed._panels.length === 1) ed.showPanel(spec.id);
     if (spec.mount) { try { spec.mount(body); } catch (err) { console.error('[editor] panel mount failed: ' + spec.id, err); } }
@@ -433,7 +439,13 @@
       if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); ed.redo(); return; }
       if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); e.shiftKey ? ed.saveLevelAs() : ed.saveLevel(); return; }
       if (e.ctrlKey || e.metaKey) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); ed.deleteSelection(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        // A hovered sector vertex wins over deleting the whole sector.
+        if (ed.deleteVertexUnderCursor && ed.deleteVertexUnderCursor()) return;
+        ed.deleteSelection();
+        return;
+      }
       if (e.key === 'f') { ed.map.fit(ed.level); return; }
       if (e.key === 'g') { ed.map.snap = !ed.map.snap; ed._status(); return; }
       var byKey = ed.tools.filter(function (tool) { return tool.key === e.key; })[0];
