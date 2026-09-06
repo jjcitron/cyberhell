@@ -252,36 +252,67 @@
 
   /* Writes a whole local pack into a folder the user picks — that folder is
      meant to be levelPacks/<pack>. Chromium only (File System Access API). */
+  function writeJson(dir, name, value) {
+    return dir.getFileHandle(name, { create: true })
+      .then(function (fh) { return fh.createWritable(); })
+      .then(function (w) { return w.write(JSON.stringify(value, null, 2)).then(function () { return w.close(); }); });
+  }
+
+  function readJson(dir, name) {
+    return dir.getFileHandle(name)
+      .then(function (fh) { return fh.getFile(); })
+      .then(function (f) { return f.text(); })
+      .then(function (t) { return JSON.parse(t); })
+      .catch(function () { return null; });
+  }
+
+  /* Writes a local pack into the repo. The user picks the levelPacks FOLDER (not
+     the pack folder) so this can create a new pack directory and keep
+     packs.json in step -- the game reads packs.json first, so a pack that is
+     missing from it is invisible however good its files are. */
   StorageAdapter.prototype.saveIntoRepo = function (packId) {
     var self = this;
     if (!window.showDirectoryPicker) return Promise.reject(new Error('File System Access API not available in this browser'));
     return this.getPack(packId).then(function (pack) {
       if (!pack) throw new Error('unknown pack');
-      return window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
-        var manifest = [];
-        var chain = Promise.resolve();
-        (pack.levels || []).forEach(function (entry) {
-          chain = chain.then(function () {
-            return self.loadLevel(packId, entry.id).then(function (json) {
-              var fileName = entry.id + '.json';
-              manifest.push({
-                id: entry.id, name: json.name || entry.name,
-                file: 'levelPacks/' + packId + '/' + fileName,
-                sectors: (json.sectors || []).length,
-                walls: (json.walls || []).length,
-                entities: (json.entities || []).length
+      return window.showDirectoryPicker({ mode: 'readwrite', id: 'cyberhell-levelpacks' }).then(function (root) {
+        return root.getDirectoryHandle(packId, { create: true }).then(function (dir) {
+          var manifest = [];
+          var chain = Promise.resolve();
+          (pack.levels || []).forEach(function (entry) {
+            chain = chain.then(function () {
+              return self.loadLevel(packId, entry.id).then(function (json) {
+                var fileName = entry.id + '.json';
+                manifest.push({
+                  id: entry.id, name: json.name || entry.name,
+                  file: 'levelPacks/' + packId + '/' + fileName,
+                  sectors: (json.sectors || []).length,
+                  walls: (json.walls || []).length,
+                  entities: (json.entities || []).length
+                });
+                return writeJson(dir, fileName, json);
               });
-              return dir.getFileHandle(fileName, { create: true })
-                .then(function (fh) { return fh.createWritable(); })
-                .then(function (w) { return w.write(JSON.stringify(json, null, 2)).then(function () { return w.close(); }); });
             });
           });
+          return chain
+            .then(function () { return writeJson(dir, 'manifest.json', manifest); })
+            .then(function () { return readJson(root, 'packs.json'); })
+            .then(function (packs) {
+              packs = Array.isArray(packs) ? packs : [];
+              var row = {
+                id: packId, name: pack.name,
+                manifest: 'levelPacks/' + packId + '/manifest.json',
+                levelCount: manifest.length
+              };
+              var at = packs.findIndex ? packs.findIndex(function (x) { return x.id === packId; }) : -1;
+              if (at >= 0) packs[at] = Object.assign({}, packs[at], row);
+              else packs.push(row);
+              return writeJson(root, 'packs.json', packs).then(function () { return packs.length; });
+            })
+            .then(function (packCount) {
+              return { files: manifest.length + 2, packs: packCount, pack: packId };
+            });
         });
-        return chain.then(function () {
-          return dir.getFileHandle('manifest.json', { create: true })
-            .then(function (fh) { return fh.createWritable(); })
-            .then(function (w) { return w.write(JSON.stringify(manifest, null, 2)).then(function () { return w.close(); }); });
-        }).then(function () { return { files: manifest.length + 1 }; });
       });
     });
   };

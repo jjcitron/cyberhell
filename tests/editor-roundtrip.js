@@ -106,15 +106,53 @@ function invariantPass() {
   return problems.length ? problems.join('; ') : null;
 }
 
+/* Splicing walls[] is only safe because NOTHING persisted references a wall by
+   array position: triggers use linedef ids (i / ai), everything else uses sector
+   indices (act.secs, fs, bs) or tags. This census over the whole corpus fails the
+   moment the converter adds a field that could be a wall index, which is the one
+   thing that would make delete-by-splice wrong. */
+const KNOWN = {
+  top: 'ambientLight,entities,fogColor,fogDensity,name,playerSpawn,sectors,skyColor,sunLight,triggers,walls',
+  walls: 'act,ai,bottomY,bs,closed,doorId,fs,h,hiFloor,isDoor,isExit,isSwitch,ledge,loFloor,p1,p2,solid,special,stepUp,switchId,tag,tex,topY',
+  triggers: 'act,i,p1,p2',
+  sectors: 'area,ceilTex,ceilY,depth,floorTex,floorY,hiY,id,isSky,light,loY,polys,tag,width,x,z',
+  entities: 'amount,enemyType,name,pos,rot,type'
+};
+
+function keyCensus() {
+  const seen = { top: new Set(), walls: new Set(), triggers: new Set(), sectors: new Set(), entities: new Set() };
+  for (const pack of packs) {
+    let manifest;
+    try { manifest = read(pack.manifest); } catch (err) { continue; }
+    for (const entry of manifest) {
+      let lvl;
+      try { lvl = read(entry.file); } catch (err) { continue; }
+      Object.keys(lvl).forEach(k => seen.top.add(k));
+      for (const group of ['walls', 'triggers', 'sectors', 'entities']) {
+        (lvl[group] || []).forEach(o => Object.keys(o).forEach(k => seen[group].add(k)));
+      }
+    }
+  }
+  const news = [];
+  for (const group of Object.keys(KNOWN)) {
+    const known = new Set(KNOWN[group].split(','));
+    [...seen[group]].sort().forEach(k => { if (!known.has(k)) news.push(group + '.' + k); });
+  }
+  return news.length ? 'unknown field(s) ' + news.join(', ') + ' — if any is a wall INDEX, delete-by-splice is unsafe and EdModel.removeWall must re-base it' : null;
+}
+
+const newFields = keyCensus();
+
 const invariant = invariantPass();
 
 if (asJson) {
-  console.log(JSON.stringify({ checked, diffs: diffs.length, invariant, failures: diffs.slice(0, 20) }, null, 2));
+  console.log(JSON.stringify({ checked, diffs: diffs.length, invariant, newFields, failures: diffs.slice(0, 20) }, null, 2));
 } else {
   console.log('editor round-trip: ' + (checked - diffs.length) + '/' + checked + ' levels identical');
   diffs.slice(0, 20).forEach(d => console.log('  DIFF ' + d.file + ' — ' + d.why));
   if (diffs.length > 20) console.log('  … and ' + (diffs.length - 20) + ' more');
   console.log('index invariants: ' + (invariant ? 'FAIL — ' + invariant : 'ok'));
+  console.log('field census:     ' + (newFields ? 'FAIL — ' + newFields : 'ok, no wall-index field exists'));
 }
 
-process.exit(diffs.length === 0 && !invariant ? 0 : 1);
+process.exit(diffs.length === 0 && !invariant && !newFields ? 0 : 1);

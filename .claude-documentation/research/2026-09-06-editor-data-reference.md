@@ -197,3 +197,8 @@ Editor-core lead adds: sector indices appear in four places (`triggers[].act.sec
 `walls[].act.secs`, `walls[].fs`, `walls[].bs`); the door flag is `isDoor` (+`doorId`, `closed`);
 walls also carry `ledge/loFloor/hiFloor/stepUp`, `special`, `tag`, `isExit`, `act`. A trigger
 without a wall is normal for walkover lines.
+
+Validation lane adds (from validating all 198 canonical levels): 70 of 198 levels carry more than
+one `sw_exit_game` wall and the engine accepts every one (warning, not error); unknown numeric
+`enemyType` (e.g. Doom id 84 in three shipping levels) falls back to DEFAULT_STATS + BUILDERS[0]
+(warning); unresolved `custom:<id>` has no fallback and is an error.

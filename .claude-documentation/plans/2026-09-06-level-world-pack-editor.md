@@ -19,9 +19,10 @@ stack to lift).
   `index.html` on the draft.
 - **Level JSON stays the engine's format** (see the data reference). The editor adds only optional
   keys the engine learns to read: `music` (explicit cue override), `customEnemies` (per-level or
-  per-pack enemy definitions), `meta` (id, createdBy, version, notes). `walls[i]` ↔ `triggers[].i`
-  positional pairing is preserved by construction (the editor keeps triggers attached to wall
-  objects and re-indexes on export).
+  per-pack enemy definitions), `meta` (id, createdBy, version, notes). Triggers bind to walls by
+  value (`triggers[].i` = `wall.ai`, a Doom linedef id), never by array position; the editor reuses
+  or allocates `ai` when attaching a trigger and never reorders existing wall entries (sector
+  `fs`/`bs` attachment walks the wall array in order).
 - **Enemies become data**: `js/cyber-enemies.js` STATS stay the base table; every builder takes a
   `look` object (colours, scale, part toggles, emissive) whose defaults are today's hard-coded
   values, so existing enemies render byte-identically. A custom enemy is `{ base: <thing id>,
@@ -82,7 +83,8 @@ POST /api/publish/:packId
 
 Validation shared by browser and API: `js/shared/level_validate.js` (ported from
 `tests/check-polys.js`, `check-floor-coverage.js`, `check-exits.js`: closed non-self-intersecting
-polys, no sealed pockets, exit reachable from spawn, one `sw_exit_game`, trigger/wall pairing).
+polys, no sealed pockets, exit reachable from spawn, at least one `sw_exit_game` (70 canonical
+levels carry several; extra ones are warnings), trigger/wall binding by `ai`).
 
 ## Fleet (worktrees `C:\Dev\Personal\_wt\ch-<lane>`, branches `editor/<lane>`)
 
@@ -113,3 +115,16 @@ through the editor model yields identical JSON.
 4. Fresh-context evaluator uses the editor end to end (create pack, edit a converted level, custom
    enemy, MIDI, save-as, test in game) and grades it. 5. Push `main`, Vercel READY.
 6. Stop: ask Joel to provision Blob + Neon; then run the migration and flip the game boot to the API.
+
+## Status log
+
+- 2026-09-06 05:10 EDT — all six lanes merged on `master` (df043dd): editor shell + 2D map + local
+  storage + test-in-game (197/197 zero-diff round trip, field census gate), 3D preview (one
+  InstancedMesh for 20k walls), enemy editor (15/15 rigs byte-identical under the look layer,
+  custom enemies resolved by the engine), MIDI composer (SMF writer/reader, 5 presets, level.music
+  override, cue table unchanged for all 197 levels), validator (198/198 canonical clean, 16 unit
+  tests), cloud API on fs + blob/neon stores (14/14 API tests, migration dry-run idempotent).
+  Integration fixes: fs store writes under /tmp on Vercel; static pack list fetched from the
+  deployment origin when not bundled. Open: editor-core pass 2 (vertex insert/delete, holes,
+  multi-drag, entity nudge, packs.json in save-into-repo, panel visibility bug), validation pass 2
+  (e2e against the real shell). Provisioning of Blob + Neon awaits Joel.

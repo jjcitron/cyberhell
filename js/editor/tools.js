@@ -59,6 +59,32 @@
     /* ---- Select ---------------------------------------------------------- */
     var drag = null;
 
+    /* Original positions of everything in ed.multi, so a group drag is one
+       delta applied to all of them and one undo step. */
+    function snapshotMulti() {
+      return ed.multi.map(function (m) {
+        if (m.kind === 'entity') return { kind: 'entity', index: m.index, pos: ed.level.entities[m.index].pos.slice() };
+        if (m.kind === 'wall') {
+          var w = ed.level.walls[m.index];
+          return { kind: 'wall', index: m.index, p1: w.p1.slice(), p2: w.p2.slice() };
+        }
+        return null;
+      }).filter(Boolean);
+    }
+
+    function applyGroupDelta(items, dx, dz) {
+      items.forEach(function (it) {
+        if (it.kind === 'entity') {
+          var pos = ed.level.entities[it.index].pos;
+          pos[0] = it.pos[0] + dx; pos[2] = it.pos[2] + dz;
+        } else {
+          var w = ed.level.walls[it.index];
+          w.p1 = [it.p1[0] + dx, it.p1[1] + dz];
+          w.p2 = [it.p2[0] + dx, it.p2[1] + dz];
+        }
+      });
+    }
+
     ed.registerTool({
       id: 'select', title: 'Select', key: '1', glyph: '↖',
       onPointerDown: function (e, world, screen) {
@@ -86,9 +112,13 @@
           ed.toggleMulti(hit.kind, hit.index);
           return;
         }
-        ed.multi = [];
+        // Dragging any member of a multi-selection drags the whole set.
+        var inMulti = ed.multi.some(function (m) { return m.kind === hit.kind && m.index === hit.index; });
+        if (!inMulti) ed.multi = [];
         ed.select(hit.kind, hit.index);
-        if (hit.kind === 'entity') {
+        if (inMulti && ed.multi.length > 1) {
+          drag = { kind: 'group', anchor: [world.x, world.z], items: snapshotMulti() };
+        } else if (hit.kind === 'entity') {
           drag = { kind: 'entity', index: hit.index, orig: ed.level.entities[hit.index].pos.slice() };
         } else if (hit.kind === 'spawn') {
           drag = { kind: 'spawn', orig: ed.level.playerSpawn.pos.slice() };
@@ -106,6 +136,9 @@
         } else if (drag.kind === 'spawn') {
           ed.level.playerSpawn.pos[0] = p.x;
           ed.level.playerSpawn.pos[2] = p.z;
+        } else if (drag.kind === 'group') {
+          var ga = map.snapPoint(drag.anchor[0], drag.anchor[1]);
+          applyGroupDelta(drag.items, p.x - ga.x, p.z - ga.z);
         } else if (drag.kind === 'box') {
           drag.x1 = world.x; drag.z1 = world.z;
         }
@@ -133,12 +166,38 @@
           return;
         }
         // Rewind the live drag, then re-apply it as one undoable command.
+        if (d.kind === 'group') {
+          var gp = map.snapPoint(map.mouseWorld.x, map.mouseWorld.z);
+          var ganchor = map.snapPoint(d.anchor[0], d.anchor[1]);
+          var gdx = gp.x - ganchor.x, gdz = gp.z - ganchor.z;
+          applyGroupDelta(d.items, 0, 0);          // rewind to captured originals
+          if (!gdx && !gdz) { map.requestRedraw(); return; }
+          ed.apply(function (lv) {
+            d.items.forEach(function (it) {
+              if (it.kind === 'entity') {
+                var pos = lv.entities[it.index].pos;
+                pos[0] = it.pos[0] + gdx; pos[2] = it.pos[2] + gdz;
+                var si = window.EdModel.sectorAt(lv, pos[0], pos[2]);
+                if (si >= 0) pos[1] = lv.sectors[si].floorY;
+              } else {
+                var w = lv.walls[it.index];
+                w.p1 = [it.p1[0] + gdx, it.p1[1] + gdz];
+                w.p2 = [it.p2[0] + gdx, it.p2[1] + gdz];
+                window.EdModel.syncTriggerEndpoints(lv, it.index);
+              }
+            });
+          }, 'move ' + d.items.length + ' items');
+          return;
+        }
         if (d.kind === 'vertex') {
           var poly = ed.level.sectors[d.v.sector].polys[d.v.poly];
           var final = poly[d.v.point].slice();
           poly[d.v.point] = d.orig.slice();
           if (final[0] === d.orig[0] && final[1] === d.orig[1]) return;
           ed.apply(function (lv) {
+            // Walls are a separate array; drag their endpoints with the vertex
+            // or collision drifts away from the drawn outline.
+            window.EdModel.moveWallEndpoints(lv, d.orig, final);
             lv.sectors[d.v.sector].polys[d.v.poly][d.v.point] = final;
             window.EdModel.refreshSector(lv.sectors[d.v.sector]);
           }, 'move vertex');
@@ -164,6 +223,11 @@
           }, 'move spawn');
         }
       },
+      onDoubleClick: function (e, world) { insertVertexAt(world); },
+      onKey: function (k) {
+        if (k === 'Insert') { insertVertexAt(map.mouseWorld); return true; }
+        return false;
+      },
       draw: function (ctx) {
         if (!drag || drag.kind !== 'box') return;
         var a = map.worldToScreen(drag.x0, drag.z0), b = map.worldToScreen(drag.x1, drag.z1);
@@ -175,9 +239,39 @@
       }
     });
 
+    /* Double-click or Insert on a sector edge adds a vertex there. */
+    function insertVertexAt(world) {
+      if (!ed.level) return;
+      var range = 8 / map.view.scale;
+      var e = window.EdModel.nearestEdge(ed.level, world.x, world.z, range);
+      if (!e) { ed.toast('no sector edge here', 'bad'); return; }
+      var p = map.snapPoint(world.x, world.z);
+      ed.apply(function (lv) {
+        window.EdModel.insertVertex(lv, e.sector, e.poly, e.edge, [p.x, p.z]);
+      }, 'insert vertex');
+      ed.select('sector', e.sector);
+      ed.toast('vertex inserted');
+    }
+
+    /* Delete on a hovered vertex of the selected sector removes it. Returns
+       false when nothing is under the cursor, so Delete falls through to the
+       normal delete-selection path. */
+    ed.deleteVertexUnderCursor = function () {
+      var sel = ed.selection;
+      if (!ed.level || !sel || sel.kind !== 'sector') return false;
+      var s = map.worldToScreen(map.mouseWorld.x, map.mouseWorld.z);
+      var v = map.pickVertex(s.x, s.y, 9);
+      if (!v || v.sector !== sel.index) return false;
+      var poly = ed.level.sectors[v.sector].polys[v.poly];
+      if (poly.length <= 3) { ed.toast('a loop needs at least 3 points', 'bad'); return true; }
+      ed.apply(function (lv) { window.EdModel.deleteVertex(lv, v.sector, v.poly, v.point); }, 'delete vertex');
+      ed.toast('vertex deleted');
+      return true;
+    };
+
     /* ---- Draw Sector ----------------------------------------------------- */
     var pts = [];
-    var sectorOpts = { floorTex: 'tech_floor', ceilTex: 'tech_panel' };
+    var sectorOpts = { floorTex: 'tech_floor', ceilTex: 'tech_panel', asHole: false };
 
     function neighbourSector(x, z) {
       var lv = ed.level;
@@ -197,6 +291,13 @@
       if (pts.length < 3) { pts = []; map.requestRedraw(); return; }
       var poly = pts.slice();
       pts = [];
+      if (sectorOpts.asHole) {
+        var target = -1;
+        ed.apply(function (lv) { target = window.EdModel.addHole(lv, poly); }, 'add hole');
+        if (target < 0) { ed.undo(); ed.toast('draw the hole inside an existing sector', 'bad'); }
+        else { ed.select('sector', target); ed.toast('hole added to sector ' + target, 'ok'); }
+        return;
+      }
       var cx = 0, cz = 0;
       poly.forEach(function (p) { cx += p[0]; cz += p[1]; });
       cx /= poly.length; cz /= poly.length;
@@ -240,6 +341,13 @@
         host.appendChild(el('span', null, 'ceil'));
         host.appendChild(select(TEX_FLOOR.map(function (t) { return { value: t, label: t }; }),
           sectorOpts.ceilTex, function (v) { sectorOpts.ceilTex = v; }));
+        var hl = el('label');
+        var hcb = el('input', { type: 'checkbox' });
+        hcb.checked = sectorOpts.asHole;
+        hcb.addEventListener('change', function () { sectorOpts.asHole = hcb.checked; });
+        hl.appendChild(hcb);
+        hl.appendChild(document.createTextNode('as hole'));
+        host.appendChild(hl);
         var done = el('button', null, 'Close polygon');
         done.addEventListener('click', commitSector);
         host.appendChild(done);
@@ -396,7 +504,11 @@
       },
       onPointerDown: function (e, world) {
         if (!ed.level) return;
-        var p = map.snapPoint(world.x, world.z);
+        var snapped = map.snapPoint(world.x, world.z);
+        // Same clearance nudge the WAD converter applies, so a placed entity
+        // never spawns embedded in a wall.
+        var cleared = window.EdModel.pushOutOfWalls(ed.level, snapped.x, snapped.z);
+        var p = { x: cleared[0], z: cleared[1] };
         var si = window.EdModel.sectorAt(ed.level, p.x, p.z);
         var y = si >= 0 ? ed.level.sectors[si].floorY : 0;
         var parts = entOpts.pick.split(':');
@@ -469,6 +581,8 @@
           ed.apply(function (lv) { lv.playerSpawn.rot = Math.round(ang * 1000) / 1000; }, 'aim spawn');
           return;
         }
+        var cl = window.EdModel.pushOutOfWalls(ed.level, p.x, p.z);
+        p = { x: cl[0], z: cl[1] };
         var si = window.EdModel.sectorAt(ed.level, p.x, p.z);
         var y = (si >= 0 ? ed.level.sectors[si].floorY : 0) + 1.5;
         ed.apply(function (lv) {

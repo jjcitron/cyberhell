@@ -74,13 +74,17 @@ input[type=text], input[type=number] { background: var(--ink); }
 }
 #ed-tools button b { font-size: 15px; font-weight: normal; }
 
-#ed-centre { flex: 1; position: relative; min-width: 0; background: #04060a; }
+#ed-centre { flex: 1 1 0; position: relative; min-width: 200px; background: #04060a; }
 #ed-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #ed-canvas.panning { cursor: grabbing; }
 
+/* width is fixed: a wide panel (the MIDI piano roll, a 3D preview canvas) must
+   scroll inside its own tab, never push the map canvas out of the layout. */
 #ed-right {
-  flex: 0 0 320px; display: flex; flex-direction: column;
-  background: var(--ink2); border-left: 1px solid var(--line); min-height: 0;
+  flex: 0 0 320px; width: 320px; max-width: 320px; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--ink2); border-left: 1px solid var(--line);
+  min-height: 0; overflow: hidden;
 }
 #ed-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
 #ed-tabs button {
@@ -88,9 +92,13 @@ input[type=text], input[type=number] { background: var(--ink); }
   border-bottom: 2px solid transparent; color: var(--dim);
 }
 #ed-tabs button.active { color: var(--neon); border-bottom-color: var(--neon); }
-#ed-panels { flex: 1; overflow: auto; }
-.ed-panel { display: none; padding: 8px; }
+#ed-panels { flex: 1; min-width: 0; overflow: auto; }
+.ed-panel { display: none; padding: 8px; max-width: 100%; overflow-x: auto; }
 .ed-panel.active { display: block; }
+/* Tab visibility is the shell's contract, not a panel's. A lane that sets an
+   inline display on its own root would otherwise show through every tab. */
+.ed-panel:not(.active) { display: none !important; }
+.ed-panel canvas, .ed-panel img, .ed-panel svg { max-width: 100%; }
 
 #ed-bottom {
   flex: 0 0 auto; background: var(--ink2); border-top: 1px solid var(--line);
