@@ -187,6 +187,30 @@
     return exitWalls;
   }
 
+  // Sector indices live in four places (per editor-core, verified against the
+  // engine): triggers[].act.secs, walls[].act.secs, walls[].fs, walls[].bs.
+  // fs is always a valid sector; bs uses -1 as "no back sector" (a one-sided
+  // wall) -- confirmed against real data (levelPacks/pack1/json1.json has
+  // bs:-1 entries, fs never -1).
+  function checkSectorRefs(level, errors) {
+    var nSec = (level.sectors || []).length;
+    function inRange(i) { return Number.isInteger(i) && i >= 0 && i < nSec; }
+    function checkSecs(secs, kind, index, label) {
+      if (!secs) return;
+      secs.forEach(function (si) {
+        if (!inRange(si)) err(errors, 'SECTOR_INDEX_OUT_OF_RANGE', label + ' references sector ' + si + ', out of range (0..' + (nSec - 1) + ')', { kind: kind, index: index });
+      });
+    }
+    (level.walls || []).forEach(function (w, wi) {
+      if (w.fs !== undefined && !inRange(w.fs)) err(errors, 'SECTOR_INDEX_OUT_OF_RANGE', 'wall ' + wi + '.fs=' + w.fs + ' is out of range (0..' + (nSec - 1) + ')', { kind: 'wall', index: wi });
+      if (w.bs !== undefined && w.bs !== -1 && !inRange(w.bs)) err(errors, 'SECTOR_INDEX_OUT_OF_RANGE', 'wall ' + wi + '.bs=' + w.bs + ' is out of range (-1, or 0..' + (nSec - 1) + ')', { kind: 'wall', index: wi });
+      checkSecs(w.act && w.act.secs, 'wall', wi, 'wall ' + wi + '.act.secs');
+    });
+    (level.triggers || []).forEach(function (t, ti) {
+      checkSecs(t.act && t.act.secs, 'trigger', ti, 'trigger ' + ti + '.act.secs');
+    });
+  }
+
   // Numeric enemyType not in KNOWN_ENEMY_TYPES is a WARNING, not an error:
   // js/cyber-enemies.js's stat lookup is `STATS[typeId] || DEFAULT_STATS`
   // and its mesh lookup falls back to BUILDERS[0] -- a real, graceful runtime
@@ -325,6 +349,7 @@
     checkSchema(level, errors);
     checkPolys(level, errors, warnings);
     var exitWalls = checkExitsAndTriggers(level, errors, warnings);
+    checkSectorRefs(level, errors);
     checkEnemies(level, errors, warnings);
 
     if (!opts.quick && level.playerSpawn) {

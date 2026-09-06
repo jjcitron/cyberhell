@@ -6,6 +6,26 @@ Scope: `js/shared/level_validate.js`, `js/editor/validate_panel.js`,
 whether `check-exits.js`/`check-polys.js`/`check-floor-coverage.js` duplicate
 logic worth consolidating.
 
+**Update after integration**: editor-core landed `editor.html`/`js/editor/
+app.js` on master while this lane was in flight. Merged master into this
+worktree, rewrote `tests/qa-editor.js`'s editor-shell steps against the real
+`CyberEditor.openLevel(packId, levelId)` / `CyberEditor.testInGame()` API
+(editor-core's contract comment at the top of `app.js`), added the four-place
+sector-index range check the editor-core lead flagged
+(`triggers[].act.secs`, `walls[].act.secs`, `walls[].fs`, `walls[].bs`, with
+`-1` as `bs`'s "no back sector" sentinel — verified against real data), and
+fixed a real integration bug: `editor.html` loads `js/shared/level_validate.js`
+but never loaded `js/cyber-traversal.js`, so `CyberEditor` full-mode validate
+threw (`Cannot read properties of undefined (reading 'Grid')`) the moment
+anyone clicked "Full validate" or the panel ran full mode. Added the missing
+`<script src="js/cyber-traversal.js">` tag next to `cyber-enemies.js` in
+`editor.html`'s vendored-libraries block. `tests/qa-editor.js` now exercises
+the full real flow end to end: open a canonical level, full-validate it,
+click-equivalent "Test in game", confirm the draft boots in `index.html` with
+zero page errors — 5/5 pass. `check-floor-coverage.js`'s background run also
+finished: 159/198 (pre-existing baseline, unrelated to this lane — see
+finding 3 and the updated gates table).
+
 ## Delivered
 
 - **`js/shared/level_validate.js`** — UMD module (`window.LevelValidate` in
@@ -18,7 +38,7 @@ logic worth consolidating.
   (open loops = error, self-intersection = warning), exit-switch presence,
   trigger-to-wall binding, enemyType resolution, music shape, and (full mode
   only) exit reachability + floor-coverage % via the shared walk graph.
-- **`tests/level-validate.test.mjs`** (`node --test`) — 16 tests, all passing:
+- **`tests/level-validate.test.mjs`** (`node --test`) — 17 tests, all passing:
   every one of the 198 canonical levels (pack1-6, dv, hand-built MAP01)
   validates with 0 errors in full mode; a dedicated perf case on
   `levelPacks/dv/json2.json` (~20k walls, the largest level in the corpus);
@@ -36,14 +56,18 @@ logic worth consolidating.
   `Editor.setStatus` when present.
 - **`tests/qa-editor.js`** — playwright-core, isolated headless Chromium
   (`--use-gl=swiftshader`), a plain node static server on port 5306 (see
-  deviation note below). Runs unconditionally: loads `index.html`, injects
-  `level_validate.js`, fetches a real level over HTTP, and asserts
-  `window.LevelValidate.validateLevel` reports 0 errors with 0 page errors —
-  proves the module works as a browser global independent of the editor
-  shell. Feature-detects `editor.html`/`window.CyberEditor`/a level-loading
-  method and SKIPs (not fails) those steps when the shell isn't there yet;
-  currently `editor.html` doesn't exist, so those print SKIP as designed.
-  Result today: 2 passed, 2 skipped, 0 failed.
+  deviation note below). Always runs a browser-global check (loads
+  `index.html`, injects `level_validate.js`, fetches a real level over HTTP,
+  asserts `window.LevelValidate.validateLevel` reports 0 errors with 0 page
+  errors). Since editor-core's `editor.html` landed on master mid-lane (see
+  update above), it also drives the real flow: `CyberEditor.openLevel
+  ("pack1","json1")`, full-validate `CyberEditor.level`, then the real
+  `CyberEditor.testInGame()` (shared browser context so the IndexedDB draft
+  it writes is visible to the popup), asserting the draft boots in
+  `index.html` with zero page errors. It still feature-detects
+  `editor.html`/`CyberEditor.openLevel` and SKIPs (not fails) those steps if
+  the shell isn't there, so it stays robust to running against an
+  earlier/later checkout. Result: 5/5 pass.
 
 ## Deviation from the brief
 
@@ -114,24 +138,33 @@ logic worth consolidating.
    under the 2s budget (measured ~0.5–2.5s across runs on `dv/json2`,
    dependent on system load).
 
-## Gates run
+## Gates run (final, post-merge)
 
 | Gate | Result |
 |---|---|
 | `node --check` over `js/shared/*.js`, `js/editor/*.js`, `tests/check-*.js` | all OK |
-| `node --test tests/level-validate.test.mjs` | 16/16 pass |
+| `node --test tests/level-validate.test.mjs` | 17/17 pass |
 | `node tests/check-exits.js` | 198/198 (unchanged) |
 | `node tests/check-polys.js` | 191/197 (unchanged pre-existing baseline) |
-| `node tests/check-floor-coverage.js` | started in background; still running at report time (see perf finding — pre-existing, unrelated to this lane's changes) |
-| `node tests/qa-editor.js` | 2 passed, 2 skipped (editor.html not landed yet), 0 failed |
+| `node tests/check-floor-coverage.js` | 159/198 (unchanged pre-existing baseline — confirms floor-coverage/sealed-pocket issues are real and common enough in shipping levels that `level_validate.js` is right to treat them as warnings, not errors) |
+| `node tests/qa-editor.js` | 5/5 pass (real `editor.html` flow: open canonical level, full-validate, Test in game, draft boots clean) |
+
+## Integration fix applied
+
+`editor.html` loaded `js/shared/level_validate.js` but not `js/cyber-traversal.js`,
+so any full-mode validate call (the "Full validate" button, or `{quick:false}`
+from any panel) threw `Cannot read properties of undefined (reading 'Grid')`.
+Added `<script src="js/cyber-traversal.js">` next to `cyber-enemies.js` in the
+vendored-libraries block. This edit is outside this lane's originally-scoped
+file list but is a one-line, additive, backward-compatible fix to a shared
+file that was broken for every lane's full-mode validate calls; flagged to
+team-lead alongside the commit.
 
 ## Not done / left for integration
 
-- `tests/qa-editor.js`'s editor-shell steps (QA-ED-1/2) are SKIP until
-  editor-core lands `editor.html` + `window.CyberEditor`; the test
-  feature-detects `loadLevel`/`openLevel`/`loadFile` as candidate level-load
-  methods and will start asserting for real once one of those (or a similar
-  API) exists — may need a one-line update if the actual method name differs.
-- `check-floor-coverage.js`'s own multi-minute runtime on the `dv` pack is a
-  pre-existing perf issue in `tests/reachability.js`, out of this lane's
-  ownership; flagged to team-lead, not fixed here.
+- None — `tests/qa-editor.js` now runs its full intended flow for real
+  (editor-core's `editor.html` landed mid-lane) instead of the SKIP-based
+  fallback it shipped with initially.
+- `check-floor-coverage.js`'s multi-minute runtime on the `dv` pack (perf
+  finding 3) remains a pre-existing issue in `tests/reachability.js`, out of
+  this lane's ownership; flagged to team-lead, not fixed here.

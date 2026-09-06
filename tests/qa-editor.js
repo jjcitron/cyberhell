@@ -101,64 +101,56 @@ function skip(name, reason) { results.push({ name, ok: true, skip: true, detail:
       skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'editor.html does not exist yet (editor-core lane not landed)');
       skip('QA-ED-2 Test in game (index.html?draft=1) boots with no page errors', 'editor.html does not exist yet -- nothing produced a draft to test');
     } else {
-      const page = await browser.newPage();
+      // Real editor.html/index.html traffic same-origin windows sharing
+      // IndexedDB (the draft "Test in game" writes to) needs one context.
+      const ctx = await browser.newContext();
+      const page = await ctx.newPage();
       const pageErrors = [];
       page.on('pageerror', e => pageErrors.push(String(e)));
       await page.goto(`http://127.0.0.1:${PORT}/editor.html`, { waitUntil: 'load' });
 
       let hasEditor = false;
       try {
-        await page.waitForFunction(() => !!window.CyberEditor, { timeout: 5000 });
+        await page.waitForFunction(() => !!(window.CyberEditor && typeof window.CyberEditor.openLevel === 'function'), { timeout: 5000 });
         hasEditor = true;
       } catch (e) { /* fall through to skip below */ }
 
       if (!hasEditor) {
-        skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'window.CyberEditor never appeared within 5s');
-        skip('QA-ED-2 Test in game (index.html?draft=1) boots with no page errors', 'no CyberEditor to produce a draft from');
+        skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'window.CyberEditor.openLevel never appeared within 5s');
+        skip('QA-ED-2 Test in game boots the draft in index.html with no page errors', 'no CyberEditor to produce a draft from');
       } else {
-        // Feature-detect a level-loading entry point; the editor-core lane's
-        // exact API wasn't finalized when this was written.
-        const loaded = await page.evaluate(async () => {
-          const E = window.CyberEditor;
-          const candidates = ['loadLevel', 'openLevel', 'loadFile'];
-          for (const name of candidates) {
-            if (typeof E[name] === 'function') {
-              try {
-                await E[name]('levelPacks/pack1/json1.json');
-                return { ok: true, via: name };
-              } catch (e) { /* try next candidate */ }
-            }
-          }
-          return { ok: false };
-        });
+        // CyberEditor.openLevel(packId, levelId) -- app.js's documented contract.
+        let openErr = null;
+        await page.evaluate(({ p, l }) => window.CyberEditor.openLevel(p, l), { p: 'pack1', l: 'json1' }).catch(e => { openErr = String(e); });
+        await page.addScriptTag({ url: '/js/shared/level_validate.js' });
+        const r = openErr ? null : await page.evaluate(() => window.LevelValidate.validateLevel(window.CyberEditor.level, { quick: false }));
+        record('QA-ED-1 CyberEditor.openLevel("pack1","json1") + validateLevel(CyberEditor.level) has 0 errors',
+          !openErr && r && r.errors && r.errors.length === 0,
+          openErr || (r ? JSON.stringify((r.errors || []).slice(0, 3)) : 'validateLevel returned nothing'));
 
-        if (!loaded.ok) {
-          skip('QA-ED-1 editor.html loads and CyberEditor validates a loaded level', 'no recognized level-loading method on CyberEditor (tried loadLevel/openLevel/loadFile)');
+        if (openErr) {
+          skip('QA-ED-2 Test in game boots the draft in index.html with no page errors', 'CyberEditor.openLevel failed: ' + openErr);
         } else {
-          await page.addScriptTag({ url: '/js/shared/level_validate.js' });
-          const r = await page.evaluate(() => window.LevelValidate.validateLevel(window.CyberEditor.level, { quick: false }));
-          record('QA-ED-1 CyberEditor.level (via ' + loaded.via + ') validates with 0 errors',
-            r && r.errors && r.errors.length === 0, r ? JSON.stringify((r.errors || []).slice(0, 3)) : 'validateLevel returned nothing');
+          // Drive the real "Test in game" button (writes IndexedDB, window.open's
+          // index.html?draft=1) and catch the popup on the shared context.
+          const [gamePage] = await Promise.all([
+            ctx.waitForEvent('page'),
+            page.evaluate(() => window.CyberEditor.testInGame())
+          ]);
+          const gameErrors = [];
+          gamePage.on('pageerror', e => gameErrors.push(String(e)));
+          await gamePage.waitForLoadState('load');
+          let booted = false;
+          try {
+            await gamePage.waitForFunction(() => !!(window.cyberEngine && window.cyberEngine.levelData), { timeout: 8000 });
+            booted = true;
+          } catch (e) { /* booted stays false */ }
+          record('QA-ED-2 Test in game -> index.html?draft=1 boots (window.cyberEngine.levelData present)', booted);
+          record('QA-ED-2 zero page errors on draft boot', gameErrors.length === 0, gameErrors.join(' | '));
+          await gamePage.close();
         }
-        await page.close();
-
-        // Test in game: this is meaningful even before the storage/bridge
-        // lane lands -- either it actually exercises a real draft, or it at
-        // minimum proves index.html still boots cleanly with an unrecognized
-        // query param, which is the safety property "Test in game" depends on.
-        const gamePage = await browser.newPage();
-        const gameErrors = [];
-        gamePage.on('pageerror', e => gameErrors.push(String(e)));
-        await gamePage.goto(`http://127.0.0.1:${PORT}/index.html?draft=1`, { waitUntil: 'load' });
-        let booted = false;
-        try {
-          await gamePage.waitForFunction(() => !!(window.cyberEngine && window.cyberEngine.levelData), { timeout: 8000 });
-          booted = true;
-        } catch (e) { /* booted stays false */ }
-        record('QA-ED-2 index.html?draft=1 boots (window.cyberEngine.levelData present)', booted);
-        record('QA-ED-2 zero page errors on draft boot', gameErrors.length === 0, gameErrors.join(' | '));
-        await gamePage.close();
       }
+      await ctx.close();
     }
   } finally {
     await browser.close();

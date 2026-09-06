@@ -158,6 +158,17 @@ test('synthetic: orphaned trigger.i is a warning, not an error (matches real can
   assert.ok(codes(r.warnings).includes('TRIGGER_ORPHANED'));
 });
 
+test('sector-index range: wall.fs, wall.bs (-1 sentinel allowed), wall.act.secs, trigger.act.secs', () => {
+  const level = minimalLevel();
+  level.walls[0].fs = 99; // out of range (only 1 sector)
+  level.walls[1].bs = -1; // valid sentinel, must NOT error
+  level.walls[2].act = { kind: 'lift', trig: 'use', rep: true, wait: 1, speed: 1, secs: [99] };
+  level.triggers.push({ i: 1, p1: [0, 0], p2: [1, 0], act: { kind: 'lift', trig: 'use', rep: true, wait: 1, speed: 1, secs: [99] } });
+  const r = validateLevel(level, { quick: true });
+  const secErrors = r.errors.filter((e) => e.code === 'SECTOR_INDEX_OUT_OF_RANGE');
+  assert.equal(secErrors.length, 3); // wall.fs, wall.act.secs, trigger.act.secs -- not wall.bs
+});
+
 test('synthetic: unknown numeric enemyType is a warning (STATS[id] || DEFAULT_STATS is a real graceful fallback)', () => {
   const level = minimalLevel();
   level.entities.push({ type: 'soldier', enemyType: 999999, pos: [5, 0, 5], rot: 0 });
