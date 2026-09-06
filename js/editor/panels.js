@@ -307,12 +307,13 @@
       var btns = el('div', { class: 'ed-btns' });
       var mk = el('button', null, 'New pack');
       mk.addEventListener('click', function () {
-        var name = prompt('Pack name', 'My Pack');
-        if (!name) return;
-        ed.storage.createPack(name).then(function (r) {
-          openPackId = r.id;
-          ed.toast('pack created');
-          render();
+        ed.ask('New pack', 'Pack name', 'My Pack').then(function (name) {
+          if (!name || !name.trim()) return;
+          return ed.storage.createPack(name.trim()).then(function (r) {
+            openPackId = r.id;
+            ed.toast('pack created', 'ok');
+            render();
+          });
         });
       });
       btns.appendChild(mk);
@@ -372,22 +373,29 @@
         if (local) {
           var ren = el('button', null, 'Rename pack');
           ren.addEventListener('click', function () {
-            var n = prompt('Pack name', pack.name);
-            if (n) ed.storage.renamePack(pack.id, n).then(render);
+            ed.ask('Rename pack', 'Pack name', pack.name).then(function (n) {
+              if (n && n.trim()) ed.storage.renamePack(pack.id, n.trim()).then(render);
+            });
           });
           btns.appendChild(ren);
           var delp = el('button', null, 'Delete pack');
           delp.addEventListener('click', function () {
-            if (!confirm('Delete pack "' + pack.name + '" and its levels?')) return;
-            ed.storage.deletePack(pack.id).then(function () { openPackId = null; render(); });
+            ed.confirm('Delete pack', 'Delete "' + pack.name + '" and its ' + (pack.levels || []).length + ' level(s)? This cannot be undone.')
+              .then(function (ok) {
+                if (!ok) return;
+                return ed.storage.deletePack(pack.id).then(function () { openPackId = null; render(); ed.toast('pack deleted', 'ok'); });
+              });
           });
           btns.appendChild(delp);
           var newLvl = el('button', null, 'New level here');
           newLvl.addEventListener('click', function () {
-            var n = prompt('Level name', 'New Level (MAP01)');
-            if (!n) return;
-            ed.storage.saveLevelAs(pack.id, n, window.EdModel.blankLevel(n)).then(function (r) {
-              ed.openLevel(pack.id, r.levelId).then(render);
+            ed.ask('New level', 'Level name', 'New Level (MAP01)',
+              'Keep the MAP## / E#M# token so the music assignment still matches.'
+            ).then(function (n) {
+              if (!n || !n.trim()) return;
+              return ed.storage.saveLevelAs(pack.id, n.trim(), window.EdModel.blankLevel(n.trim())).then(function (r) {
+                return ed.openLevel(pack.id, r.levelId).then(render);
+              });
             });
           });
           btns.appendChild(newLvl);
@@ -409,8 +417,11 @@
           btns.appendChild(dup);
           var dl = el('button', null, 'Delete level');
           dl.addEventListener('click', function () {
-            if (!confirm('Delete level "' + ed.levelId + '"?')) return;
-            ed.storage.deleteLevel(pack.id, ed.levelId).then(render);
+            ed.confirm('Delete level', 'Delete "' + (ed.level.name || ed.levelId) + '"? This cannot be undone.')
+              .then(function (ok) {
+                if (!ok) return;
+                return ed.storage.deleteLevel(pack.id, ed.levelId).then(function () { render(); ed.toast('level deleted', 'ok'); });
+              });
           });
           btns.appendChild(dl);
         }

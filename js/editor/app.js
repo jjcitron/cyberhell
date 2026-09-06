@@ -102,6 +102,126 @@
     return fromLevel.concat(fromPack);
   };
 
+
+  /* ---- dialogs ------------------------------------------------------------
+
+     CyberEditor.dialog({title, fields, buttons}) -> Promise<values|null>
+
+     Built on the native <dialog> element, which already gives a modal, a focus
+     trap, Esc-to-cancel and a backdrop -- none of that is worth hand-rolling.
+     The form is method="dialog", so Enter submits it for free.
+
+       fields: [{ name, label, type, value, options, hint, autofocus }]
+         type 'text' (default) | 'number' | 'select' (needs options:
+         [{value,label,group?,disabled?}]) | 'note' (read-only line, no value)
+       buttons: [{ label, value, primary?, danger? }]
+         defaults to OK / Cancel. Cancel is any button with value null.
+
+     Resolves to an object of field values keyed by name, plus _button (the
+     chosen button's value), or null if cancelled or dismissed. Other lanes are
+     welcome to this instead of window.prompt/confirm -- enemy_editor.js and
+     midi_composer.js still call prompt() directly.
+
+       var r = await CyberEditor.dialog({
+         title: 'New pack',
+         fields: [{ name: 'name', label: 'Name', value: 'My Pack', autofocus: true }]
+       });
+       if (r) create(r.name);
+  */
+  ed.dialog = function (spec) {
+    return new Promise(function (resolve) {
+      var dlg = el('dialog', { class: 'ed-dialog' });
+      var form = el('form');
+      form.setAttribute('method', 'dialog');
+      if (spec.title) form.appendChild(el('h3', null, spec.title));
+
+      var inputs = {};
+      (spec.fields || []).forEach(function (f) {
+        if (f.type === 'note') {
+          form.appendChild(el('p', { class: 'ed-hint' }, f.label));
+          return;
+        }
+        var row = el('div', { class: 'ed-row' });
+        row.appendChild(el('label', null, f.label || f.name));
+        var input;
+        if (f.type === 'select') {
+          input = el('select');
+          var group = null;
+          (f.options || []).forEach(function (o) {
+            var opt = el('option', { value: o.value }, o.label);
+            if (o.disabled) opt.disabled = true;
+            if (o.group) {
+              if (!group || group.label !== o.group) {
+                group = el('optgroup');
+                group.label = o.group;
+                input.appendChild(group);
+              }
+              group.appendChild(opt);
+            } else {
+              group = null;
+              input.appendChild(opt);
+            }
+          });
+          if (f.value != null) input.value = f.value;
+        } else {
+          input = el('input', { type: f.type || 'text' });
+          input.value = f.value == null ? '' : f.value;
+        }
+        input.name = f.name;
+        inputs[f.name] = input;
+        row.appendChild(input);
+        form.appendChild(row);
+        if (f.hint) form.appendChild(el('p', { class: 'ed-hint' }, f.hint));
+        if (f.autofocus) input.setAttribute('autofocus', 'autofocus');
+      });
+
+      var bar = el('div', { class: 'ed-dialog-btns' });
+      var buttons = spec.buttons || [{ label: 'OK', value: 'ok', primary: true }, { label: 'Cancel', value: null }];
+      var chosen = null;
+      buttons.forEach(function (b) {
+        var btn = el('button', { type: 'submit' }, b.label);
+        if (b.primary) btn.className = 'primary';
+        if (b.danger) btn.className = 'danger';
+        // formnovalidate on cancel so an empty required field cannot trap you
+        if (b.value === null) btn.setAttribute('formnovalidate', 'formnovalidate');
+        btn.addEventListener('click', function () { chosen = b.value; });
+        bar.appendChild(btn);
+      });
+      form.appendChild(bar);
+      dlg.appendChild(form);
+      document.body.appendChild(dlg);
+
+      dlg.addEventListener('close', function () {
+        var out = null;
+        // Esc fires close with returnValue '' and no button clicked.
+        if (chosen !== null && chosen !== undefined) {
+          out = { _button: chosen };
+          Object.keys(inputs).forEach(function (k) { out[k] = inputs[k].value; });
+        }
+        dlg.remove();
+        resolve(out);
+      });
+
+      dlg.showModal();
+    });
+  };
+
+  /* prompt()/confirm() replacements, same shape as the originals. */
+  ed.ask = function (title, label, value, hint) {
+    return ed.dialog({
+      title: title,
+      fields: [{ name: 'value', label: label || 'Name', value: value, hint: hint, autofocus: true }]
+    }).then(function (r) { return r ? r.value : null; });
+  };
+
+  ed.confirm = function (title, message, okLabel) {
+    return ed.dialog({
+      title: title,
+      fields: [{ type: 'note', label: message }],
+      buttons: [{ label: okLabel || 'Delete', value: 'ok', danger: true }, { label: 'Cancel', value: null }]
+    }).then(function (r) { return !!r; });
+  };
+
   /* ---- toasts ----------------------------------------------------------- */
 
   ed.toast = function (msg, kind) {
@@ -256,34 +376,56 @@
      backend (cloud, and whatever comes after) needs no change here; the
      adapter dispatches on the pack's source and fails loudly if it cannot
      write. */
-  ed.saveLevelAs = function () {
+  var NEW_PACK = '\u0000new';
+
+  /* Save as. With no arguments it asks; pass (packId, name) to skip the dialog,
+     which is the path the tests drive. */
+  ed.saveLevelAs = function (packId, name) {
     if (!ed.level) { ed.toast('no level open', 'bad'); return Promise.resolve(null); }
-    var name = prompt('Save level as', (ed.level.name || 'Level') + ' (edit)');
-    if (!name) return Promise.resolve(null);
+    if (packId && name) return ed._saveLevelAs(packId, name);
+
     return ed.storage.listPacks().then(function (packs) {
       var writable = packs.filter(function (p) { return p.source !== 'canonical'; });
-      var target;
-      if (!writable.length) {
-        target = ed.storage.createPack('My Pack').then(function (r) { return r.id; });
-      } else if (ed.packId && writable.some(function (p) { return p.id === ed.packId; })) {
-        target = Promise.resolve(ed.packId);
-      } else {
-        var listed = writable.map(function (p, i) { return (i + 1) + ') ' + p.name; }).join('\n');
-        var pickIdx = prompt('Save into which pack?\n' + listed + '\n(or leave blank for a new pack)', '1');
-        if (pickIdx === null) return null;
-        var n = parseInt(pickIdx, 10);
-        target = (n >= 1 && n <= writable.length)
-          ? Promise.resolve(writable[n - 1].id)
-          : ed.storage.createPack('My Pack').then(function (r) { return r.id; });
-      }
-      return Promise.resolve(target).then(function (packId) {
-        if (!packId) return null;
-        return ed.storage.saveLevelAs(packId, name, ed.level).then(function (r) {
-          return ed.openLevel(packId, r.levelId).then(function () {
-            ed.toast('saved as ' + name, 'ok');
-            return r;
+      var options = writable.map(function (p) {
+        return { value: p.id, label: p.name + ' (' + p.levelCount + ')', group: p.source === 'cloud' ? 'Cloud' : 'Local' };
+      });
+      // Canonical packs are listed but disabled, so it is obvious why you
+      // cannot save into one rather than them simply being absent.
+      packs.filter(function (p) { return p.source === 'canonical'; }).forEach(function (p) {
+        options.push({ value: p.id, label: p.name + ' - read only', group: 'In the repo', disabled: true });
+      });
+      options.push({ value: NEW_PACK, label: 'New pack...', group: 'Local' });
+
+      var preferred = (ed.packId && writable.some(function (p) { return p.id === ed.packId; }))
+        ? ed.packId : (writable.length ? writable[0].id : NEW_PACK);
+
+      return ed.dialog({
+        title: 'Save level as',
+        fields: [
+          { name: 'name', label: 'Level name', value: (ed.level.name || 'Level') + ' (edit)', autofocus: true,
+            hint: 'Keep the MAP## / E#M# token so the music assignment still matches.' },
+          { name: 'pack', label: 'Into pack', type: 'select', options: options, value: preferred }
+        ],
+        buttons: [{ label: 'Save', value: 'ok', primary: true }, { label: 'Cancel', value: null }]
+      }).then(function (r) {
+        if (!r) { ed.toast('save as cancelled'); return null; }
+        if (!r.name.trim()) { ed.toast('a level needs a name', 'bad'); return null; }
+        if (r.pack !== NEW_PACK) return ed._saveLevelAs(r.pack, r.name.trim());
+        return ed.ask('New pack', 'Pack name', 'My Pack').then(function (packName) {
+          if (!packName || !packName.trim()) { ed.toast('save as cancelled'); return null; }
+          return ed.storage.createPack(packName.trim()).then(function (p) {
+            return ed._saveLevelAs(p.id, r.name.trim());
           });
         });
+      });
+    }).catch(function (err) { ed.toast(err.message, 'bad'); return null; });
+  };
+
+  ed._saveLevelAs = function (packId, name) {
+    return ed.storage.saveLevelAs(packId, name, ed.level).then(function (r) {
+      return ed.openLevel(packId, r.levelId).then(function () {
+        ed.toast('saved as ' + name, 'ok');
+        return r;
       });
     }).catch(function (err) { ed.toast(err.message, 'bad'); return null; });
   };
@@ -295,10 +437,14 @@
   };
 
   ed.newLevel = function () {
-    var name = prompt('Level name (keep the MAP## / E#M# token for music)', 'New Level (MAP01)');
-    if (!name) return;
-    ed.setLevel(window.EdModel.blankLevel(name), null, null, null);
-    ed.toast('new level');
+    return ed.ask('New level', 'Level name', 'New Level (MAP01)',
+      'Keep the MAP## / E#M# token so the music assignment still matches.'
+    ).then(function (name) {
+      if (!name || !name.trim()) return null;
+      ed.setLevel(window.EdModel.blankLevel(name.trim()), null, null, null);
+      ed.toast('new level', 'ok');
+      return name;
+    });
   };
 
   ed.importLevel = function () {
@@ -401,8 +547,10 @@
       id: 'file', title: 'File', items: [
         { label: 'New level', onClick: function () { ed.newLevel(); } },
         { label: 'New pack', onClick: function () {
-            var n = prompt('Pack name', 'My Pack');
-            if (n) ed.storage.createPack(n).then(function () { ed.toast('pack created', 'ok'); ed.emit('pack-changed', {}); });
+            ed.ask('New pack', 'Pack name', 'My Pack').then(function (n) {
+              if (!n || !n.trim()) return;
+              ed.storage.createPack(n.trim()).then(function () { ed.toast('pack created', 'ok'); ed.emit('pack-changed', {}); });
+            });
           } },
         { label: 'Open…', onClick: function () { ed.showPanel('packs'); } },
         { label: 'Save', onClick: function () { ed.saveLevel(); } },

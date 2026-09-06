@@ -154,6 +154,24 @@ input[type=text], input[type=number] { background: var(--ink); }
 .ed-tag { color: var(--dim); font-size: 10px; }
 .ed-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 
+.ed-dialog {
+  border: 1px solid var(--neon2); border-radius: 2px; padding: 0;
+  background: var(--ink2); color: var(--text); min-width: 340px; max-width: 480px;
+  box-shadow: 0 12px 40px #000c;
+}
+.ed-dialog::backdrop { background: #04060acc; }
+.ed-dialog form { padding: 14px 16px; }
+.ed-dialog h3 {
+  margin: 0 0 10px; color: var(--neon); letter-spacing: .12em; font-size: 12px;
+  font-weight: bold; border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+.ed-dialog .ed-row label { flex: 0 0 88px; }
+.ed-dialog .ed-hint { margin: -2px 0 8px 94px; }
+.ed-dialog-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
+.ed-dialog-btns button { padding: 5px 14px; }
+.ed-dialog-btns button.primary { border-color: var(--neon); color: var(--neon); }
+.ed-dialog-btns button.danger { border-color: var(--bad); color: var(--bad); }
+
 /* ---- toasts ---- */
 #ed-toasts {
   position: fixed; right: 336px; bottom: 34px; z-index: 90;
