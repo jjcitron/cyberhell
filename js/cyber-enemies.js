@@ -53,8 +53,58 @@
     return g;
   }
 
+  // ---------------------------------------------------------------------
+  // look parameterisation (the enemy editor)
+  //
+  // Builders keep their hard-coded colours. During buildMesh() the material
+  // factories below give every distinct (kind, colour) pair a slot name
+  // (metal1, flesh2, glow1 ...); a `look` may recolour a slot, hide the meshes
+  // wearing it, scale the whole rig, or scale emissive intensity. With no look
+  // active (the engine's own build()) the factories behave exactly as before,
+  // so the 15 stock rigs are byte-identical.
+  //
+  // ponytail: slots come from materials, not hand-named parts — two parts
+  // sharing a colour share a slot. Hand-name per type if that ever bites.
+  // ---------------------------------------------------------------------
+  var curLook = null;     // look active for the build in progress, or null
+  var curSlots = null;    // { byKey, list } collected during that build
+  var slotSeq = null;     // per-kind counter
+  var slotOfMat = new WeakMap();
+
+  function slotFor(kind, color) {
+    if (!curSlots) return null;
+    var key = kind + ':' + color;
+    var name = curSlots.byKey[key];
+    if (!name) {
+      slotSeq[kind] = (slotSeq[kind] || 0) + 1;
+      name = kind + slotSeq[kind];
+      curSlots.byKey[key] = name;
+      curSlots.list.push({ name: name, kind: kind, hex: color });
+    }
+    return name;
+  }
+
+  /** '#ff8800' | '0xff8800' | 0xff8800 -> 0xff8800 */
+  function hexOf(v, fallback) {
+    if (v === undefined || v === null || v === '') return fallback;
+    if (typeof v === 'number') return v;
+    var n = parseInt(String(v).replace('#', '').replace(/^0x/i, ''), 16);
+    return isNaN(n) ? fallback : n;
+  }
+
+  /** Slot assignment + colour override for one material request. */
+  function look1(kind, color) {
+    var slot = slotFor(kind, color);
+    if (slot && curLook && curLook.colors && curLook.colors[slot] !== undefined) {
+      color = hexOf(curLook.colors[slot], color);
+    }
+    return { color: color, slot: slot };
+  }
+
   /** Shared structural material. Never mutated, so it is safe to cache. */
-  function M(color, metalness, roughness, opts) {
+  function Mk(kind, color, metalness, roughness, opts) {
+    var lk = look1(kind, color);
+    color = lk.color;
     metalness = metalness === undefined ? 0.1 : metalness;
     roughness = roughness === undefined ? 0.7 : roughness;
     opts = opts || {};
@@ -66,14 +116,16 @@
       m = new T.MeshStandardMaterial(def);
       matCache.set(key, m);
     }
+    if (lk.slot) slotOfMat.set(m, lk.slot);
     return m;
   }
+  function M(color, metalness, roughness, opts) { return Mk('mat', color, metalness, roughness, opts); }
 
   // No environment map in this engine, so high metalness renders near-black.
-  var metal = function (c) { return M(c, 0.55, 0.38); };
-  var rough = function (c) { return M(c, 0.05, 0.85); };
-  var flesh = function (c) { return M(c, 0.0, 0.72); };
-  var rubber = function (c) { return M(c, 0.1, 0.95); };
+  var metal = function (c) { return Mk('metal', c, 0.55, 0.38); };
+  var rough = function (c) { return Mk('rough', c, 0.05, 0.85); };
+  var flesh = function (c) { return Mk('flesh', c, 0.0, 0.72); };
+  var rubber = function (c) { return Mk('rubber', c, 0.1, 0.95); };
 
   // Emissive accents are per-enemy clones (never cached) because flash()
   // mutates them — a shared material would flash every enemy on screen.
@@ -81,13 +133,18 @@
 
   function E(color, intensity, opts) {
     opts = opts || {};
+    var lk = look1('glow', color);
+    color = lk.color;
+    var inten = intensity === undefined ? 1.6 : intensity;
+    if (curLook && curLook.emissive) inten *= (Number(curLook.emissive) || 1);
     var def = {
       color: 0x101010, emissive: color,
-      emissiveIntensity: intensity === undefined ? 1.6 : intensity,
+      emissiveIntensity: inten,
       metalness: 0.0, roughness: 0.5
     };
     for (var k in opts) def[k] = opts[k];
     var m = new T.MeshStandardMaterial(def);
+    if (lk.slot) slotOfMat.set(m, lk.slot);
     if (buildAccents) buildAccents.push({ m: m, hex: color, base: def.emissiveIntensity });
     return m;
   }
@@ -95,6 +152,7 @@
   function mesh(g, m, noShadow) {
     var o = new T.Mesh(g, m);
     if (!noShadow) { o.castShadow = true; o.receiveShadow = true; }
+    if (curSlots) { var sl = slotOfMat.get(m); if (sl) o.userData.lookSlot = sl; }
     return o;
   }
   function box(w, h, d, m, ns) {
@@ -143,6 +201,13 @@
       this swaps in a shared clone. */
   var vgradMats = new Map();
   function vgrad(o, topHex, botHex) {
+    // A gradient bakes its two colours into a vertex attribute and whites out
+    // the material, so the material's own slot cannot recolour it. Give the
+    // gradient its own slots and let the top one own the mesh.
+    var lt = look1('grad', topHex), lb = look1('grad', botHex);
+    topHex = lt.color; botHex = lb.color;
+    if (lt.slot) o.userData.lookSlot = lt.slot;
+    if (lb.slot) o.userData.lookSlotAlso = lb.slot;
     var src = o.material;
     var vm = vgradMats.get(src.uuid);
     if (!vm) {
@@ -1272,15 +1337,176 @@
   // converter does not spawn Lost Souls (3006) or Pain Elementals (71).
   var DEFAULT_STATS = { hp: 50, speed: 3.5, attack: 'melee', range: 2.5, cooldown: 1.6, damage: 10, scale: 1.0 };
 
+  var NAMES = {
+    3004: 'Zombieman', 9: 'Shotgun Guy', 65: 'Chaingunner', 3001: 'Imp',
+    3002: 'Demon', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
+    3003: 'Baron of Hell', 66: 'Revenant', 67: 'Mancubus', 68: 'Arachnotron',
+    64: 'Archvile', 16: 'Cyberdemon', 7: 'Spider Mastermind'
+  };
+
+  // -------------------------------------------------------------------
+  // custom enemy defs
+  //
+  //   { id, name, base: <thing id>, stats: {...overrides}, look: {...},
+  //     role: 'rusher'|'skirmisher'|'caster'|'bruiser' }
+  //
+  // They live in level JSON under `customEnemies: { id: def }` (and the same
+  // key on a pack). The engine registers both tables before spawning and
+  // entities reference them as enemyType "custom:<id>". An id nobody
+  // registered warns once and falls back to the generic body.
+  // -------------------------------------------------------------------
+  var CUSTOM = {};
+  var warned = {};
+
+  function isCustom(t) { return typeof t === 'string' && t.slice(0, 7) === 'custom:'; }
+  function customIdOf(t) { return String(t).slice(7); }
+
+  /** registerCustom(packTable, levelTable, ...) — later tables win. */
+  function registerCustom() {
+    for (var i = 0; i < arguments.length; i++) {
+      var tbl = arguments[i];
+      if (!tbl || typeof tbl !== 'object') continue;
+      for (var k in tbl) {
+        if (!Object.prototype.hasOwnProperty.call(tbl, k)) continue;
+        var def = tbl[k];
+        if (!def || typeof def !== 'object') continue;
+        CUSTOM[k] = def;
+        delete warned[k];
+        if (def.role && typeof window !== 'undefined' && window.CyberAI && window.CyberAI.setRole) {
+          window.CyberAI.setRole('custom:' + k, def.role);
+        }
+      }
+    }
+    return CUSTOM;
+  }
+
+  function customDef(typeId) {
+    if (!isCustom(typeId)) return null;
+    var id = customIdOf(typeId);
+    var def = CUSTOM[id];
+    if (!def) {
+      if (!warned[id]) {
+        warned[id] = 1;
+        if (typeof console !== 'undefined') {
+          console.warn('[CyberEnemies] unknown custom enemy "' + id + '" - falling back to the generic body');
+        }
+      }
+      return null;
+    }
+    return def;
+  }
+
+  function baseStats(typeId) { return STATS[parseInt(typeId, 10)] || DEFAULT_STATS; }
+
   function stats(typeId) {
-    return STATS[parseInt(typeId, 10)] || DEFAULT_STATS;
+    if (!isCustom(typeId)) return baseStats(typeId);
+    var def = customDef(typeId);
+    if (!def) return DEFAULT_STATS;
+    var out = {}, b = baseStats(def.base), k;
+    for (k in b) out[k] = b[k];
+    if (def.stats) for (k in def.stats) {
+      if (def.stats[k] !== undefined && def.stats[k] !== null && def.stats[k] !== '') out[k] = def.stats[k];
+    }
+    return out;
+  }
+
+  function roleOf(typeId) {
+    if (typeof window !== 'undefined' && window.CyberAI && window.CyberAI.roleFor) {
+      return window.CyberAI.roleFor(stats(typeId), typeId);
+    }
+    var st = stats(typeId);
+    if (st.attack === 'melee' || st.range < 4) return 'rusher';
+    if (st.hp >= 300) return 'bruiser';
+    if (st.attack === 'hitscan') return 'skirmisher';
+    return 'caster';
+  }
+
+  function listTypes() {
+    return Object.keys(STATS).map(function (k) {
+      var id = parseInt(k, 10);
+      return { id: id, name: NAMES[id] || ('Type ' + id), role: roleOf(id), stats: stats(id) };
+    });
+  }
+
+  /** Build with a look applied. look = { colors, scale, emissive, parts }. */
+  function buildMesh(id, look, ent, THREE) {
+    curLook = look || null;
+    curSlots = { byKey: {}, list: [] };
+    slotSeq = {};
+    var g, slots;
+    try {
+      g = buildBase(id, ent || {}, THREE);
+    } finally {
+      slots = curSlots.list;
+      curLook = null; curSlots = null; slotSeq = null;
+    }
+    g.userData.lookSlots = slots;
+    if (look) {
+      if (look.parts) {
+        g.traverse(function (o) {
+          if (o.isMesh && o.userData.lookSlot && look.parts[o.userData.lookSlot] === false) o.visible = false;
+        });
+      }
+      var sc = Number(look.scale);
+      if (sc && sc > 0 && sc !== 1) {
+        g.scale.multiplyScalar(sc);
+        if (g.userData.anim) g.userData.anim.s0 = g.scale.x;
+      }
+    }
+    return g;
+  }
+
+  /** The look a stock type renders with today: every slot at its own colour. */
+  var lookCache = {};
+  function getDefaultLook(id, THREE) {
+    var key = String(parseInt(id, 10) || 0);
+    if (!lookCache[key]) {
+      var g = buildMesh(key, null, null, THREE);
+      // Only slots a mesh actually wears are knobs. vgrad() replaces a mesh's
+      // material with a whited-out clone and bakes the colour into vertex
+      // colours, so the original material's slot renders nowhere — offering it
+      // in a colour picker would be a control that does nothing.
+      var worn = {};
+      g.traverse(function (o) {
+        if (!o.isMesh) return;
+        if (o.userData.lookSlot) worn[o.userData.lookSlot] = 1;
+        if (o.userData.lookSlotAlso) worn[o.userData.lookSlotAlso] = 1;
+      });
+      var slots = g.userData.lookSlots.filter(function (sl) { return worn[sl.name]; });
+      var colors = {}, parts = {};
+      for (var i = 0; i < slots.length; i++) { colors[slots[i].name] = slots[i].hex; parts[slots[i].name] = true; }
+      lookCache[key] = { slots: slots, colors: colors, parts: parts };
+    }
+    var d = lookCache[key];
+    var out = { colors: {}, parts: {}, scale: 1, emissive: 1, slots: d.slots };
+    for (var c in d.colors) out.colors[c] = d.colors[c];
+    for (var p in d.parts) out.parts[p] = d.parts[p];
+    return out;
+  }
+
+  /** Public build: resolves custom:<id> to its base + look, else the stock rig. */
+  function build(typeId, ent, THREE) {
+    if (!isCustom(typeId)) return buildBase(typeId, ent, THREE);
+    var def = customDef(typeId);
+    if (!def) return buildBase(0, ent, THREE);
+    var look = null, k;
+    if (def.look) { look = {}; for (k in def.look) look[k] = def.look[k]; }
+    // A stat-panel `scale` scales the rig relative to its base's own scale.
+    if (def.stats && def.stats.scale) {
+      var b = baseStats(def.base).scale || 1;
+      look = look || {};
+      look.scale = (Number(look.scale) || 1) * (Number(def.stats.scale) / b);
+    }
+    var g = buildMesh(def.base, look, ent, THREE);
+    g.userData.customEnemyId = customIdOf(typeId);
+    return g;
   }
 
   // ---------------------------------------------------------------------
   // build
   // ---------------------------------------------------------------------
 
-  function build(typeId, ent, THREE) {
+  function buildBase(typeId, ent, THREE) {
     T = THREE || T || (typeof window !== 'undefined' ? window.THREE : null);
     if (!T) throw new Error('CyberEnemies.build needs THREE');
 
@@ -1769,7 +1995,19 @@
     animate: animate,
     stats: stats,
     flash: flash,
-    autoDrive: true
+    autoDrive: true,
+    // --- enemy editor surface ---
+    STATS: STATS,
+    NAMES: NAMES,
+    DEFAULT_STATS: DEFAULT_STATS,
+    buildMesh: buildMesh,
+    getDefaultLook: getDefaultLook,
+    listTypes: listTypes,
+    roleOf: roleOf,
+    isCustom: isCustom,
+    registerCustom: registerCustom,
+    customDefs: function () { return CUSTOM; },
+    clearCustom: function () { CUSTOM = {}; warned = {}; }
   };
 
   if (typeof window !== 'undefined') window.CyberEnemies = API;

@@ -134,7 +134,18 @@
   // there, change it here.
   var PROJ_SPEED = { fireball: 12, plasma: 16, laser: 42 };
 
+  // Roles registered for non-numeric type keys — custom enemies spawn as
+  // "custom:<id>" and CyberEnemies.registerCustom() calls setRole() for each.
+  var ROLE_BY_KEY = {};
+  function setRole(typeKey, role) {
+    if (typeKey === undefined || typeKey === null) return;
+    if (role && ROLE_BAND[role]) ROLE_BY_KEY[String(typeKey)] = role;
+    else delete ROLE_BY_KEY[String(typeKey)];
+  }
+
   function roleFor(stats, typeId) {
+    var byKey = ROLE_BY_KEY[String(typeId)];
+    if (byKey) return byKey;
     var r = ROLE_BY_ID[parseInt(typeId, 10)];
     if (r) return r;
     var a = stats.attack;
@@ -1060,6 +1071,7 @@
     hear: hear,
     losBetween: losBetween,
     roleFor: roleFor,
+    setRole: setRole,
     stats: stats,
     resetStats: resetStats
   };
