@@ -9,15 +9,25 @@ import { levelShape, slugify, validateLevelJson, MAX_LEVEL_BYTES } from './valid
 
 const repoFile = (...p) => path.join(process.cwd(), ...p);
 
+// The static level corpus lives on the CDN, not necessarily inside the function bundle. Read it
+// from disk when present (local dev, includeFiles), otherwise from the deployment's own origin.
+async function readStaticJson(...rel) {
+  try { return JSON.parse(await fs.readFile(repoFile(...rel), 'utf8')); } catch {}
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (!host) return null;
+  try {
+    const res = await fetch(`https://${host}/${rel.join('/')}`);
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
 export async function staticPacks() {
-  try { return JSON.parse(await fs.readFile(repoFile('levelPacks', 'packs.json'), 'utf8')); }
-  catch { return []; }
+  return (await readStaticJson('levelPacks', 'packs.json')) || [];
 }
 
 export async function staticManifest(packId) {
   if (!/^[a-zA-Z0-9_-]+$/.test(String(packId || ''))) return null;
-  try { return JSON.parse(await fs.readFile(repoFile('levelPacks', packId, 'manifest.json'), 'utf8')); }
-  catch { return null; }
+  return readStaticJson('levelPacks', packId, 'manifest.json');
 }
 
 // GET /api/packs body. Same shape as levelPacks/packs.json, so index.html's loader is unchanged:

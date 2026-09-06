@@ -21,7 +21,10 @@ export const newId = (prefix) => `${prefix}_${crypto.randomBytes(8).toString('he
 
 // ---------------------------------------------------------------- fs backend
 
-const DATA_DIR = () => process.env.EDITOR_DATA_DIR || path.join(process.cwd(), '.editor-data');
+// On Vercel the deployment filesystem is read-only; /tmp is the only writable place, so an
+// unprovisioned deployment still answers (read-only canonical list) instead of throwing EROFS.
+const DATA_DIR = () => process.env.EDITOR_DATA_DIR
+  || (process.env.VERCEL ? path.join('/tmp', 'cyberhell-editor-data') : path.join(process.cwd(), '.editor-data'));
 const EMPTY_DB = { users: {}, usernames: {}, tokens: {}, resend: {}, packs: {}, levels: {}, versions: {}, enemies: {}, midi: {} };
 
 function fsStore() {
