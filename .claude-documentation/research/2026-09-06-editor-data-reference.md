@@ -184,3 +184,11 @@ Level corpus size (file count / on-disk size per pack):
 | **total** | **204 files** | **57 MB** |
 
 (File counts include each pack's `manifest.json`, so per-pack level counts are one less than shown, matching `packs.json`'s `levelCount` fields.)
+
+## Correction (2026-09-06, validation lane)
+
+Trigger binding is by value, not position: `triggers[].i` is matched against a wall's `.ai`
+(action id, present only on interactive walls), see `js/cyber-traversal.js` ~452/467. Wall array
+ORDER still matters because sector `fs`/`bs` attachment walks `data.walls` and `engine.walls` in
+lockstep by index. `tests/reachability.js` `floorMetrics()` takes ~8 min on `dv/json2` (23M
+cells at CELL=0.25); `analyze()` alone is ~0.9 s.
