@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cyberhell — enemy editor harness</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0d12;color:#cfe;font:13px ui-monospace,Menlo,Consolas,monospace}
+  #wrap{display:flex;height:100%}
+  #stage{flex:1;padding:16px;color:#678}
+  #dock{width:320px;border-left:1px solid #223;overflow:auto;background:#0b1016}
+  .ptitle{padding:6px 8px;background:#111a22;border-bottom:1px solid #223;color:#7ad;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  #log{white-space:pre-wrap;font-size:11px;color:#8ab;padding:8px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <h3>Enemy editor harness</h3>
+    <p>Minimal CyberEditor stub: one level object, one selected entity, apply()/toast() logged below.</p>
+    <div id="log"></div>
+  </div>
+  <div id="dock"></div>
+</div>
+
+<script src="../js/three.min.js"></script>
+<script>
+/* Minimal editor shell: exactly the surface js/editor/enemy_editor.js uses. */
+(function () {
+  var listeners = {};
+  var logEl = null;
+  function log(s) {
+    logEl = logEl || document.getElementById('log');
+    logEl.textContent += s + '\n';
+    (window.__eeLog = window.__eeLog || []).push(s);
+  }
+  var level = {
+    name: 'HARNESS',
+    sectors: [], walls: [], triggers: [],
+    entities: [
+      { type: 'enemy', enemyType: 3004, pos: [0, 0, 0], rot: 0 }
+    ]
+  };
+  window.CyberEditor = {
+    level: level,
+    pack: { name: 'harness pack', customEnemies: {} },
+    selection: level.entities[0],
+    on: function (evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+    emit: function (evt) { (listeners[evt] || []).forEach(function (f) { f(level); }); },
+    apply: function (mutator, label) {
+      mutator(level);
+      log('apply: ' + label);
+      this.emit('level-changed');
+    },
+    toast: function (m) { log('toast: ' + m); },
+    registerPanel: function (spec) {
+      var dock = document.getElementById('dock');
+      var t = document.createElement('div');
+      t.className = 'ptitle';
+      t.textContent = spec.title;
+      dock.appendChild(t);
+      var host = document.createElement('div');
+      host.id = 'panel-' + spec.id;
+      dock.appendChild(host);
+      if (spec.mount) spec.mount(host);
+      log('registerPanel: ' + spec.id);
+      return host;
+    }
+  };
+  window.addEventListener('load', function () {
+    window.dispatchEvent(new Event('cybereditor-ready'));
+  });
+})();
+</script>
+<script src="../js/cyber-enemies.js"></script>
+<script src="../js/cyber-ai.js"></script>
+<script src="../js/editor/enemy_editor.js"></script>
+</body>
+</html>

@@ -2793,6 +2793,20 @@ class CyberDoomEngine {
   }
 
   createEnemy(ent) {
+    /* --- custom enemy resolution (enemy editor) -------------------------
+       Entities may carry enemyType "custom:<id>". The definitions live in the
+       level's `customEnemies` table (and the pack's, when the campaign object
+       carries one); the pack is registered first so a level can override it.
+       Registration is idempotent and the tables hold a handful of entries, so
+       doing it here keeps the resolution in one place instead of threading a
+       hook through loadLevel. CyberEnemies falls back to a generic body and
+       one console warning if an id was never registered.
+       -------------------------------------------------------------------- */
+    if (window.CyberEnemies && window.CyberEnemies.registerCustom) {
+      window.CyberEnemies.registerCustom(
+        this.campaign && this.campaign.customEnemies,
+        this.levelData && this.levelData.customEnemies);
+    }
     const group = this.buildCustomEnemyMesh(ent.enemyType, ent);
     const st0 = window.CyberEnemies ? window.CyberEnemies.stats(ent.enemyType) : null;
     // Trust the level's floor, not the entity's stored y.
