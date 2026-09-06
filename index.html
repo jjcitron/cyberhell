@@ -474,86 +474,224 @@
       #pause-music { padding: 8px 12px; gap: 6px; }
     }
 
-    /* Mobile Virtual Controls */
+    /* ==========================================================================
+       TOUCH CONTROL LAYER (landscape phones)
+       Layout follows Delta Touch / Quad Touch: the whole right half is a look
+       surface, a translucent crosshair FIRE pad sits under the right thumb and
+       looks while it fires, the left third spawns a floating move stick, and
+       the utility icons live along the top edge clear of the HUD corners.
+       Opacity is a single custom property so Settings can dim the whole layer.
+       ========================================================================== */
     #mobile-controls {
       position: absolute;
-      bottom: 100px;
-      left: 0;
-      width: 100%;
-      height: 140px;
+      inset: 0;
       pointer-events: none;
       display: none;
       z-index: 15;
-      padding: 0 20px;
+      --tc-op: 0.55;
+      /* Absolutely positioned children resolve against the padding box, so one
+         declaration here keeps every pad inside the notch/home-bar safe area. */
+      padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+               env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     }
-    .touch-btn {
-      pointer-events: auto;
-      width: 60px;
-      height: 60px;
-      background: rgba(0, 229, 255, 0.25);
-      border: 2px solid #00e5ff;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      color: #fff;
-      touch-action: none;
-    }
-    /* Thumb D-Pad: one pad element owns every touch inside the cross so a
-       press can never land in a dead gap between separate arm buttons. */
-    #dpad {
+    /* Invisible input surfaces. They sit under the visible pads so a finger
+       that lands on a pad never also registers as a bare look/move touch. */
+    #tc-look, #tc-move {
       position: absolute;
-      left: 14px;
-      bottom: 14px;
-      width: 168px;
-      height: 168px;
       pointer-events: auto;
       touch-action: none;
-      display: grid;
-      grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr;
+      background: none;
     }
-    .dpad-arm {
+    #tc-look { top: 0; bottom: 0; left: 34%; right: 0; z-index: 1; }
+    #tc-move { top: 56px; bottom: 0; left: 0; width: 34%; z-index: 2; }
+
+    /* Floating move stick: hidden until a thumb lands in #tc-move, then drawn
+       under that thumb wherever it landed. */
+    #tc-stick {
+      position: absolute;
+      width: 132px; height: 132px;
+      margin: -66px 0 0 -66px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 229, 255, 0.85);
+      background: radial-gradient(circle, rgba(0,229,255,0.14) 40%, rgba(0,229,255,0.05) 100%);
       pointer-events: none;
-      background: rgba(0, 229, 255, 0.18);
-      border: 2px solid rgba(0, 229, 255, 0.75);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      color: #bffcff;
-      text-shadow: 0 0 6px #00e5ff;
+      display: none;
+      opacity: var(--tc-op);
+      z-index: 3;
     }
-    .dpad-arm.on {
-      background: rgba(0, 255, 204, 0.5);
-      border-color: #00ffcc;
-    }
-    .dpad-arm.up    { grid-area: 1 / 2; border-radius: 10px 10px 0 0; border-bottom: none; }
-    .dpad-arm.left  { grid-area: 2 / 1; border-radius: 10px 0 0 10px; border-right: none; }
-    .dpad-arm.right { grid-area: 2 / 3; border-radius: 0 10px 10px 0; border-left: none; }
-    .dpad-arm.down  { grid-area: 3 / 2; border-radius: 0 0 10px 10px; border-top: none; }
-    .dpad-hub {
-      grid-area: 2 / 2;
-      pointer-events: none;
-      background: rgba(0, 229, 255, 0.10);
-      border-top: 2px solid rgba(0, 229, 255, 0.75);
-      border-bottom: 2px solid rgba(0, 229, 255, 0.75);
+    #tc-stick.on { display: block; }
+    #tc-knob {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 56px; height: 56px;
+      margin: -28px 0 0 -28px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 255, 204, 0.9);
+      background: rgba(0, 255, 204, 0.22);
     }
 
-    /* Action cluster, right thumb */
-    #m-actions {
+    /* Round translucent action pads. */
+    .tc-pad {
       position: absolute;
-      right: 14px;
-      bottom: 14px;
-      width: 172px;
-      height: 168px;
-      pointer-events: none;
+      pointer-events: auto;
+      touch-action: none;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 229, 255, 0.85);
+      background: radial-gradient(circle, rgba(0,229,255,0.16) 45%, rgba(0,229,255,0.06) 100%);
+      color: #dffbff;
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: var(--tc-op);
+      z-index: 4;
+      user-select: none;
+      -webkit-user-select: none;
     }
-    #m-actions .touch-btn { position: absolute; }
-    #m-btn-fire     { right: 0;    bottom: 0;   width: 82px; height: 82px; font-size: 15px; }
-    #m-btn-jump     { right: 88px; bottom: 14px; width: 64px; height: 64px; font-size: 12px; }
-    #m-btn-interact { right: 6px;  bottom: 90px; width: 64px; height: 64px; font-size: 13px; }
-    #m-btn-weap     { right: 78px; bottom: 92px; width: 58px; height: 58px; font-size: 11px; }
+    .tc-pad.on { background: rgba(0, 255, 204, 0.34); border-color: #00ffcc; }
+
+    #tc-fire {
+      right: 96px; bottom: 22px;
+      width: 116px; height: 116px;
+      border-color: rgba(255, 0, 85, 0.85);
+      background: radial-gradient(circle, rgba(255,0,85,0.18) 45%, rgba(255,0,85,0.06) 100%);
+    }
+    #tc-fire.on { background: rgba(255, 0, 85, 0.38); border-color: #ff3b76; }
+    /* Crosshair glyph, drawn in CSS so it scales with the pad. */
+    #tc-fire::before, #tc-fire::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 210, 225, 0.9);
+    }
+    #tc-fire::before { left: 22%; right: 22%; height: 3px; }
+    #tc-fire::after  { top: 22%; bottom: 22%; width: 3px; }
+    #tc-lock {
+      position: absolute;
+      left: -6px; top: -6px;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 210, 225, 0.8);
+      background: rgba(10, 4, 8, 0.72);
+      color: #ffd2e1;
+      font-size: 15px;
+      line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: auto;
+      touch-action: none;
+      z-index: 5;
+    }
+    #tc-lock.on { background: rgba(255, 0, 85, 0.75); color: #fff; border-color: #fff; }
+
+    #tc-use  { right: 14px; bottom: 100px; width: 70px; height: 70px; font-size: 14px; }
+    #tc-jump { right: 14px; bottom: 22px;  width: 70px; height: 70px; font-size: 13px; }
+
+    /* Weapon prev/next on the right edge: the left third is the stick zone. */
+    .tc-arrow {
+      position: absolute;
+      right: 10px;
+      width: 52px; height: 52px;
+      pointer-events: auto;
+      touch-action: none;
+      border-radius: 8px;
+      border: 2px solid rgba(0, 229, 255, 0.8);
+      background: rgba(0, 229, 255, 0.14);
+      color: #bffcff;
+      font-size: 19px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: var(--tc-op);
+      z-index: 4;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #tc-wprev { top: 78px; }
+    #tc-wnext { top: 186px; }
+    #tc-wname {
+      position: absolute;
+      right: 4px; top: 136px;
+      width: 64px;
+      text-align: center;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: #bffcff;
+      text-shadow: 0 0 5px #00e5ff;
+      pointer-events: none;
+      opacity: var(--tc-op);
+      z-index: 4;
+    }
+
+    /* Utility icons along the top edge, centred between the HUD corner blocks
+       (top-left) and the fullscreen button (top-right). */
+    #tc-top {
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 4;
+    }
+    .tc-icon {
+      pointer-events: auto;
+      touch-action: none;
+      width: 48px; height: 48px;
+      border-radius: 8px;
+      border: 2px solid rgba(0, 229, 255, 0.8);
+      background: rgba(6, 10, 14, 0.5);
+      color: #bffcff;
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: var(--tc-op);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Left-handed swap: mirror the two thumb zones and the pad cluster. */
+    #mobile-controls.lefty #tc-look { left: 0; right: 34%; }
+    #mobile-controls.lefty #tc-move { left: auto; right: 0; }
+    #mobile-controls.lefty #tc-fire { right: auto; left: 96px; }
+    #mobile-controls.lefty #tc-use  { right: auto; left: 14px; }
+    #mobile-controls.lefty #tc-jump { right: auto; left: 14px; }
+    #mobile-controls.lefty .tc-arrow { right: auto; left: 10px; }
+    #mobile-controls.lefty #tc-wname { right: auto; left: 4px; }
+    #mobile-controls.lefty #tc-lock { left: auto; right: -6px; }
+
+    /* Touch settings sheet. Opened by the gear; freezes the sim while open. */
+    #tc-settings-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 34;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 18px;
+      background: rgba(3, 6, 10, 0.93);
+      overflow-y: auto;
+      font-size: 13px;
+      color: #bffcff;
+      text-align: left;
+    }
+    #tc-settings-panel.on { display: flex; }
+    #tc-settings-panel h3 {
+      margin: 0 0 2px; font-size: 15px; letter-spacing: 3px; color: #00ffcc;
+      font-family: 'Impact', 'Arial Black', sans-serif;
+    }
+    .tc-row {
+      display: flex; align-items: center; gap: 12px;
+      min-height: 34px;
+    }
+    .tc-row label { flex: 0 0 150px; letter-spacing: 1px; }
+    .tc-row input[type=range] { flex: 1 1 auto; accent-color: #00ffcc; min-width: 90px; }
+    .tc-row input[type=checkbox] { width: 22px; height: 22px; accent-color: #00ffcc; }
+    .tc-row .tc-val { width: 46px; text-align: right; color: #00ffcc; }
+    #tc-settings-close {
+      align-self: flex-start;
+      margin-top: 4px;
+      min-height: 48px;
+      padding: 10px 28px;
+      background: #00e5ff; color: #000; border: none; border-radius: 4px;
+      font-weight: 900; letter-spacing: 2px; font-size: 15px;
+    }
 
     /* Portrait is not a supported layout. Prompt, do not reflow. */
     #rotate-nudge {
@@ -579,13 +717,7 @@
     @media (pointer: coarse) and (orientation: landscape) {
       /* Controls become a transparent full-screen layer instead of stealing a
          140px band off the bottom of the play view. */
-      #mobile-controls {
-        display: block;
-        top: 0; left: 0; right: 0; bottom: 0;
-        width: auto;
-        height: auto;
-        padding: 0;
-      }
+      #mobile-controls { display: block; }
 
       /* HUD off the play view: no opaque 90px bar, thin translucent top strip
          that reads over the world instead of hiding it. */
@@ -610,8 +742,14 @@
       .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
       .hud-val { font-size: 18px; line-height: 19px; }
       #face-container { display: none; }
-      .weapon-selector { gap: 4px; }
-      .weap-slot { padding: 3px 5px; font-size: 9px; background: rgba(6, 10, 14, 0.42); }
+      /* The six-slot selector wrapped to two rows and ate the whole top-right,
+         which is where the touch layer's icons and fullscreen button live. The
+         touch build switches weapons with the edge arrows, and those carry the
+         current weapon's name, so the slot list is redundant here. */
+      .weapon-selector { display: none; }
+      /* space-between would fling ARMOR to the far right with the selector
+         gone; keep the readouts clustered in the top-left corner. */
+      #hud-bar { justify-content: flex-start; gap: 6px; }
 
       /* Banner sat at top:24px, straight under the new HUD strip. */
       #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
@@ -766,19 +904,43 @@
     <!-- Mobile Virtual Controls (landscape) -->
     <div id="fs-hud-btn" title="Full screen">&#x26F6;</div>
     <div id="mobile-controls">
-      <div id="dpad">
-        <div class="dpad-arm up" data-dir="up">&#9650;</div>
-        <div class="dpad-arm left" data-dir="left">&#9664;</div>
-        <div class="dpad-hub"></div>
-        <div class="dpad-arm right" data-dir="right">&#9654;</div>
-        <div class="dpad-arm down" data-dir="down">&#9660;</div>
+      <!-- Invisible surfaces. data-tc is what the pointer router dispatches on;
+           a finger that lands on a pad hits the pad's own data-tc first, so the
+           look surface never steals a touch that started on a control. -->
+      <div id="tc-look" data-tc="look"></div>
+      <!-- The stick lives inside its own zone so its spawn point is measured
+           against one box, and the left-handed swap moves both together. -->
+      <div id="tc-move" data-tc="move"><div id="tc-stick"><div id="tc-knob"></div></div></div>
+
+      <div id="tc-top">
+        <div class="tc-icon" data-tc="btn" data-act="map" aria-label="Automap">&#9635;</div>
+        <div class="tc-icon" data-tc="btn" data-act="pause" aria-label="Pause">&#10074;&#10074;</div>
+        <div class="tc-icon" data-tc="btn" data-act="settings" aria-label="Settings">&#9881;</div>
       </div>
-      <div id="m-actions">
-        <div id="m-btn-interact" class="touch-btn">USE</div>
-        <div id="m-btn-jump" class="touch-btn">JUMP</div>
-        <div id="m-btn-weap" class="touch-btn">SWAP</div>
-        <div id="m-btn-fire" class="touch-btn" style="background: rgba(255,0,85,0.4); border-color:#ff0055;">FIRE</div>
+
+      <!-- Fire pad: hold to fire, and the SAME finger drags to look. -->
+      <div id="tc-fire" class="tc-pad" data-tc="fire" aria-label="Fire">
+        <div id="tc-lock" data-tc="btn" data-act="autofire" aria-label="Autofire lock">&#8734;</div>
       </div>
+      <div id="tc-use" class="tc-pad" data-tc="btn" data-act="use">USE</div>
+      <div id="tc-jump" class="tc-pad" data-tc="btn" data-act="jump">JUMP</div>
+
+      <div id="tc-wprev" class="tc-arrow" data-tc="btn" data-act="wprev">&#9650;</div>
+      <div id="tc-wname">PISTOL</div>
+      <div id="tc-wnext" class="tc-arrow" data-tc="btn" data-act="wnext">&#9660;</div>
+    </div>
+
+    <!-- Touch settings sheet (gear icon). Sim is frozen while this is up. -->
+    <div id="tc-settings-panel">
+      <h3>TOUCH CONTROLS</h3>
+      <div class="tc-row"><label>LOOK SENSITIVITY</label><input id="tc-set-sens" type="range" min="30" max="250" step="5"><span class="tc-val" id="tc-val-sens">100</span></div>
+      <div class="tc-row"><label>LOOK DEAD ZONE</label><input id="tc-set-dead" type="range" min="0" max="14" step="1"><span class="tc-val" id="tc-val-dead">3px</span></div>
+      <div class="tc-row"><label>CONTROL OPACITY</label><input id="tc-set-op" type="range" min="15" max="100" step="5"><span class="tc-val" id="tc-val-op">55%</span></div>
+      <div class="tc-row"><label>INVERT Y</label><input id="tc-set-invert" type="checkbox"></div>
+      <div class="tc-row"><label>AUTOFIRE LOCK</label><input id="tc-set-auto" type="checkbox"></div>
+      <div class="tc-row"><label>GYRO ASSIST</label><input id="tc-set-gyro" type="checkbox"></div>
+      <div class="tc-row"><label>LEFT-HANDED</label><input id="tc-set-lefty" type="checkbox"></div>
+      <button id="tc-settings-close" type="button">BACK</button>
     </div>
 
     <!-- Portrait prompt (landscape-only game, no reflow) -->
@@ -1045,38 +1207,40 @@ const MAP01_DATA = {
 /* ==========================================================================
    AUDIO SYNTHESIZER (Pure Web Audio API - Zero External Asset Dependencies)
    ========================================================================== */
-/* Pure d-pad hit math: touch offset from pad centre -> movement key set.
-   Kept free of DOM so the ?selftest=1 assertions below can drive it. */
-function dpadKeys(dx, dy, dead) {
-  return {
-    KeyW: dy < -dead,
-    KeyS: dy > dead,
-    KeyA: dx < -dead,
-    KeyD: dx > dead
-  };
+/* Pure analog-stick math: thumb offset from where the stick spawned ->
+   direction plus 0..1 magnitude. Replaces the old four-arm d-pad hit test.
+   Kept free of DOM so the ?selftest=1 assertions below can drive it.
+   Past `dead` the magnitude ramps from 0, so a thumb that only just clears the
+   dead zone creeps instead of snapping to a full-speed run. */
+function stickVector(dx, dy, radius, dead) {
+  const len = Math.hypot(dx, dy);
+  if (len <= dead) return { x: 0, y: 0, mag: 0 };
+  const mag = Math.min(1, (len - dead) / Math.max(1, radius - dead));
+  return { x: (dx / len) * mag, y: (dy / len) * mag, mag };
 }
 
-function runDpadSelfTest() {
-  const D = 16;
-  const on = (r) => Object.keys(r).filter(k => r[k]).sort().join(',');
+function runStickSelfTest() {
+  const R = 60, D = 12;
+  const near = (a, b) => Math.abs(a - b) < 0.02;
+  const fmt = (v) => `${v.x.toFixed(2)},${v.y.toFixed(2)}`;
   const cases = [
-    ['centre is a deadzone',        dpadKeys(0, 0, D),        ''],
-    ['inside deadzone edge',        dpadKeys(15, -15, D),     ''],
-    ['up arm centre is up only',    dpadKeys(0, -56, D),      'KeyW'],
-    ['down arm centre is down',     dpadKeys(0, 56, D),       'KeyS'],
-    ['left arm centre is left',     dpadKeys(-56, 0, D),      'KeyA'],
-    ['right arm centre is right',   dpadKeys(56, 0, D),       'KeyD'],
-    ['corner gives a diagonal',     dpadKeys(56, -56, D),     'KeyD,KeyW'],
-    ['thumb slid off pad still up', dpadKeys(4, -400, D),     'KeyW']
+    ['centre is a dead zone',        stickVector(0, 0, R, D),      (v) => v.mag === 0],
+    ['inside the dead zone',         stickVector(8, -8, R, D),     (v) => v.mag === 0],
+    ['just past dead is a crawl',    stickVector(0, -16, R, D),    (v) => near(v.mag, 0.083) && v.y < 0],
+    ['edge of the ring is full',     stickVector(0, -60, R, D),    (v) => near(v.mag, 1) && near(v.y, -1)],
+    ['thumb slid off still full',    stickVector(0, -400, R, D),   (v) => near(v.mag, 1) && near(v.y, -1)],
+    ['pure right strafes right',     stickVector(400, 0, R, D),    (v) => near(v.x, 1) && near(v.y, 0)],
+    ['pure left strafes left',       stickVector(-400, 0, R, D),   (v) => near(v.x, -1) && near(v.y, 0)],
+    ['back is positive y',           stickVector(0, 400, R, D),    (v) => near(v.y, 1)],
+    ['diagonal stays unit length',   stickVector(300, -300, R, D), (v) => near(Math.hypot(v.x, v.y), 1)]
   ];
   let bad = 0;
   cases.forEach(([name, got, want]) => {
-    const g = on(got);
-    if (g !== want) { bad++; console.error(`DPAD SELFTEST FAIL: ${name} -> "${g}" want "${want}"`); }
+    if (!want(got)) { bad++; console.error(`STICK SELFTEST FAIL: ${name} -> ${fmt(got)} mag ${got.mag.toFixed(3)}`); }
   });
   console.log(bad === 0
-    ? `DPAD SELFTEST PASS (${cases.length}/${cases.length})`
-    : `DPAD SELFTEST FAILED ${bad}/${cases.length}`);
+    ? `STICK SELFTEST PASS (${cases.length}/${cases.length})`
+    : `STICK SELFTEST FAILED ${bad}/${cases.length}`);
   return bad === 0;
 }
 
@@ -3283,21 +3447,6 @@ class CyberDoomEngine {
     // Context menu disable for RMB
     window.addEventListener('contextmenu', e => e.preventDefault());
 
-    // Mobile Virtual Touch
-    const fireBtn = document.getElementById('m-btn-fire');
-    fireBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); this.isFiring = true; this.fireWeapon(); });
-    fireBtn?.addEventListener('touchend', (e) => { e.preventDefault(); this.isFiring = false; });
-    fireBtn?.addEventListener('touchcancel', () => { this.isFiring = false; });
-    document.getElementById('m-btn-interact')?.addEventListener('touchstart', (e) => { e.preventDefault(); this.interact(); });
-    document.getElementById('m-btn-jump')?.addEventListener('touchstart', (e) => { e.preventDefault(); this.jump(); });
-    document.getElementById('m-btn-weap')?.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const list = this.ownedWeapons();
-      if (!list.length) return;
-      const nextIdx = (list.indexOf(this.player.currentWeapon) + 1) % list.length;
-      this.switchWeapon(list[nextIdx]);
-    });
-
     this.initTouchControls();
     this.initFocusPause();
   }
@@ -3362,7 +3511,7 @@ class CyberDoomEngine {
     if (this.isGameOver || this.isVictory) return;
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
-    this.clearDpad();
+    this.clearTouchInput();
     this.sound.pause();
     if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
     // Mouse events go to the locked element, so an overlay shown while pointer
@@ -3405,103 +3554,299 @@ class CyberDoomEngine {
   }
 
   /* ==========================================================================
-     TOUCH CONTROLS (thumb d-pad + drag look)
+     TOUCH CONTROLS (Delta Touch / Quad Touch layout)
+
+     Three fingers have to work at once: left thumb on the floating move stick,
+     right thumb on the crosshair FIRE pad, and either of them (or a third
+     finger anywhere in the right half) dragging to look. That rules out the
+     old touchstart/touchend pair, which only ever tracked one identifier per
+     surface. Everything below is Pointer Events keyed by pointerId, with one
+     router on the control layer: the element under the finger carries a
+     data-tc role, and the pad elements sit above the invisible look surface,
+     so a touch that starts on a pad can never also read as a bare look drag.
      ========================================================================== */
-  clearDpad() {
-    if (!this.dpadArms) return;
-    Object.keys(this.dpadArms).forEach(k => this.dpadArms[k].classList.remove('on'));
+  // 180 degrees per ~300px sweep at sensitivity 1.0.
+  static get LOOK_BASE() { return 0.0105; }
+
+  defaultTouchOpts() {
+    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, lefty: false };
+  }
+
+  loadTouchOpts() {
+    const opts = this.defaultTouchOpts();
+    try {
+      const saved = JSON.parse(localStorage.getItem('cyberhell.touch') || '{}');
+      Object.keys(opts).forEach(k => { if (saved[k] != null) opts[k] = saved[k]; });
+    } catch (err) { /* first run, or storage blocked: defaults stand */ }
+    return opts;
+  }
+
+  saveTouchOpts() {
+    try { localStorage.setItem('cyberhell.touch', JSON.stringify(this.touchOpts)); } catch (err) {}
+  }
+
+  /* Drop every held touch input. Shared by pause, the settings sheet and any
+     pointercancel storm, so a finger lifted behind an overlay cannot leave the
+     player walking or the trigger stuck down. */
+  clearTouchInput() {
+    ['KeyW', 'KeyS', 'KeyA', 'KeyD'].forEach(code => { this.keys[code] = false; });
+    this.moveAxis = null;
+    if (!this.touchOpts || !this.touchOpts.autofire) this.isFiring = false;
+    const stick = document.getElementById('tc-stick');
+    if (stick) stick.classList.remove('on');
+    const fire = document.getElementById('tc-fire');
+    if (fire) fire.classList.remove('on');
+    if (this.touchPointers) this.touchPointers.clear();
+  }
+
+  /* The weapon name printed between the edge arrows: on touch it replaces the
+     six-slot HUD selector, which is hidden to keep the top-right corner free. */
+  updateTouchWeaponLabel() {
+    const el = document.getElementById('tc-wname');
+    if (!el) return;
+    const def = WEAPONS[this.player.currentWeapon];
+    el.innerText = def ? def.label : String(this.player.currentWeapon || '').toUpperCase();
+  }
+
+  cycleTouchWeapon(step) {
+    const list = this.ownedWeapons();
+    if (list.length < 2) return;
+    const i = list.indexOf(this.player.currentWeapon);
+    this.switchWeapon(list[(i + step + list.length) % list.length]);
+  }
+
+  /* One handler for every tap-style control on the layer. */
+  touchAction(act) {
+    if (act === 'autofire') {
+      this.touchOpts.autofire = !this.touchOpts.autofire;
+      if (!this.touchOpts.autofire) this.isFiring = false;
+      this.applyTouchOpts();
+      this.saveTouchOpts();
+      return;
+    }
+    if (act === 'settings') { this.openTouchSettings(); return; }
+    if (!this.isRunning) return;
+    if (act === 'jump') this.jump();
+    else if (act === 'use') this.interact();
+    else if (act === 'map') this.toggleAutomap();
+    else if (act === 'pause') this.pauseRun();
+    else if (act === 'wprev') this.cycleTouchWeapon(-1);
+    else if (act === 'wnext') this.cycleTouchWeapon(1);
   }
 
   initTouchControls() {
-    const pad = document.getElementById('dpad');
-    if (!pad) return;
+    const root = document.getElementById('mobile-controls');
+    if (!root) return;
 
-    this.dpadArms = {};
-    pad.querySelectorAll('.dpad-arm').forEach(el => { this.dpadArms[el.dataset.dir] = el; });
+    this.touchOpts = this.loadTouchOpts();
+    this.touchPointers = new Map();
+    this.moveAxis = null;
 
-    const DEAD = 16;      // px from pad centre that counts as neutral
-    const MOVE_KEYS = ['KeyW', 'KeyS', 'KeyA', 'KeyD'];
-    const ARM_OF = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
-    let padId = null;
+    const stick = document.getElementById('tc-stick');
+    const knob = document.getElementById('tc-knob');
+    const firePad = document.getElementById('tc-fire');
+    const STICK_R = 60;   // px from spawn point to full tilt
+    const STICK_DEAD = 12;
 
-    const steer = (touch) => {
-      const r = pad.getBoundingClientRect();
-      const set = dpadKeys(
-        touch.clientX - (r.left + r.width / 2),
-        touch.clientY - (r.top + r.height / 2),
-        DEAD
-      );
-      MOVE_KEYS.forEach(code => {
-        this.keys[code] = set[code];
-        this.dpadArms[ARM_OF[code]].classList.toggle('on', set[code]);
-      });
+    const steer = (dx, dy) => {
+      const v = stickVector(dx, dy, STICK_R, STICK_DEAD);
+      if (knob) knob.style.transform = `translate(${v.x * STICK_R}px, ${v.y * STICK_R}px)`;
+      this.moveAxis = v.mag > 0 ? { x: v.x, z: v.y } : null;
+      // Mirror into the key map: physics prefers moveAxis, but the traversal
+      // and stuck-hint code still reads this.keys.
+      this.keys.KeyW = v.y < -0.2;
+      this.keys.KeyS = v.y > 0.2;
+      this.keys.KeyA = v.x < -0.2;
+      this.keys.KeyD = v.x > 0.2;
     };
 
-    const release = () => {
-      padId = null;
-      MOVE_KEYS.forEach(code => { this.keys[code] = false; });
-      this.clearDpad();
+    const look = (p, e) => {
+      let dx = e.clientX - p.lx;
+      let dy = e.clientY - p.ly;
+      // The dead zone is a start threshold, not a per-event filter: filtering
+      // every small delta would make a slow deliberate drag do nothing at all.
+      if (!p.armed) {
+        if (Math.hypot(dx, dy) < this.touchOpts.dead) return;
+        p.armed = true;
+        p.lx = e.clientX; p.ly = e.clientY;
+        return;
+      }
+      this.applyLook(dx, this.touchOpts.invert ? -dy : dy,
+                     CyberDoomEngine.LOOK_BASE * (this.touchOpts.sens / 100));
+      p.lx = e.clientX; p.ly = e.clientY;
     };
 
-    // The whole pad square is the hit target (arms are pointer-events:none), so
-    // a thumb press cannot fall into a gap between separate arm buttons.
-    pad.addEventListener('touchstart', (e) => {
+    const pressFire = () => {
+      // Autofire lock: a tap latches the trigger, the next tap releases it.
+      if (this.touchOpts.autofire) {
+        this.isFiring = !this.isFiring;
+        if (this.isFiring) this.fireWeapon();
+        return;
+      }
+      this.isFiring = true;
+      this.fireWeapon();
+    };
+
+    root.addEventListener('pointerdown', (e) => {
+      const el = e.target.closest ? e.target.closest('[data-tc]') : null;
+      if (!el) return;
       e.preventDefault();
       // Chrome mobile can refuse an AudioContext resume outside a gesture, so
       // the first thumb press after a background pause re-arms audio.
       this.sound.resume();
-      if (padId !== null) return;
-      const t = e.changedTouches[0];
-      padId = t.identifier;
-      steer(t);
-    }, { passive: false });
 
-    pad.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      for (const t of e.changedTouches) {
-        if (t.identifier === padId) steer(t);
-      }
-    }, { passive: false });
-
-    const endIfOurs = (e) => {
-      for (const t of e.changedTouches) {
-        if (t.identifier === padId) { release(); return; }
-      }
-    };
-    pad.addEventListener('touchend', endIfOurs);
-    pad.addEventListener('touchcancel', endIfOurs);
-
-    // Drag anywhere on the open canvas to look. Without this the d-pad can only
-    // walk the player along whatever bearing the camera happened to start on.
-    let lookId = null, lastX = 0, lastY = 0;
-    const LOOK_SENS = 0.005;
-
-    this.canvas.addEventListener('touchstart', (e) => {
-      if (!this.isRunning || lookId !== null) return;
-      const t = e.changedTouches[0];
-      lookId = t.identifier;
-      lastX = t.clientX;
-      lastY = t.clientY;
-    }, { passive: true });
-
-    this.canvas.addEventListener('touchmove', (e) => {
+      const role = el.dataset.tc;
+      if (role === 'btn') { this.touchAction(el.dataset.act); return; }
       if (!this.isRunning) return;
-      for (const t of e.changedTouches) {
-        if (t.identifier !== lookId) continue;
-        e.preventDefault();
-        this.applyLook(t.clientX - lastX, t.clientY - lastY, LOOK_SENS);
-        lastX = t.clientX;
-        lastY = t.clientY;
+
+      const p = { role, lx: e.clientX, ly: e.clientY, armed: false, ox: e.clientX, oy: e.clientY };
+      this.touchPointers.set(e.pointerId, p);
+      // Capture on the layer, not the pad: the finger has to keep steering
+      // after it slides off the 116px circle it started on.
+      try { root.setPointerCapture(e.pointerId); } catch (err) {}
+
+      if (role === 'move') {
+        const mr = document.getElementById('tc-move').getBoundingClientRect();
+        stick.style.left = (e.clientX - mr.left) + 'px';
+        stick.style.top = (e.clientY - mr.top) + 'px';
+        stick.classList.add('on');
+        steer(0, 0);
+      } else if (role === 'fire') {
+        firePad.classList.add('on');
+        pressFire();
       }
     }, { passive: false });
 
-    const endLook = (e) => {
-      for (const t of e.changedTouches) {
-        if (t.identifier === lookId) { lookId = null; return; }
+    root.addEventListener('pointermove', (e) => {
+      const p = this.touchPointers.get(e.pointerId);
+      if (!p) return;
+      e.preventDefault();
+      if (p.role === 'move') { steer(e.clientX - p.ox, e.clientY - p.oy); return; }
+      // 'look' and 'fire' both turn the camera: that is the whole point of the
+      // fire pad, the thumb never has to leave the trigger to aim.
+      look(p, e);
+    }, { passive: false });
+
+    const release = (e) => {
+      const p = this.touchPointers.get(e.pointerId);
+      if (!p) return;
+      this.touchPointers.delete(e.pointerId);
+      try { root.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (p.role === 'move') {
+        stick.classList.remove('on');
+        steer(0, 0);
+      } else if (p.role === 'fire') {
+        firePad.classList.remove('on');
+        if (!this.touchOpts.autofire) this.isFiring = false;
       }
     };
-    this.canvas.addEventListener('touchend', endLook);
-    this.canvas.addEventListener('touchcancel', endLook);
+    root.addEventListener('pointerup', release);
+    root.addEventListener('pointercancel', release);
+
+    this.initTouchSettings();
+    this.applyTouchOpts();
+    this.updateTouchWeaponLabel();
+  }
+
+  /* ==========================================================================
+     TOUCH SETTINGS SHEET
+     ========================================================================== */
+  applyTouchOpts() {
+    const root = document.getElementById('mobile-controls');
+    const o = this.touchOpts;
+    if (!root || !o) return;
+    root.style.setProperty('--tc-op', String(o.op / 100));
+    root.classList.toggle('lefty', !!o.lefty);
+    const lock = document.getElementById('tc-lock');
+    if (lock) lock.classList.toggle('on', !!o.autofire);
+    if (o.gyro) this.enableGyro(); else this.disableGyro();
+  }
+
+  initTouchSettings() {
+    const panel = document.getElementById('tc-settings-panel');
+    if (!panel) return;
+    const o = this.touchOpts;
+    const bind = (id, key, valId, fmt) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const out = valId ? document.getElementById(valId) : null;
+      const paint = () => { if (out) out.innerText = fmt(o[key]); };
+      if (el.type === 'checkbox') el.checked = !!o[key]; else el.value = String(o[key]);
+      paint();
+      el.addEventListener('input', () => {
+        o[key] = el.type === 'checkbox' ? el.checked : Number(el.value);
+        paint();
+        this.applyTouchOpts();
+        this.saveTouchOpts();
+      });
+    };
+    bind('tc-set-sens', 'sens', 'tc-val-sens', (v) => String(v));
+    bind('tc-set-dead', 'dead', 'tc-val-dead', (v) => v + 'px');
+    bind('tc-set-op', 'op', 'tc-val-op', (v) => v + '%');
+    bind('tc-set-invert', 'invert');
+    bind('tc-set-auto', 'autofire');
+    bind('tc-set-gyro', 'gyro');
+    bind('tc-set-lefty', 'lefty');
+    document.getElementById('tc-settings-close')?.addEventListener('click', () => this.closeTouchSettings());
+  }
+
+  openTouchSettings() {
+    const panel = document.getElementById('tc-settings-panel');
+    if (!panel) return;
+    this.touchSettingsResume = this.isRunning;
+    this.isRunning = false;          // freeze the sim; this is not a full pause card
+    this.clearTouchInput();
+    const auto = document.getElementById('tc-set-auto');
+    if (auto) auto.checked = !!this.touchOpts.autofire;
+    panel.classList.add('on');
+  }
+
+  closeTouchSettings() {
+    const panel = document.getElementById('tc-settings-panel');
+    if (panel) panel.classList.remove('on');
+    if (this.touchSettingsResume) this.resumeRun();
+    this.touchSettingsResume = false;
+  }
+
+  /* Optional gyro assist. Off by default; iOS needs the permission prompt to
+     happen inside the tap that turned the toggle on, which it does here. */
+  enableGyro() {
+    if (this.gyroHandler) return;
+    const DOE = window.DeviceOrientationEvent;
+    if (!DOE) return;
+    const start = () => {
+      if (this.gyroHandler) return;
+      this.gyroLast = null;
+      this.gyroHandler = (e) => {
+        if (!this.isRunning || !this.touchOpts.gyro) { this.gyroLast = null; return; }
+        const a = e.alpha, b = e.beta;
+        if (a == null || b == null) return;
+        if (this.gyroLast) {
+          let da = a - this.gyroLast.a;
+          if (da > 180) da -= 360;
+          if (da < -180) da += 360;
+          const db = b - this.gyroLast.b;
+          const RAD = Math.PI / 180, ASSIST = 0.6;
+          this.yaw += da * RAD * ASSIST;
+          this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch - db * RAD * ASSIST));
+          this.applyLook(0, 0, 0);   // re-derive the camera from yaw/pitch
+        }
+        this.gyroLast = { a, b };
+      };
+      window.addEventListener('deviceorientation', this.gyroHandler);
+    };
+    if (typeof DOE.requestPermission === 'function') {
+      DOE.requestPermission().then((r) => { if (r === 'granted') start(); }).catch(() => {});
+    } else {
+      start();
+    }
+  }
+
+  disableGyro() {
+    if (!this.gyroHandler) return;
+    window.removeEventListener('deviceorientation', this.gyroHandler);
+    this.gyroHandler = null;
+    this.gyroLast = null;
   }
 
   /* ==========================================================================
@@ -3937,6 +4282,10 @@ class CyberDoomEngine {
     if (this.keys['KeyA']) moveDir.x -= 1;
     if (this.keys['KeyD']) moveDir.x += 1;
     moveDir.normalize();
+
+    // The touch stick is analog: its 0..1 magnitude replaces the digital 1 a
+    // key press gives, so a small thumb tilt walks and a full tilt runs.
+    if (this.moveAxis) moveDir.set(this.moveAxis.x, 0, this.moveAxis.z);
 
     // Jump
     if (this.keys['Space']) {
@@ -4996,6 +5345,9 @@ class CyberDoomEngine {
       el.classList.toggle('owned', !!this.player.weapons[name]);
       el.classList.toggle('active', this.player.currentWeapon === name);
     });
+
+    // Touch layout hides that selector, so the edge arrows carry the name.
+    this.updateTouchWeaponLabel();
   }
 
   triggerGameOver() {
@@ -5479,7 +5831,7 @@ window.onload = function() {
   // Exposed so QA can assert pause/audio state without reaching into closures.
   window.cyberEngine = engine;
   engine.animate();
-  if (location.search.indexOf('selftest=1') !== -1) runDpadSelfTest();
+  if (location.search.indexOf('selftest=1') !== -1) runStickSelfTest();
 };
   </script>
 </body>
