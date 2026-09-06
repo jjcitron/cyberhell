@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="site.webmanifest">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
@@ -422,6 +426,17 @@
       font-weight: bold;
       font-size: 12px;
     }
+    #fs-hud-btn {
+      position: absolute; top: 8px; right: 8px; width: 40px; height: 40px;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.45); border: 1px solid #00e5ff; color: #00e5ff;
+      border-radius: 6px; font-size: 20px; z-index: 16; touch-action: manipulation;
+    }
+    .touch-only { display: none; }
+    @media (pointer: coarse) {
+      .touch-only { display: inline-block; }
+      #fs-hud-btn { display: flex; }
+    }
     .start-btn {
       padding: 16px 44px;
       font-size: 22px;
@@ -734,6 +749,7 @@
 
         <div style="display:flex; gap:12px;">
           <button id="start-btn" class="start-btn">ENTER THE ABYSS</button>
+          <button id="fullscreen-btn" class="start-btn touch-only" style="background:#263238;">&#x26F6; FULL SCREEN</button>
         </div>
         <!-- LEVEL CLEARED / PACK COMPLETE secondary actions. Hidden by default;
              triggerVictory() shows this row only for its own end-card variants
@@ -748,6 +764,7 @@
     </div>
 
     <!-- Mobile Virtual Controls (landscape) -->
+    <div id="fs-hud-btn" title="Full screen">&#x26F6;</div>
     <div id="mobile-controls">
       <div id="dpad">
         <div class="dpad-arm up" data-dir="up">&#9650;</div>
@@ -773,6 +790,15 @@
   </div>
 
   <script>
+    // A phone has no devtools: put boot failures on the title card.
+    (function () {
+      const show = (msg) => {
+        const el = document.getElementById('overlay-subtitle');
+        if (el) el.innerText = 'BOOT ERROR: ' + msg;
+      };
+      window.addEventListener('error', (e) => show(e.message || String(e.error || e)));
+      window.addEventListener('unhandledrejection', (e) => show((e.reason && e.reason.message) || String(e.reason)));
+    })();
 /* ==========================================================================
    LEVEL DEFINITION FILE (DOOM II: MAP01 ENTRYWAY PARSER & ENGINE FORMAT)
    JSON-based sector & entity specifications reproducing Map01 geometry!
@@ -2939,8 +2965,13 @@ class CyberDoomEngine {
         if (this.missionStarted) window.cyberMidi.resumeForGame();
         else window.cyberMidi.enterLevel();
       }
-      this.canvas.requestPointerLock();
+      this.startRun();
     });
+    const fsBtn = document.getElementById('fullscreen-btn');
+    const fsHud = document.getElementById('fs-hud-btn');
+    const toggleFs = (e) => { e.preventDefault(); this.toggleFullscreen(); };
+    if (fsBtn) fsBtn.addEventListener('click', toggleFs);
+    if (fsHud) fsHud.addEventListener('pointerdown', toggleFs);
 
     // Cheat Code Listener (Key K or typing IDKFA)
     this.cheatBuffer = "";
@@ -2968,7 +2999,9 @@ class CyberDoomEngine {
       // is never actually fetched here (isInitialLoad skips the load), but it
       // is treated as index 0 of pack 1 anyway -- see the round-2 progression
       // plan -- so index+1 already lands on pack1's real level 2.
-      const loadPackManifest = (manifestUrl, isInitialLoad = false) => {
+      const LAST_KEY = 'cyberhell.lastLevel';
+      const readLast = () => { try { return JSON.parse(localStorage.getItem(LAST_KEY)); } catch (err) { return null; } };
+      const loadPackManifest = (manifestUrl, isInitialLoad = false, preferFile = null) => {
         fetch(manifestUrl)
           .then(res => res.json())
           .then(manifest => {
@@ -2983,8 +3016,11 @@ class CyberDoomEngine {
             const packInfo = (this.allPacks || []).find(p => p.manifest === manifestUrl) || {};
             this.campaign = { packManifestUrl: manifestUrl, packName: packInfo.name || '', levels: manifest, index: 0 };
 
-            if (manifest.length > 0 && manifest[0].file) {
-              this.loadLevelFromFile(manifest[0].file, !isInitialLoad);
+            const first = manifest.find(l => l.file === preferFile) || manifest[0];
+            if (first && first.file) {
+              this.campaign.index = Math.max(0, manifest.indexOf(first));
+              levelSelect.value = first.file;
+              this.loadLevelFromFile(first.file, !isInitialLoad);
             }
           })
           .catch(err => console.warn("Manifest fetch notice:", err));
@@ -3002,7 +3038,12 @@ class CyberDoomEngine {
             packSelect.appendChild(opt);
           });
 
-          if (packs.length > 0) {
+          const last = readLast();
+          const lastPack = last && packs.find(p => p.manifest === last.manifest);
+          if (lastPack) {
+            packSelect.value = lastPack.manifest;
+            loadPackManifest(lastPack.manifest, true, last.file);
+          } else if (packs.length > 0) {
             loadPackManifest(packs[0].manifest, true);
           }
         })
@@ -3083,7 +3124,7 @@ class CyberDoomEngine {
       if (!this.isRunning) return;
       this.isRunning = false;
       showPauseOverlay();
-      if (document.pointerLockElement) document.exitPointerLock();
+      this.unlockPointer();
     };
 
     // Coming back: a live mission stays behind the PAUSED overlay until the
@@ -3163,15 +3204,47 @@ class CyberDoomEngine {
      RUN STATE : one pause/resume path shared by pointer lock, the touch start
      button, lost focus and rotation, so sim, input and audio cannot drift.
      ========================================================================== */
+  // Pointer lock is desktop-only: iOS has no requestPointerLock and Android
+  // rejects it for touch, so a touch build starts the run directly, the way
+  // the pointerlockchange 'locked' branch does for a mouse.
+  startRun() {
+    if (this.isTouch || typeof this.canvas.requestPointerLock !== 'function') {
+      if (this.isGameOver || this.isVictory) return;
+      this.missionStarted = true;
+      this.resumeRun();
+      return;
+    }
+    try {
+      const p = this.canvas.requestPointerLock();
+      if (p && p.catch) p.catch(() => {});
+    } catch (err) { /* lock refused: the overlay stays up, click again */ }
+  }
+
+  unlockPointer() {
+    try { if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock(); } catch (err) {}
+  }
+
+  toggleFullscreen() {
+    const doc = document;
+    const el = doc.documentElement;
+    const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) { if (exit) exit.call(doc); return; }
+    if (!(el.requestFullscreen || el.webkitRequestFullscreen)) {
+      // iPhone Safari has no Fullscreen API for pages; a home-screen install runs full screen.
+      this.showHudMessage('FULL SCREEN: SHARE > ADD TO HOME SCREEN, THEN LAUNCH FROM THERE');
+      const sub = document.getElementById('overlay-subtitle');
+      if (sub && !this.isRunning) sub.innerText = 'FULL SCREEN ON IPHONE: SHARE > ADD TO HOME SCREEN';
+      return;
+    }
+    this.enterLandscapeFullscreen();
+  }
+
   resumeRun() {
     if (this.isGameOver || this.isVictory) return;
     this.pausedByBlur = false;
     document.getElementById('overlay-screen').style.display = 'none';
     this.clock.getDelta(); // drop the paused interval so physics does not lurch
-    this.sound.resume();
-    // Hand music back to whichever player is present. cyberMidi arrives with
-    // the MIDI wiring PR; until then the SoundEngine ambient is the only voice.
-    if (window.cyberMidi && !window.cyberMidi.isPlaying) window.cyberMidi.play();
+    this.resumeAllAudio();
     this.isRunning = true;
     // Point the player at the way out once per level. Without this the exit is
     // reachable but still has to be stumbled on.
@@ -3192,7 +3265,7 @@ class CyberDoomEngine {
     if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
-    if (document.pointerLockElement) document.exitPointerLock();
+    this.unlockPointer();
     document.getElementById('overlay-screen').style.display = 'flex';
     document.getElementById('overlay-title').innerText = title || "PAUSED";
     document.getElementById('overlay-subtitle').innerText = subtitle || "TAP RESUME TO CONTINUE INFILTRATION";
@@ -3215,8 +3288,9 @@ class CyberDoomEngine {
   enterLandscapeFullscreen() {
     try {
       const el = document.documentElement;
-      if (!document.fullscreenElement && el.requestFullscreen) {
-        const req = el.requestFullscreen({ navigationUI: 'hide' });
+      const request = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && request) {
+        const req = request.call(el, { navigationUI: 'hide' });
         if (req && req.catch) req.catch(function () {});
       }
       if (screen.orientation && screen.orientation.lock) {
@@ -4178,6 +4252,8 @@ class CyberDoomEngine {
         // While the title screen is up this only records the assignment; the
         // cue itself starts when the mission starts.
         if (window.cyberMidi) window.cyberMidi.attachLevel(filePath, mapData.name);
+        // Quit-to-menu reloads the page; this is what puts the menu back where it was.
+        try { localStorage.setItem('cyberhell.lastLevel', JSON.stringify({ manifest: this.campaign && this.campaign.packManifestUrl, file: filePath })); } catch (err) {}
         document.getElementById('overlay-title').innerText = mapData.name || "LEVEL LOADED";
         document.getElementById('overlay-subtitle').innerText = `SECTORS: ${mapData.sectors ? mapData.sectors.length : 0} | WALLS: ${mapData.walls ? mapData.walls.length : 0} | ENTITIES: ${mapData.entities ? mapData.entities.length : 0}`;
         if (notify) this.showHudMessage("LEVEL LOADED SUCCESSFULLY");
@@ -4819,7 +4895,7 @@ class CyberDoomEngine {
   triggerGameOver() {
     this.isGameOver = true;
     this.isRunning = false;
-    document.exitPointerLock();
+    this.unlockPointer();
     this.pauseAllAudio();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'flex';
@@ -4834,7 +4910,7 @@ class CyberDoomEngine {
   triggerVictory() {
     this.isVictory = true;
     this.isRunning = false;
-    document.exitPointerLock();
+    this.unlockPointer();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'flex';
     this.setOverlayMode('end');
@@ -4955,7 +5031,7 @@ class CyberDoomEngine {
     this.checkAllWeaponsOption();
     this.sound.resume();
     if (window.cyberMidi) window.cyberMidi.enterLevel();
-    this.canvas.requestPointerLock();
+    this.startRun();
   }
 
   /* ==========================================================================
@@ -5103,7 +5179,7 @@ class CyberDoomEngine {
     if (this.automapModal.style.display === 'flex') {
       this.automapModal.style.display = 'none';
       this.automapOpen = false;
-      if (this.isRunning) this.canvas.requestPointerLock();
+      if (this.isRunning) this.startRun();
     } else {
       this.automapModal.style.display = 'flex';
       this.automapOpen = true;
