@@ -251,25 +251,29 @@
       .catch(function (err) { ed.toast(err.message, 'bad'); return null; });
   };
 
-  /* Save as always lands in a LOCAL pack — canonical packs stay the reference. */
+  /* Save as lands in any writable pack — canonical ones stay the reference.
+     Filtering on "not canonical" rather than listing backends means a new
+     backend (cloud, and whatever comes after) needs no change here; the
+     adapter dispatches on the pack's source and fails loudly if it cannot
+     write. */
   ed.saveLevelAs = function () {
     if (!ed.level) { ed.toast('no level open', 'bad'); return Promise.resolve(null); }
     var name = prompt('Save level as', (ed.level.name || 'Level') + ' (edit)');
     if (!name) return Promise.resolve(null);
     return ed.storage.listPacks().then(function (packs) {
-      var locals = packs.filter(function (p) { return p.source === 'local'; });
+      var writable = packs.filter(function (p) { return p.source !== 'canonical'; });
       var target;
-      if (!locals.length) {
+      if (!writable.length) {
         target = ed.storage.createPack('My Pack').then(function (r) { return r.id; });
-      } else if (ed.packId && locals.some(function (p) { return p.id === ed.packId; })) {
+      } else if (ed.packId && writable.some(function (p) { return p.id === ed.packId; })) {
         target = Promise.resolve(ed.packId);
       } else {
-        var listed = locals.map(function (p, i) { return (i + 1) + ') ' + p.name; }).join('\n');
-        var pickIdx = prompt('Save into which local pack?\n' + listed + '\n(or leave blank for a new pack)', '1');
+        var listed = writable.map(function (p, i) { return (i + 1) + ') ' + p.name; }).join('\n');
+        var pickIdx = prompt('Save into which pack?\n' + listed + '\n(or leave blank for a new pack)', '1');
         if (pickIdx === null) return null;
         var n = parseInt(pickIdx, 10);
-        target = (n >= 1 && n <= locals.length)
-          ? Promise.resolve(locals[n - 1].id)
+        target = (n >= 1 && n <= writable.length)
+          ? Promise.resolve(writable[n - 1].id)
           : ed.storage.createPack('My Pack').then(function (r) { return r.id; });
       }
       return Promise.resolve(target).then(function (packId) {
