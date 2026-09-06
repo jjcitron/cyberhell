@@ -145,3 +145,63 @@ into a module both files import, if the preview ever needs 1:1 texture fidelity.
   timing without reaching into internals).
 - `selection.kind` values consumed: `'sector' | 'wall' | 'entity'`. If editor-core's selection
   model uses different kind strings, `updateHighlight()`/click-to-select need matching names.
+
+## Update: schema note + testing inside the real merged shell
+
+Per the editor-core lead's note, wall flags are `isDoor`/`doorId`/`closed`, `isSwitch`/
+`switchId`, `ledge`/`loFloor`/`hiFloor`/`stepUp`, sector refs `fs`/`bs` — checked against
+`js/editor/preview3d.js` and it already used `isDoor`/`isSwitch` correctly (matched the
+original data reference doc); no change needed there.
+
+Merged `master` into this worktree (clean merge, no conflicts) to test inside the real
+`editor.html` + `js/editor/app.js` shell instead of only the standalone harness. That surfaced
+and fixed two more real bugs, both about the panel being mounted inside a hidden tab:
+
+1. **Renderer created at 0-size never recovers.** `editor.html`'s panels mount into hidden tab
+   content, so `preview3d.js`'s container has zero `clientWidth`/`clientHeight` at `init()`
+   time. The renderer's canvas gets resized correctly once the "3D" tab is selected (confirmed
+   via `container.clientWidth`/`camera.aspect` matching the real layout), but continued to
+   render solid black indefinitely. Proven with a controlled test: rendering the exact same
+   live `scene`/`camera` through a **freshly constructed** `WebGLRenderer` produced the correct
+   pixels immediately, while the original renderer instance never recovered no matter how long
+   the per-frame render loop ran. Fixed by deferring real renderer construction: `createRenderer()`
+   builds a placeholder at whatever size is available (usually the 400x300 fallback while
+   hidden), and `onResize()` swaps in a freshly constructed renderer, once, the first time the
+   container reports an actual visible size — confirmed this swap fires correctly
+   (`state.gotRealSize` flips true right when the tab is selected).
+2. **Context loss has no recovery path.** Added a `webglcontextlost`/`webglcontextrestored`
+   pair on the renderer's canvas (`preventDefault()` the loss, `buildLevel()` again on restore)
+   since a lost WebGL context leaves geometry/instance buffers stale otherwise. This is correct,
+   generally-applicable defensive code (context loss is a real thing on real GPUs too — driver
+   resets, mobile tab backgrounding) even though it turned out not to be the deciding factor for
+   bug #1 above.
+
+**What I could not fully close out in this sandbox:** even after fix #1, a plain (no manual
+intervention) screenshot/pixel-read of the "3D" tab inside the merged `editor.html` — which
+has at least four canvases (2D map, MIDI composer piano roll, the enemy-editor's own live
+mesh-preview `WebGLRenderer`, and this panel) — still reads back solid black immediately after
+the automatic per-frame render loop runs, *while a manually-triggered one-off
+`renderer.render(scene, camera)` call, at the exact same camera/scene state, immediately shows
+the correct picture* every time I tried it. Camera position was confirmed stable (not drifting
+off into empty space) and the render loop was confirmed to be calling `render()` ~20x/sec on
+the correct (post-swap) renderer instance throughout. The pattern — synchronous manual render
+always correct, the async per-frame loop's result never observably correct — points at GL
+context thrashing between this panel's `WebGLRenderer` and the enemy-editor's separate one
+under swiftshader's software rasterizer, which has a much lower concurrent-context budget than
+a real GPU: a `CONTEXT_LOST_WEBGL`/`Context Restored` cycle was observed in the console during
+this exact sequence. I could not fully isolate or fix a cross-panel GL-context-budget
+constraint from this file alone in the time available, and I have moderate-to-low confidence
+it reproduces on a real GPU browser (the failure mode is specific to headless
+`--use-gl=swiftshader`, and the standalone single-canvas harness — confirmed regression-free
+after both fixes, `tests/preview3d-qa.mjs` all green, 5-24ms rebuilds — never exhibits it).
+
+**Recommendation:** before calling the 3D tab done end-to-end, someone should open
+`editor.html` in a real browser (not headless/software-rendered) with a level loaded and
+confirm the 3D tab actually paints. If it's still black there, the fix is almost certainly
+still panel-mount timing (my fix #1's approach was right in kind, just possibly needs a small
+delay/retry rather than a single swap) rather than the geometry/material code, which is
+proven correct (three separate ways: the standalone harness, a fresh throwaway renderer
+against the live scene, and a manual re-render against the live renderer all show the level
+correctly).
+
+All fixes committed; `node --check` clean; standalone harness QA all green with no regression.
