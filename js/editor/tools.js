@@ -492,7 +492,7 @@
       return out;
     }
 
-    ed.registerTool({
+    var entityTool = ed.registerTool({
       id: 'entity', title: 'Entity', key: '4', glyph: '◉',
       options: function (host) {
         host.appendChild(el('span', null, 'type'));
@@ -528,6 +528,19 @@
       },
       onPointerMove: function (e, world, screen) { map.updateHover(screen.px, screen.py); }
     });
+
+    /* Preload the Entity tool with a type and switch to it — the enemy editor's
+       "Place new" needs the picker to already say custom:<id>. */
+    ed.setEntityPick = function (value) {
+      entOpts.pick = value;
+      if (ed.activeTool === entityTool) {
+        var bar = document.getElementById('ed-toolbar');
+        bar.innerHTML = '';
+        entityTool.options(bar);
+      } else {
+        ed.setTool('entity');
+      }
+    };
 
     /* ---- Trigger --------------------------------------------------------- */
     var trigOpts = { kind: 'lift', trig: 'use', rep: true };

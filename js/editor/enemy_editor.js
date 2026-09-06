@@ -69,23 +69,12 @@
     else if (typeof console !== 'undefined') console.log('[enemy-editor]', msg);
   }
 
-  /** The entity the shell has selected, whatever the shell calls it. */
+  /** CyberEditor.selection is {kind, index} into the level, never an object. */
   function selectedEntity() {
     var ed = window.CyberEditor;
-    if (!ed) return null;
-    if (typeof ed.getSelectedEntity === 'function') return ed.getSelectedEntity() || null;
-    var s = ed.selectedEntity || ed.selection || null;
-    if (!s) return null;
-    if (Object.prototype.toString.call(s) === '[object Array]') {
-      for (var i = 0; i < s.length; i++) {
-        var c = s[i] && (s[i].enemyType !== undefined ? s[i] : s[i].entity);
-        if (c && c.enemyType !== undefined) return c;
-      }
-      return null;
-    }
-    if (s.enemyType !== undefined) return s;
-    if (s.entity && s.entity.enemyType !== undefined) return s.entity;
-    return null;
+    var sel = ed && ed.selection;
+    if (!ed || !ed.level || !sel || sel.kind !== 'entity') return null;
+    return (ed.level.entities || [])[sel.index] || null;
   }
 
   /** Pack defs first, level defs on top — the same order the engine uses. */
@@ -109,10 +98,12 @@
     this.build();
     var ed = window.CyberEditor;
     if (ed && typeof ed.on === 'function') {
-      ed.on('level-loaded', function () { self.refreshList(); });
-      ed.on('level-changed', function () { self.refreshList(true); });
+      ed.on('level-loaded', function () { self.refreshList(); self.syncSelection(); });
+      ed.on('level-changed', function () { self.refreshList(true); self.syncSelection(); });
+      ed.on('selection-changed', function () { self.syncSelection(); });
     }
     this.selectType(this.pick.value);
+    this.syncSelection();
   }
 
   Panel.prototype.build = function () {
@@ -132,9 +123,13 @@
     var row1 = el('div', 'row');
     this.btnNew = el('button', null, 'New from base');
     this.btnUse = el('button', null, 'Use for selected');
+    this.btnPlace = el('button', null, 'Place new');
     row1.appendChild(this.btnNew);
     row1.appendChild(this.btnUse);
+    row1.appendChild(this.btnPlace);
     r.appendChild(row1);
+    this.selNote = el('div', 'lbl', '');
+    r.appendChild(this.selNote);
 
     this.canvas = el('canvas');
     this.canvas.width = 280;
@@ -218,6 +213,7 @@
 
     this.btnNew.addEventListener('click', function () { self.newFromBase(); });
     this.btnUse.addEventListener('click', function () { self.useForSelected(); });
+    this.btnPlace.addEventListener('click', function () { self.placeNew(); });
     this.btnSave.addEventListener('click', function () { self.save(); });
     this.btnDel.addEventListener('click', function () { self.remove(); });
     this.btnExp.addEventListener('click', function () { self.exportDef(); });
@@ -315,6 +311,7 @@
     }
     this.fillLook();
     this.note.textContent = d.id ? ('custom:' + d.id) : 'unsaved — Save writes it to the level';
+    if (this.selNote) this.syncSelection();
   };
 
   Panel.prototype.fillLook = function () {
@@ -383,6 +380,7 @@
     this.refreshList();
     this.pick.value = 'custom:' + def.id;
     this.note.textContent = 'custom:' + def.id;
+    this.syncSelection();
     toast('Saved ' + (def.name || def.id));
   };
 
@@ -398,14 +396,42 @@
     toast('Deleted ' + id);
   };
 
+  /** Button state follows the shell's selection, so it never lies. */
+  Panel.prototype.syncSelection = function () {
+    var ed = window.CyberEditor;
+    var sel = ed && ed.selection;
+    var ent = selectedEntity();
+    var saved = !!(this.def && this.def.id);
+    this.btnUse.disabled = !ent || !saved;
+    this.btnPlace.disabled = !saved || !ed || typeof ed.setEntityPick !== 'function';
+    if (!sel || !sel.kind) this.selNote.textContent = 'no selection';
+    else if (!ent) this.selNote.textContent = 'selected: ' + sel.kind + ' ' + sel.index + ' (not an entity)';
+    else this.selNote.textContent = 'selected: entity ' + sel.index + ' — ' + (ent.enemyType === undefined ? ent.type : ent.enemyType);
+  };
+
   Panel.prototype.useForSelected = function () {
     var ed = window.CyberEditor;
     if (!this.def || !this.def.id) { toast('Save the definition first'); return; }
-    var ent = selectedEntity();
-    if (!ent) { toast('Select an enemy entity on the map first'); return; }
-    var type = 'custom:' + this.def.id;
-    ed.apply(function () { ent.enemyType = type; }, 'Set enemy type ' + type);
-    toast('Entity now spawns ' + type);
+    var sel = ed && ed.selection;
+    if (!sel || sel.kind !== 'entity') { toast('Select an entity on the map first'); return; }
+    var index = sel.index, type = 'custom:' + this.def.id;
+    // Mutate through the level the undo stack hands us, not a captured
+    // reference: apply() snapshots and may swap the level object.
+    ed.apply(function (level) {
+      var ent = (level.entities || [])[index];
+      if (ent) ent.enemyType = type;
+    }, 'set enemy type ' + type);
+    this.syncSelection();
+    toast('entity ' + index + ' now spawns ' + type, 'ok');
+  };
+
+  /** Hand the Entity tool this type so the next map click places it. */
+  Panel.prototype.placeNew = function () {
+    var ed = window.CyberEditor;
+    if (!this.def || !this.def.id) { toast('Save the definition first'); return; }
+    if (!ed || typeof ed.setEntityPick !== 'function') { toast('This shell has no Entity tool'); return; }
+    ed.setEntityPick('custom:' + this.def.id);
+    toast('Entity tool loaded with custom:' + this.def.id + ' — click the map', 'ok');
   };
 
   Panel.prototype.exportDef = function () {

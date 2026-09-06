@@ -96,10 +96,29 @@
     ed.select(kind, index);
   };
 
+  /* customEnemies is stored the way the engine reads it: an object map
+     { id: def } on the level and on the pack, level winning. It was read here
+     as an array, which threw on the object the enemy editor actually writes
+     and left the Entity tool with no custom types to place. Arrays are still
+     accepted so an older hand-written level keeps loading. */
   ed.customEnemies = function () {
-    var fromLevel = (ed.level && ed.level.customEnemies) || [];
-    var fromPack = (ed.pack && ed.pack.customEnemies) || [];
-    return fromLevel.concat(fromPack);
+    var byId = {};
+    [(ed.pack && ed.pack.customEnemies), (ed.level && ed.level.customEnemies)].forEach(function (t) {
+      if (!t) return;
+      if (t.length !== undefined && typeof t.slice === 'function') {
+        t.forEach(function (d) { if (d && d.id) byId[d.id] = d; });
+        return;
+      }
+      Object.keys(t).forEach(function (k) {
+        var d = t[k];
+        if (!d) return;
+        if (d.id) { byId[d.id] = d; return; }
+        var copy = { id: k };
+        Object.keys(d).forEach(function (f) { copy[f] = d[f]; });
+        byId[k] = copy;
+      });
+    });
+    return Object.keys(byId).map(function (k) { return byId[k]; });
   };
 
   /* ---- toasts ----------------------------------------------------------- */
