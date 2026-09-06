@@ -145,9 +145,18 @@
     return level.walls.length - 1;
   }
 
-  /* Removes wall[idx]. Trigger indices are linedef ids, so they are left
-     alone; the only cleanup is dropping a trigger whose last wall just went
-     away (nothing would be able to press it). */
+  /* Removes wall[idx] by splicing. Splicing is safe because nothing PERSISTED
+     references a wall by array position -- a census over all 197 levels in
+     tests/editor-roundtrip.js proves the only cross-references are linedef ids
+     (trigger.i / wall.ai) and sector indices (act.secs, fs, bs, tag), and that
+     gate fails if the converter ever adds one. The walls[i] <-> engine.walls[i]
+     lockstep is rebuilt from the file on every load, so it survives a splice;
+     what it would NOT survive is reordering walls in memory mid-load, which the
+     editor never does. Marking-instead-of-deleting would be worse: a marked
+     wall still builds as real geometry.
+
+     Trigger indices are linedef ids, so they are left alone; the only cleanup is
+     dropping a trigger whose last wall just went away. */
   function removeWall(level, idx) {
     if (!level.walls || idx < 0 || idx >= level.walls.length) return;
     var gone = level.walls[idx];
