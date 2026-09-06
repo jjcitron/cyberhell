@@ -14,7 +14,9 @@ export default guard(async function handler(req, res) {
 
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
-  // Content-addressed payloads never change under a version id, so this is safe to cache.
-  res.setHeader('Cache-Control', version ? 'public, max-age=31536000, immutable' : 'public, max-age=60, stale-while-revalidate=300');
+  // A version id names one content-addressed payload, so that form is immutable. The bare form
+  // follows the level's current version and changes on every save -- caching it hands the editor
+  // (and the game) a stale level right after a save, so it must revalidate every time.
+  res.setHeader('Cache-Control', version ? 'public, max-age=31536000, immutable' : 'no-cache');
   res.end(text);
 });

@@ -33,11 +33,17 @@ export async function staticManifest(packId) {
 // GET /api/packs body. Same shape as levelPacks/packs.json, so index.html's loader is unchanged:
 // { id, name, manifest, levelCount }. Canonical packs come from the store once the migration has
 // run and from the repo copies until then; published community packs are appended.
-export async function packsIndex() {
+//
+// `ownerId` is the editor's view (?mine=1): it also lists that account's own packs, published or
+// not, because a pack you just made is not on the game's boot list yet but is the whole point of
+// having the editor open. Omitted, the body is exactly what the game asks for.
+export async function packsIndex(ownerId) {
   const store = getStore();
   const all = await store.listPacks();
   const canonical = all.filter((p) => p.isCanonical).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
-  const published = all.filter((p) => !p.isCanonical && p.published).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  const published = all
+    .filter((p) => !p.isCanonical && (p.published || (ownerId && p.ownerId === ownerId)))
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
 
   const out = [];
   if (canonical.length) {
@@ -48,7 +54,11 @@ export async function packsIndex() {
     out.push(...await staticPacks());
   }
   for (const p of published) {
-    out.push({ id: p.id, name: p.name, manifest: `/api/packs/${p.id}`, levelCount: (await store.listLevels(p.id)).length });
+    out.push({
+      id: p.id, name: p.name, manifest: `/api/packs/${p.id}`,
+      levelCount: (await store.listLevels(p.id)).length,
+      ...(ownerId ? { published: !!p.published, mine: p.ownerId === ownerId } : {}),
+    });
   }
   return out;
 }

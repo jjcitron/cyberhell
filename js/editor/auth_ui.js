@@ -48,11 +48,20 @@
         state.user = u;
         state.checked = true;
         state.inflight = null;
-        window.dispatchEvent(new CustomEvent('cyberauth-change', { detail: u }));
+        announce(u);
         render();
         return u;
       });
     return state.inflight;
+  }
+
+  // Signing in or out changes which packs exist, so drop the adapter's cloud
+  // cache and let the other panels redraw.
+  function announce(u) {
+    var ed = window.CyberEditor;
+    if (ed && ed.storage && ed.storage.invalidate) ed.storage.invalidate();
+    if (ed && ed.emit) ed.emit('pack-changed', {});
+    window.dispatchEvent(new CustomEvent('cyberauth-change', { detail: u || null }));
   }
 
   /* ---- panel screens ----------------------------------------------------- */
@@ -156,13 +165,47 @@
         .then(function () {
           state.user = null;
           state.screen = 'auto';
-          window.dispatchEvent(new CustomEvent('cyberauth-change', { detail: null }));
+          announce(null);
           say('Signed out.');
         });
     });
     btns.appendChild(rename);
     btns.appendChild(out);
     host.appendChild(btns);
+    packSection();
+  }
+
+  // Which backend each pack lives on, and a one-click copy of a local pack into
+  // the cloud (the only way a cloud pack gets made -- New pack stays local).
+  function packSection() {
+    var ed = window.CyberEditor;
+    if (!ed || !ed.storage || !ed.storage.copyPackToCloud) return;
+    host.appendChild(el('div', { class: 'ed-head' }, 'Packs'));
+    var list = el('div', { class: 'ed-list' });
+    list.appendChild(el('div', { class: 'ed-hint' }, 'loading…'));
+    host.appendChild(list);
+
+    ed.storage.listPacks().then(function (packs) {
+      list.innerHTML = '';
+      packs.forEach(function (p) {
+        var row = el('div', { class: 'ed-item' });
+        row.appendChild(el('span', { class: 'ed-grow' }, p.name));
+        row.appendChild(el('span', { class: 'ed-tag' }, p.source));
+        if (p.source === 'local') {
+          var up = el('button', null, 'Copy to cloud');
+          up.addEventListener('click', function () {
+            up.disabled = true;
+            say('copying ' + p.name + '…');
+            ed.storage.copyPackToCloud(p.id).then(function (r) {
+              ed.emit('pack-changed', {});
+              say('copied ' + r.levels + ' level(s) to a cloud pack.');
+            }).catch(function (err) { up.disabled = false; say(err.message); });
+          });
+          row.appendChild(up);
+        }
+        list.appendChild(row);
+      });
+    }).catch(function (err) { list.innerHTML = ''; list.appendChild(el('div', { class: 'ed-hint' }, err.message)); });
   }
 
   function render() {
