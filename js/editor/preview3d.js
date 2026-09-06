@@ -144,6 +144,15 @@
       state.container = container;
       container.style.position = container.style.position || 'relative';
       container.style.overflow = 'hidden';
+      // The shell hands us a bare <div> inside a plain `display:block` tab
+      // panel (not a flex child), so it sizes to its own content height --
+      // which is circular, since we size our canvas FROM the container. A
+      // fixed min-height breaks the deadlock; flex:1 1 auto is a no-op today
+      // but takes over for free if the shell ever makes .ed-panel a flex
+      // column. Confirmed via DOM probe: without this the container reports
+      // clientHeight 0 forever and our canvas gets stuck at 1x1.
+      container.style.minHeight = '320px';
+      container.style.flex = '1 1 auto';
       container.tabIndex = 0;
 
       var w = container.clientWidth || 400, h = container.clientHeight || 300;
