@@ -182,6 +182,20 @@ async function bootPage(browser, mobile, size) {
       hudBoxes.forEach(h => ctlBoxes.forEach(c => { if (overlaps(h, c)) clashes.push(`${c.id} over ${h.id}`); }));
       check(hudBoxes.length >= 3, `${tag}: HUD still shows its readouts (${hudBoxes.map(h => h.id).join(',')})`);
       check(clashes.length === 0, `${tag}: no touch control overlaps the HUD${clashes.length ? ': ' + clashes.join(', ') : ''}`);
+      // Controls must not sit on each other either: a pad half under an arrow
+      // gives the wrong action to a thumb that landed where it aimed.
+      const selfClash = [];
+      for (let i = 0; i < ctlBoxes.length; i++) {
+        for (let j = i + 1; j < ctlBoxes.length; j++) {
+          if (overlaps(ctlBoxes[i], ctlBoxes[j])) selfClash.push(`${ctlBoxes[i].id}/${ctlBoxes[j].id}`);
+        }
+      }
+      check(selfClash.length === 0, `${tag}: no two touch controls overlap${selfClash.length ? ': ' + selfClash.join(', ') : ''}`);
+      check(await page.evaluate(() => {
+        const s = document.getElementById('tc-stick');
+        return getComputedStyle(s).display !== 'none' && parseFloat(getComputedStyle(s).opacity) > 0.05;
+      }), `${tag}: the move stick is visible at rest so the zone is discoverable`);
+
       const offscreen = ctlBoxes.filter(c => c.x < 0 || c.y < 0 || c.x + c.w > vp.width + 0.5 || c.y + c.h > vp.height + 0.5);
       check(offscreen.length === 0, `${tag}: every control is fully on screen${offscreen.length ? ': ' + offscreen.map(o => o.id).join(',') : ''}`);
 
@@ -258,6 +272,12 @@ async function bootPage(browser, mobile, size) {
       await page.tap('#tc-wprev');
       check(await page.evaluate((want) => window.cyberEngine.player.currentWeapon === want, w0),
         `${tag}: the prev-weapon arrow goes back`);
+
+      /* ---- automap opens from the top icon and closes by tapping the map ---- */
+      await page.tap('#tc-top .tc-icon[data-act="map"]');
+      check(await page.evaluate(() => window.cyberEngine.automapOpen === true), `${tag}: the map icon opens the automap`);
+      await page.tap('#automap-modal');
+      check(await page.evaluate(() => window.cyberEngine.automapOpen === false), `${tag}: tapping the automap closes it (the icon is buried under it)`);
 
       /* ---- settings sheet ---- */
       await page.tap('#tc-top .tc-icon[data-act="settings"]');

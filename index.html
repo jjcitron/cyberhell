@@ -515,11 +515,12 @@
       border: 2px solid rgba(0, 229, 255, 0.85);
       background: radial-gradient(circle, rgba(0,229,255,0.14) 40%, rgba(0,229,255,0.05) 100%);
       pointer-events: none;
-      display: none;
-      opacity: var(--tc-op);
+      /* Always drawn, faint, at its resting home so a new player can see where
+         the stick lives; it brightens and re-homes under the thumb on contact. */
+      opacity: calc(var(--tc-op) * 0.5);
       z-index: 3;
     }
-    #tc-stick.on { display: block; }
+    #tc-stick.on { opacity: var(--tc-op); }
     #tc-knob {
       position: absolute;
       left: 50%; top: 50%;
@@ -604,11 +605,13 @@
       user-select: none;
       -webkit-user-select: none;
     }
-    #tc-wprev { top: 78px; }
-    #tc-wnext { top: 186px; }
+    /* Kept above the USE pad's top edge (bottom:100px + 70px tall) so the two
+       never share a pixel at 393px of height. */
+    #tc-wprev { top: 70px; }
+    #tc-wnext { top: 150px; }
     #tc-wname {
       position: absolute;
-      right: 4px; top: 136px;
+      right: 4px; top: 128px;
       width: 64px;
       text-align: center;
       font-size: 9px;
@@ -823,7 +826,7 @@
     <div id="automap-modal">
       <div class="automap-header">MAP01 : ENTRYWAY // CYBER-RADAR</div>
       <canvas id="automap-canvas" width="600" height="600"></canvas>
-      <div style="color: #607d8b; margin-top: 10px; font-size: 13px;">PRESS [TAB] OR [M] TO CLOSE RADAR</div>
+      <div style="color: #607d8b; margin-top: 10px; font-size: 13px;">TAP THE MAP, OR PRESS [TAB] / [M], TO CLOSE RADAR</div>
     </div>
 
     <!-- Title / Pause / Victory Screen -->
@@ -3594,6 +3597,7 @@ class CyberDoomEngine {
     if (!this.touchOpts || !this.touchOpts.autofire) this.isFiring = false;
     const stick = document.getElementById('tc-stick');
     if (stick) stick.classList.remove('on');
+    if (this.restTouchStick) this.restTouchStick();
     const fire = document.getElementById('tc-fire');
     if (fire) fire.classList.remove('on');
     if (this.touchPointers) this.touchPointers.clear();
@@ -3647,6 +3651,19 @@ class CyberDoomEngine {
     const firePad = document.getElementById('tc-fire');
     const STICK_R = 60;   // px from spawn point to full tilt
     const STICK_DEAD = 12;
+    const moveZone = document.getElementById('tc-move');
+
+    // Resting home. The stick is faint but visible there so the zone is
+    // discoverable; a thumb landing anywhere in the zone moves it there.
+    const restStick = () => {
+      const r = moveZone.getBoundingClientRect();
+      stick.style.left = Math.min(110, r.width / 2) + 'px';
+      stick.style.top = Math.max(90, r.height - 96) + 'px';
+    };
+    restStick();
+    this.restTouchStick = restStick;   // pause/settings re-home it too
+    window.addEventListener('resize', restStick);
+    window.addEventListener('orientationchange', restStick);
 
     const steer = (dx, dy) => {
       const v = stickVector(dx, dy, STICK_R, STICK_DEAD);
@@ -3706,7 +3723,7 @@ class CyberDoomEngine {
       try { root.setPointerCapture(e.pointerId); } catch (err) {}
 
       if (role === 'move') {
-        const mr = document.getElementById('tc-move').getBoundingClientRect();
+        const mr = moveZone.getBoundingClientRect();
         stick.style.left = (e.clientX - mr.left) + 'px';
         stick.style.top = (e.clientY - mr.top) + 'px';
         stick.classList.add('on');
@@ -3735,6 +3752,7 @@ class CyberDoomEngine {
       if (p.role === 'move') {
         stick.classList.remove('on');
         steer(0, 0);
+        restStick();
       } else if (p.role === 'fire') {
         firePad.classList.remove('on');
         if (!this.touchOpts.autofire) this.isFiring = false;
@@ -3742,6 +3760,12 @@ class CyberDoomEngine {
     };
     root.addEventListener('pointerup', release);
     root.addEventListener('pointercancel', release);
+
+    // The automap modal sits at z-index 20, above this whole layer, so the
+    // icon that opened it is buried while it is up. Tapping the map closes it.
+    document.getElementById('automap-modal')?.addEventListener('pointerdown', () => {
+      if (this.isTouch && this.automapOpen !== false) this.toggleAutomap();
+    });
 
     this.initTouchSettings();
     this.applyTouchOpts();
