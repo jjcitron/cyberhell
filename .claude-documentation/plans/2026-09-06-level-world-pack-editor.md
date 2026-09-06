@@ -19,9 +19,10 @@ stack to lift).
   `index.html` on the draft.
 - **Level JSON stays the engine's format** (see the data reference). The editor adds only optional
   keys the engine learns to read: `music` (explicit cue override), `customEnemies` (per-level or
-  per-pack enemy definitions), `meta` (id, createdBy, version, notes). `walls[i]` ↔ `triggers[].i`
-  positional pairing is preserved by construction (the editor keeps triggers attached to wall
-  objects and re-indexes on export).
+  per-pack enemy definitions), `meta` (id, createdBy, version, notes). Triggers bind to walls by
+  value (`triggers[].i` = `wall.ai`, a Doom linedef id), never by array position; the editor reuses
+  or allocates `ai` when attaching a trigger and never reorders existing wall entries (sector
+  `fs`/`bs` attachment walks the wall array in order).
 - **Enemies become data**: `js/cyber-enemies.js` STATS stay the base table; every builder takes a
   `look` object (colours, scale, part toggles, emissive) whose defaults are today's hard-coded
   values, so existing enemies render byte-identically. A custom enemy is `{ base: <thing id>,
@@ -82,7 +83,8 @@ POST /api/publish/:packId
 
 Validation shared by browser and API: `js/shared/level_validate.js` (ported from
 `tests/check-polys.js`, `check-floor-coverage.js`, `check-exits.js`: closed non-self-intersecting
-polys, no sealed pockets, exit reachable from spawn, one `sw_exit_game`, trigger/wall pairing).
+polys, no sealed pockets, exit reachable from spawn, at least one `sw_exit_game` (70 canonical
+levels carry several; extra ones are warnings), trigger/wall binding by `ai`).
 
 ## Fleet (worktrees `C:\Dev\Personal\_wt\ch-<lane>`, branches `editor/<lane>`)
 
