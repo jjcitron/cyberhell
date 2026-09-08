@@ -328,11 +328,18 @@
         }
       }, 'draw sector');
       ed.select('sector', ed.level.sectors.length - 1);
+      ed.toast('sector added with ' + poly.length + ' walls — Wall tool (3) adds inner walls, Ctrl+Z undoes', 'ok');
     }
 
+    var SECTOR_TIP_KEY = 'cyberhell.editor.sectorTipSeen';
     ed.registerTool({
       id: 'sector', title: 'Sector', key: '2', glyph: '◱',
-      onActivate: function () { pts = []; },
+      onActivate: function () {
+        pts = [];
+        var seen = false;
+        try { seen = !!localStorage.getItem(SECTOR_TIP_KEY); localStorage.setItem(SECTOR_TIP_KEY, '1'); } catch (err) {}
+        if (!seen) ed.toast('Sector: click corners on the grid, click the first corner or press Enter to close. Every edge gets a wall automatically.', 'ok');
+      },
       onDeactivate: function () { pts = []; },
       options: function (host) {
         host.appendChild(el('span', null, 'floor'));
@@ -351,7 +358,7 @@
         var done = el('button', null, 'Close polygon');
         done.addEventListener('click', commitSector);
         host.appendChild(done);
-        host.appendChild(el('span', { class: 'ed-tag' }, 'click to add points, click the first point or Enter to close, Esc to cancel'));
+        host.appendChild(el('span', { class: 'ed-tag' }, 'click corners; click the first corner or Enter to close (walls added on every edge); Esc cancels'));
       },
       onPointerDown: function (e, world) {
         if (!ed.level) return;
@@ -480,27 +487,58 @@
     }
 
     /* ---- Entity ---------------------------------------------------------- */
-    var entOpts = { pick: 'enemy:3004', weapon: 'shotgun' };
+    /* One picker decides WHAT is placed (Enemy / Item / Weapon); a second list
+       depends on it. `pick` stays 'enemy:<id>' | 'custom:<id>' | 'item:<type>'
+       so ed.setEntityPick() from the enemy editor keeps working; a weapon is
+       'item:weapon' with `weapon` naming which one. */
+    var entOpts = { cat: 'enemy', pick: 'enemy:3004', weapon: 'shotgun' };
+    var CATS = [{ value: 'enemy', label: 'Enemy' }, { value: 'item', label: 'Item' }, { value: 'weapon', label: 'Weapon' }];
 
-    function entityChoices() {
+    function entityChoices(cat) {
       var out = [];
-      ENEMY_TYPES.forEach(function (t) { out.push({ value: 'enemy:' + t[0], label: t[1] + ' (' + t[0] + ')' }); });
-      PICKUPS.forEach(function (p) { out.push({ value: 'item:' + p.type, label: p.label }); });
-      (ed.customEnemies() || []).forEach(function (c) {
-        out.push({ value: 'custom:' + c.id, label: 'custom: ' + (c.name || c.id) });
-      });
+      if (cat === 'enemy') {
+        ENEMY_TYPES.forEach(function (t) { out.push({ value: 'enemy:' + t[0], label: t[1] }); });
+        (ed.customEnemies() || []).forEach(function (c) {
+          out.push({ value: 'custom:' + c.id, label: 'custom: ' + (c.name || c.id) });
+        });
+      } else if (cat === 'item') {
+        PICKUPS.forEach(function (p) { if (p.type !== 'weapon') out.push({ value: 'item:' + p.type, label: p.label }); });
+      } else {
+        WEAPON_NAMES.forEach(function (w) { out.push({ value: w, label: w }); });
+      }
       return out;
+    }
+
+    function catOf(pick) { return pick === 'item:weapon' ? 'weapon' : pick.split(':')[0] === 'item' ? 'item' : 'enemy'; }
+
+    function entityLabel() {
+      var list = entityChoices(entOpts.cat), v = entOpts.cat === 'weapon' ? entOpts.weapon : entOpts.pick;
+      var hit = list.filter(function (o) { return o.value === v; })[0];
+      return hit ? hit.label : v;
     }
 
     var entityTool = ed.registerTool({
       id: 'entity', title: 'Entity', key: '4', glyph: '◉',
       options: function (host) {
-        host.appendChild(el('span', null, 'type'));
-        host.appendChild(select(entityChoices(), entOpts.pick, function (v) { entOpts.pick = v; }));
-        host.appendChild(el('span', null, 'weapon'));
-        host.appendChild(select(WEAPON_NAMES.map(function (w) { return { value: w, label: w }; }),
-          entOpts.weapon, function (v) { entOpts.weapon = v; }));
-        host.appendChild(el('span', { class: 'ed-tag' }, 'click to place'));
+        host.innerHTML = '';
+        entOpts.cat = catOf(entOpts.pick);
+        var what = el('span', null);
+        host.appendChild(el('span', null, 'place'));
+        host.appendChild(select(CATS, entOpts.cat, function (v) {
+          entOpts.cat = v;
+          var first = entityChoices(v)[0];
+          if (v === 'weapon') entOpts.pick = 'item:weapon';
+          else if (first) entOpts.pick = first.value;
+          entityTool.options(host);
+        }));
+        var list = entityChoices(entOpts.cat);
+        host.appendChild(select(list, entOpts.cat === 'weapon' ? entOpts.weapon : entOpts.pick, function (v) {
+          if (entOpts.cat === 'weapon') entOpts.weapon = v; else entOpts.pick = v;
+          what.textContent = 'click the map to place: ' + entityLabel();
+        }));
+        what.className = 'ed-tag';
+        what.textContent = 'click the map to place: ' + entityLabel();
+        host.appendChild(what);
       },
       onPointerDown: function (e, world) {
         if (!ed.level) return;
