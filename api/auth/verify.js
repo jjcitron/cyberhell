@@ -1,7 +1,7 @@
 // GET /api/auth/verify?token=... -> one-time token exchange for a session cookie, then redirect.
 import { send, guard } from '../_lib/json.js';
 import { getStore, emailHash } from '../_lib/store.js';
-import { sessionCookie } from '../_lib/session.js';
+import { sessionCookie, APP_ID } from '../_lib/session.js';
 
 export default guard(async function handler(req, res) {
   if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); return send(res, 405, { error: 'Method not allowed' }); }
@@ -22,9 +22,12 @@ export default guard(async function handler(req, res) {
   const id = emailHash(rec.email);
   const user = await store.getUser(id);
   if (!user) await store.putUser(id, { username: null, createdAt: Date.now() });
+  // Shared spine: the account is Acidlemon-wide, this row is what says it has been into
+  // Cyberhell. Idempotent, so a returning player re-signing in is a no-op.
+  await store.putUserApp(id, APP_ID);
 
   res.writeHead(302, {
-    'Set-Cookie': sessionCookie({ email: rec.email }),
+    'Set-Cookie': sessionCookie({ email: rec.email }, req),
     Location: `${base}${target}?auth=${user?.username ? 'welcome' : 'setup'}`,
   });
   res.end();

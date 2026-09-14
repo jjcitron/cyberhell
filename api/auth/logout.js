@@ -4,6 +4,6 @@ import { clearCookie } from '../_lib/session.js';
 
 export default guard(async function handler(req, res) {
   if (methodGuard(req, res, ['POST'])) return;
-  res.setHeader('Set-Cookie', clearCookie());
+  res.setHeader('Set-Cookie', clearCookie(req));
   return send(res, 200, { ok: true });
 });
