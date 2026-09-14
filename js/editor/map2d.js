@@ -29,11 +29,19 @@
 
   /* ---- view ------------------------------------------------------------- */
 
+  /* The canvas is flex-sized by CSS, so its box moves whenever a neighbour
+     does (a bottom drawer mounting, the toolbar, a collapsed panel). If the
+     backing store is not re-sized to match, drawing is stretched against a
+     stale box while pointer math uses the live one, and geometry lands away
+     from the cursor. _bind() watches the box with a ResizeObserver so every
+     such change lands here; callers may still call this directly. */
   Map2D.prototype.resize = function () {
     var dpr = window.devicePixelRatio || 1;
     var r = this.canvas.getBoundingClientRect();
-    this.canvas.width = Math.max(1, Math.round(r.width * dpr));
-    this.canvas.height = Math.max(1, Math.round(r.height * dpr));
+    var w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (w === this.canvas.width && h === this.canvas.height && dpr === this.dpr && r.width === this.w && r.height === this.h) return;
+    this.canvas.width = w;
+    this.canvas.height = h;
     this.dpr = dpr;
     this.w = r.width;
     this.h = r.height;
@@ -136,6 +144,9 @@
     c.addEventListener('pointercancel', function () { self._pan = null; c.classList.remove('panning'); });
 
     window.addEventListener('resize', function () { self.resize(); });
+    // Layout changes that never fire window resize (drawer mount/collapse,
+    // side panel growth) still change the canvas box; keep the store in step.
+    if (window.ResizeObserver) new ResizeObserver(function () { self.resize(); }).observe(c);
   };
 
   Map2D.prototype._local = function (e) {
