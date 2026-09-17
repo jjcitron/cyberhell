@@ -30,14 +30,20 @@
  * exist on a machine with a GPU, so rAF-to-rAF frame time here is not a hang,
  * it is a software rasteriser.
  *
- * The budget is judged on the BLOCK: the longest uninterruptible main-thread
- * task, straight from the browser's own PerformanceObserver('longtask'). That
- * is the definition of "the game stopped" -- input queued, nothing painted --
- * and it excludes raster, which happens on other threads. maxSim (time inside
- * the rAF callback) and maxFrame (rAF to rAF) are printed next to it so the
- * SwiftShader tax stays visible instead of hidden.
+ * The budget is judged on ENGINE BLOCK: the longest stretch of main-thread
+ * work the engine itself is responsible for. Per frame that is the rAF
+ * callback minus the renderer.render() call, plus, on a frame that carried
+ * one, the level-build slice. renderer.render() is excluded on purpose: on a
+ * real machine it hands work to a driver and returns, and under SwiftShader
+ * it IS the rasteriser -- including it would make this a measurement of the
+ * software renderer rather than of the game.
  *
- * Confirming these numbers on a real GPU is a laptop run, not a headless one.
+ * maxSim (whole rAF callback), maxBlock (the browser's own long-task record)
+ * and maxFrame (rAF to rAF) are all printed next to it, so nothing about the
+ * SwiftShader tax is hidden -- it is just not the thing being budgeted.
+ *
+ * What this cannot settle is the GPU-side half. Confirming that is a run on a
+ * laptop with a real GPU, not a headless one.
  *
  * Usage:
  *   node tests/hitch.js
@@ -263,17 +269,19 @@ async function runProfile(prof, results) {
     const worstRaw = Math.max(enter.maxFrameMs, fight.maxFrameMs, exit.maxFrameMs);
     const worst = norm(worstRaw);
     const simRaw = Math.max(enter.maxSimMs, fight.maxSimMs, exit.maxSimMs);
-    // The browser's own long-task record if it has one; the rAF-callback time
-    // is the floor when it does not (older engines, or a run with no task
-    // over Chrome's 50 ms reporting threshold).
-    const stallRaw = Math.max(simRaw,
-      enter.maxLongTaskMs || 0, fight.maxLongTaskMs || 0, exit.maxLongTaskMs || 0);
+    const blockRaw = Math.max(enter.maxLongTaskMs || 0, fight.maxLongTaskMs || 0, exit.maxLongTaskMs || 0);
+    const sliceOf = (s) => ((s.sections || {})['load.slice'] || {}).maxMs || 0;
+    const stallRaw = Math.max(
+      enter.maxSimExRenderMs || 0, fight.maxSimExRenderMs || 0, exit.maxSimExRenderMs || 0,
+      sliceOf(enter), sliceOf(fight), sliceOf(exit));
     const stall = norm(stallRaw);
     results.push({
       profile: prof.name, map: file, name: scale.name, scale,
       budgetMs: prof.budgetMs,
-      worstStallMs: stall, worstStallRawMs: +stallRaw.toFixed(1),
-      worstSimMs: norm(simRaw),
+      worstEngineBlockMs: stall, worstEngineBlockRawMs: +stallRaw.toFixed(1),
+      worstStallMs: stall,
+      worstSimMs: norm(simRaw), worstLongTaskMs: norm(blockRaw),
+      worstBuildSliceMs: norm(Math.max(sliceOf(enter), sliceOf(fight), sliceOf(exit))),
       longTaskCount: enter.longTaskCount + fight.longTaskCount + exit.longTaskCount,
       worstHangMs: worst, worstHangRawMs: +worstRaw.toFixed(1),
       p99FrameMs: norm(Math.max(enter.p99FrameMs, fight.p99FrameMs, exit.p99FrameMs)),
@@ -288,12 +296,13 @@ async function runProfile(prof, results) {
       map: `${file} [${p}]`, frames: s.frames,
       medFrame: norm(s.medianFrameMs), p99Frame: norm(s.p99FrameMs),
       maxFrame: norm(s.maxFrameMs),
-      maxSim: norm(s.maxSimMs), maxBlock: norm(s.maxLongTaskMs || 0),
+      maxSim: norm(s.maxSimMs), engBlock: norm(s.maxSimExRenderMs || 0),
+      slice: norm(((s.sections || {})['load.slice'] || {}).maxMs || 0),
       over33: s.overBudgetFrames,
       cause: s.maxFrameCause
     });
     table([row('enter', enter), row('fight', fight), row('exit', exit)],
-      ['map', 'frames', 'medFrame', 'p99Frame', 'maxFrame', 'maxSim', 'maxBlock', 'over33', 'cause']);
+      ['map', 'frames', 'medFrame', 'p99Frame', 'maxFrame', 'maxSim', 'engBlock', 'slice', 'over33', 'cause']);
   }
 
   if (prof.cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
@@ -313,16 +322,17 @@ async function runProfile(prof, results) {
   }
 
   console.log('\n=== HITCH BUDGET ===');
-  console.log('(worstBlock = longest main-thread task, from the browser: the budget metric.');
-  console.log(' worstSim = longest rAF callback. worstFrame = rAF to rAF, which in headless');
-  console.log(' is mostly SwiftShader raster on other threads and is NOT a hang.');
+  console.log('(engBlock = longest engine-owned main-thread stretch: the budget metric.');
+  console.log(' worstSim = whole rAF callback, renderer.render() included.');
+  console.log(' longTask = the browser\'s own long-task record. worstFrame = rAF to rAF.');
+  console.log(' Under SwiftShader the last three are dominated by software raster.');
   console.log(' All contention-normalised against the CALIB_REF this repo already uses.)');
   table(results.map(r => ({
     profile: r.profile, map: r.map, walls: r.scale.walls, enemies: r.scale.enemies,
-    worstBlock: r.worstStallMs, worstSim: r.worstSimMs, p99Sim: r.p99SimMs,
-    worstFrame: r.worstHangMs, loadX: r.machineLoadX, budget: r.budgetMs,
-    verdict: r.pass ? 'PASS' : 'FAIL'
-  })), ['profile', 'map', 'walls', 'enemies', 'worstBlock', 'worstSim', 'p99Sim', 'worstFrame', 'loadX', 'budget', 'verdict']);
+    engBlock: r.worstEngineBlockMs, slice: r.worstBuildSliceMs, worstSim: r.worstSimMs,
+    longTask: r.worstLongTaskMs, worstFrame: r.worstHangMs,
+    loadX: r.machineLoadX, budget: r.budgetMs, verdict: r.pass ? 'PASS' : 'FAIL'
+  })), ['profile', 'map', 'walls', 'enemies', 'engBlock', 'slice', 'worstSim', 'longTask', 'worstFrame', 'loadX', 'budget', 'verdict']);
 
   console.log('\n=== WORST MAIN-THREAD BLOCKS (top 10, with the cause tag of the frame they hit) ===');
   const blocks = [];

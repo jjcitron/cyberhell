@@ -117,7 +117,7 @@ const ev = (page, fn, arg) =>
   const page = await browser.newPage({ viewport: { width: 256, height: 144 } });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
+  await page.goto(`http://127.0.0.1:${PORT}/index.html${process.env.PQ ? '?quality=' + process.env.PQ : ''}`, { waitUntil: 'load' });
   await page.waitForFunction('!!window.cyberEngine && !!window.cyberEngine.levelData', null, { timeout: 90000 });
 
   const rows = [];

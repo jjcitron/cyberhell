@@ -2464,45 +2464,17 @@ class CyberDoomEngine {
     this.scene.fog = new THREE.FogExp2(data.fogColor, data.fogDensity);
     this.renderer.setClearColor(data.skyColor);
 
-    // The scene was fully cleared before this runs (fresh boot, or
-    // loadLevelFromFile wiping scene.children) -- old pooled lights are gone
-    // with it, so rebuild lazily on next acquire instead of reusing stale refs.
-    this._projLightPool = null;
-    this._flashLightPool = null;
     this._flashes = [];
-    this._levelDynLights = [];
 
-    // Ambient & hemisphere fill (a flat 1.8 ambient washed out all shading --
-    // dropped it and compensate with a sky/ground hemisphere so floors and
-    // walls still read, while the sun and neon accents actually do work).
-    const ambient = new THREE.AmbientLight(data.ambientLight, 0.55);
-    this.scene.add(ambient);
-    const hemi = new THREE.HemisphereLight(0x8fa0ff, 0x140a08, 0.55);
-    this.scene.add(hemi);
-
-    const sun = new THREE.DirectionalLight(data.sunLight.color, data.sunLight.intensity);
-    sun.position.set(...data.sunLight.pos);
-    // Direction only -- position gets re-centered on the player every frame
-    // (see updateProjectiles) so the shadow frustum can stay tight.
-    this.sunDir = new THREE.Vector3(...data.sunLight.pos).normalize();
-    if (this.renderer.shadowMap.enabled) {
-      sun.castShadow = true;
-      // 2048 is a 16 MB depth target. Machines reporting few cores are also
-      // the ones with weak integrated GPUs, so halve it there.
-      const shadowRes = this.q('shadowMapSize', (navigator.hardwareConcurrency || 8) <= 4 ? 1024 : 2048);
-      sun.shadow.mapSize.set(shadowRes, shadowRes);
-      sun.shadow.camera.near = 1;
-      sun.shadow.camera.far = 160;
-      sun.shadow.camera.left = -40;
-      sun.shadow.camera.right = 40;
-      sun.shadow.camera.top = 40;
-      sun.shadow.camera.bottom = -40;
-      sun.shadow.bias = -0.0015;
-      sun.target = new THREE.Object3D();
-      this.scene.add(sun.target);
-    }
-    this.sunLight = sun;
-    this.scene.add(sun);
+    // The light rig is built once for the page and re-aimed per level, not
+    // rebuilt. Two reasons, both measured:
+    //   - three bakes the COUNT of lights of each type into every program it
+    //     compiles, so a level with a different number of point lights than
+    //     the last one invalidates the whole cache.
+    //   - a shadow-casting light owns a 2048x2048 depth target. Dropping and
+    //     re-allocating it per level put a full shadow-atlas allocation and
+    //     clear on the first frame of every new level.
+    this._ensureLightRig(data);
 
     // Sectors a trigger can raise or lower. Their floor mesh, and the risers
     // beside it, animate every frame, so they are the one thing that cannot
@@ -2581,14 +2553,16 @@ class CyberDoomEngine {
     // Capped at 5 so it leaves headroom in the ~10 dynamic-light budget for
     // live projectiles and impact flashes (see _countActiveDynLights).
     const NEON = [0x00eaff, 0xff00c8, 0xff2244, 0x8f2bff];
-    const neonCap = this.q('dynLights', 5);
+    const neonCap = this._neonPool.length;
     let neonI = 0;
+    let neonUsed = 0;
     const addNeon = (x, y, z, color) => {
       if (!x && x !== 0) return;
-      if (this._levelDynLights.length >= neonCap) return;
-      const l = new THREE.PointLight(color, 1.6, 15, 2);
+      if (neonUsed >= neonCap) return;
+      const l = this._neonPool[neonUsed++];
+      l.color.set(color);
+      l.intensity = 1.6;
       l.position.set(x, y, z);
-      this.scene.add(l);
       this._levelDynLights.push(l);
     };
     addNeon(data.playerSpawn.pos[0], data.playerSpawn.pos[1] + 1.4, data.playerSpawn.pos[2], NEON[neonI++ % NEON.length]);
@@ -2603,7 +2577,7 @@ class CyberDoomEngine {
       .filter(sec => !sec.isSky)
       .slice()
       .sort((a, b) => (b.light || 0) - (a.light || 0) || (b.width || 0) * (b.depth || 0) - (a.width || 0) * (a.depth || 0));
-    for (let i = 0; i < brightestSectors.length && this._levelDynLights.length < neonCap; i++) {
+    for (let i = 0; i < brightestSectors.length && neonUsed < neonCap; i++) {
       const sec = brightestSectors[i];
       const rect = (sec.resolvedFloors && sec.resolvedFloors[0]) || sec;
       if (rect && rect.x !== undefined) {
@@ -2612,7 +2586,9 @@ class CyberDoomEngine {
       }
     }
 
-    this._ensureDynLightPools();
+    // Unused accents stay in the light set at intensity 0 rather than being
+    // removed, so the count three compiles against never moves.
+    for (let i = neonUsed; i < this._neonPool.length; i++) this._neonPool[i].intensity = 0;
     phase('lights');
 
     yield 0.67;
@@ -3183,15 +3159,13 @@ class CyberDoomEngine {
       }
       yield 0.93;
 
-      if (sun && sun.castShadow && sun.shadow) {
-        const wanted = sun.shadow.mapSize.x;
-        if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
-        sun.shadow.mapSize.set(64, 64);
-        restoreShadow = () => {
-          if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
-          sun.shadow.mapSize.set(wanted, wanted);
-        };
-      }
+      // The shadow map is deliberately NOT resized for this pass. Shrinking it
+      // means disposing and re-allocating a 2048x2048 depth target, and the
+      // re-allocation then lands on the first gameplay frame -- which is the
+      // frame this whole exercise exists to protect. Only the handful of
+      // representative objects are visible, so rendering the real atlas once
+      // here costs a clear and a few draws, and the first real frame inherits
+      // a shadow map that already exists.
       this.renderer.setScissorTest(true);
       this.renderer.setScissor(0, 0, 1, 1);
       this.renderer.render(this.scene, this.camera);
@@ -5221,6 +5195,9 @@ class CyberDoomEngine {
     // be reset with everything else that referenced them.
     for (const sp of (this._trailPool || [])) this._releaseSprite(sp);
     for (const sp of (this._flashSpritePool || [])) this._releaseSprite(sp);
+    for (const l of (this._projLightPool || [])) { l.intensity = 0; l.userData.busy = false; }
+    for (const l of (this._flashLightPool || [])) { l.intensity = 0; l.userData.busy = false; }
+    for (const l of (this._neonPool || [])) l.intensity = 0;
     this.scene.background = null;
     this.walls = [];
     this.doors = {};
@@ -5789,12 +5766,67 @@ class CyberDoomEngine {
     return n;
   }
 
+  /* Every light in the game, built once and re-aimed per level. Ambient,
+     hemisphere and the sun carry the level's own colours; the neon accents
+     and the projectile/impact pools are fixed-size and idle at intensity 0. */
+  _ensureLightRig(data) {
+    this._levelDynLights = [];
+    if (!this._lightRig) {
+      this._lightRig = true;
+      this._ambient = new THREE.AmbientLight(0xffffff, 0.55);
+      this._hemi = new THREE.HemisphereLight(0x8fa0ff, 0x140a08, 0.55);
+      const sun = new THREE.DirectionalLight(0xffffff, 1);
+      sun.target = new THREE.Object3D();
+      this._sun = sun;
+      for (const l of [this._ambient, this._hemi, sun, sun.target]) {
+        l._persist = true;
+        this.scene.add(l);
+      }
+      this._neonPool = [];
+      for (let i = 0; i < this.q('dynLights', 5); i++) {
+        const l = new THREE.PointLight(0xffffff, 0, 15, 2);
+        l._persist = true;
+        this.scene.add(l);
+        this._neonPool.push(l);
+      }
+      this._ensureDynLightPools();
+    }
+
+    this._ambient.color.set(data.ambientLight);
+    const sun = this._sun;
+    sun.color.set(data.sunLight.color);
+    sun.intensity = data.sunLight.intensity;
+    sun.position.set(...data.sunLight.pos);
+    // Direction only -- position gets re-centered on the player every frame
+    // (see updateProjectiles) so the shadow frustum can stay tight.
+    this.sunDir = new THREE.Vector3(...data.sunLight.pos).normalize();
+    sun.castShadow = !!this.renderer.shadowMap.enabled;
+    if (sun.castShadow) {
+      // 2048 is a 16 MB depth target. Machines reporting few cores are also
+      // the ones with weak integrated GPUs, so halve it there.
+      const shadowRes = this.q('shadowMapSize', (navigator.hardwareConcurrency || 8) <= 4 ? 1024 : 2048);
+      if (sun.shadow.mapSize.x !== shadowRes) {
+        if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+        sun.shadow.mapSize.set(shadowRes, shadowRes);
+      }
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 160;
+      sun.shadow.camera.left = -40;
+      sun.shadow.camera.right = 40;
+      sun.shadow.camera.top = 40;
+      sun.shadow.camera.bottom = -40;
+      sun.shadow.bias = -0.0015;
+    }
+    this.sunLight = sun;
+  }
+
   _ensureDynLightPools() {
     if (this._projLightPool) return;
     this._projLightPool = [];
     for (let i = 0; i < this.q('projLights', 8); i++) {
       const l = new THREE.PointLight(0xffffff, 0, 11, 2);
       l.userData.busy = false;
+      l._persist = true;
       this.scene.add(l);
       this._projLightPool.push(l);
     }
@@ -5802,6 +5834,7 @@ class CyberDoomEngine {
     for (let i = 0; i < this.q('flashLights', 2); i++) {
       const l = new THREE.PointLight(0xffffff, 0, 8, 2);
       l.userData.busy = false;
+      l._persist = true;
       this.scene.add(l);
       this._flashLightPool.push(l);
     }

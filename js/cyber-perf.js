@@ -68,9 +68,15 @@
     this.frames = 0;
     this._frame = new Float64Array(RING);
     this._sim = new Float64Array(RING);
+    // sim minus the render section. renderer.render() hands work to the GPU;
+    // how long that call takes depends on the driver underneath, and under a
+    // software rasteriser it is the rasteriser. This column is the part of a
+    // frame that is the game's own main-thread work either way.
+    this._simEx = new Float64Array(RING);
     this._n = 0;
     this.maxFrame = 0; this.maxFrameCause = ''; this.maxFrameAt = 0;
     this.maxSim = 0; this.maxSimCause = '';
+    this.maxSimEx = 0; this.maxSimExCause = '';
     this.hitches = [];
     this.overBudget = 0;
     this.totals = {};       // tag -> { ms, n, max } inclusive
@@ -153,9 +159,12 @@
 
   Perf.prototype._flush = function (frameMs, at) {
     var simMs = this._simMs;
+    var simEx = simMs - (this._cur.render || 0);
+    if (simEx < 0) simEx = 0;
     var i = this._n % RING;
     this._frame[i] = frameMs;
     this._sim[i] = simMs;
+    this._simEx[i] = simEx;
     this._n++;
     this.frames++;
 
@@ -167,6 +176,10 @@
     if (simMs > this.maxSim) {
       this.maxSim = simMs;
       this.maxSimCause = this._cause(simMs);
+    }
+    if (simEx > this.maxSimEx) {
+      this.maxSimEx = simEx;
+      this.maxSimExCause = this._cause(simEx);
     }
     if (frameMs > this.budgetMs) {
       this.overBudget++;
@@ -253,6 +266,9 @@
       maxFrameAtMs: this.maxFrameAt,
       maxSimMs: +this.maxSim.toFixed(1),
       maxSimCause: this.maxSimCause,
+      maxSimExRenderMs: +this.maxSimEx.toFixed(1),
+      maxSimExRenderCause: this.maxSimExCause,
+      p99SimExRenderMs: pct(this._simEx, this._n, 0.99),
       p99FrameMs: pct(this._frame, this._n, 0.99),
       p95FrameMs: pct(this._frame, this._n, 0.95),
       medianFrameMs: pct(this._frame, this._n, 0.5),
