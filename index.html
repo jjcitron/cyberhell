@@ -16,6 +16,7 @@
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
   <script src="js/cyber-traversal.js"></script>
+  <script src="js/cyber-perf.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -2292,6 +2293,7 @@ class CyberDoomEngine {
   }
 
   loadLevel(data) {
+    if (window.CyberPerf) window.CyberPerf.note('loadLevel:' + (data && data.name ? data.name : '?'));
     this.levelData = data;
     this._wallGrid = null;   // rebuilt lazily from the new wall list
     this._secGrid = null;
@@ -2453,6 +2455,13 @@ class CyberDoomEngine {
     // first frame renders: otherwise frame one of a 4,161-enemy map submits
     // every rig in full and stalls for a beat.
     for (let i = 0; i < 8; i++) this.updateEnemyLOD();
+    lp.lod = +(performance.now() - _t).toFixed(1);
+
+    // Every build phase is also a hitch cause: a level change is one long
+    // interval between two rAF callbacks, and this is what it was spent on.
+    if (window.CyberPerf) {
+      for (const k in lp) window.CyberPerf.add('load.' + k, lp[k]);
+    }
   }
 
   // One texture per name per level. TextureFactory.create() paints a fresh
@@ -4136,7 +4145,11 @@ class CyberDoomEngine {
     enemy.state = 'DEAD';
     const deathPos = enemy.group.position.clone();
     this.flashAt(enemy.group.position, 0xff4422);
-    if (window.CyberGore) window.CyberGore.death(deathPos, enemy);
+    if (window.CyberGore) {
+      const _t = performance.now();
+      window.CyberGore.death(deathPos, enemy);
+      this.perfAdd('goreDeath', _t);
+    }
     // No snap here. js/cyber-enemies.js poses its own death off state ===
     // 'DEAD' (crumple / topple / explode / fade). Forcing rotation.x = PI/2
     // and y = 0.2 fought that animation and, because 0.2 is a world height,
@@ -4184,7 +4197,9 @@ class CyberDoomEngine {
     if (window.CyberGore) {
       if (!this._goreInited) { window.CyberGore.init(this.scene, THREE); this._goreInited = true; }
       const dir = opts.dir || pos.clone().sub(this.camera.position).normalize();
+      const _t = performance.now();
       window.CyberGore.hit(pos, dir, opts.amount || 10, opts.enemy);
+      this.perfAdd('goreHit', _t);
       return;
     }
     // Fallback if cyber-gore.js failed to load: the old cyan cubes.
@@ -4431,7 +4446,7 @@ class CyberDoomEngine {
 
     // Update Projectiles & Blood Particles
     this.updateParticles(delta);
-    this.updateProjectiles(delta);
+    { const _t = performance.now(); this.updateProjectiles(delta); this.perfAdd('projectiles', _t); }
   }
 
   // Walls bucketed on a 4-unit grid, built lazily per level. The megamaps
@@ -4708,14 +4723,28 @@ class CyberDoomEngine {
   // Returns the load promise so callers (and tests) can await the build
   // instead of polling for levelData to change.
   loadLevelFromFile(filePath, notify = true) {
+    const P = window.CyberPerf;
     // A later load must win: a slow manifest fetch finishing after the player already picked
     // another level used to rebuild the scene (and the remembered selection) with stale data.
     const seq = (this._loadSeq = (this._loadSeq || 0) + 1);
+    let _tParse = 0;
     return fetch(filePath)
-      .then(res => res.json())
+      .then(res => res.text())
+      .then(text => {
+        // Only the parse is timed, not the wait: the network is off the main
+        // thread, JSON.parse of a 3 MB megamap is not, and lumping the two
+        // together reads as a 1 s stall that never blocked a frame.
+        const t0 = performance.now();
+        const data = JSON.parse(text);
+        _tParse = performance.now() - t0;
+        return data;
+      })
       .then(mapData => {
         if (seq !== this._loadSeq) return;
+        if (P) P.add('load.parse', _tParse);
+        if (P) { P.begin('load.reset'); }
         this.resetLevelScene();
+        if (P) P.end();
         this.loadLevel(mapData);
         // buildWall doesn't carry ledge-riser data onto the runtime wall
         // objects it builds; attach it here (mapData.walls and this.walls
@@ -5269,7 +5298,12 @@ class CyberDoomEngine {
   perfAdd(bucket, t0) {
     const p = this._pf || (this._pf = {});
     const b = p[bucket] || (p[bucket] = { ms: 0, n: 0 });
-    b.ms += performance.now() - t0; b.n++;
+    const dt = performance.now() - t0;
+    b.ms += dt; b.n++;
+    // Same measurement, second consumer: the averages table keeps its bucket,
+    // the hitch monitor gets it as a named slice of this frame so a spike in
+    // gore or traversal shows up as a cause tag instead of unattributed time.
+    if (window.CyberPerf) window.CyberPerf.add('sim.' + bucket, dt);
   }
   perfStats() {
     const out = {};
@@ -5282,6 +5316,7 @@ class CyberDoomEngine {
   perfReset() { this._pf = {}; }
 
   updateParticles(delta) {
+    const _tPart = performance.now();
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const pt = this.particles[i];
       pt.mesh.position.addScaledVector(pt.vel, delta);
@@ -5292,6 +5327,7 @@ class CyberDoomEngine {
         this.particles.splice(i, 1);
       }
     }
+    this.perfAdd('particles', _tPart);
     if (window.CyberGore) {
       const t = this.perfMark();
       window.CyberGore.update(delta, this._floorAtFn || (this._floorAtFn = (x, z) => this.getFloorAt(x, z)));
@@ -5832,20 +5868,35 @@ class CyberDoomEngine {
      ========================================================================== */
   animate() {
     requestAnimationFrame(() => this.animate());
+    const P = window.CyberPerf;
+    if (P) P.frame();
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
 
     if (this.isRunning) {
+      if (P) P.begin('sim.physics');
       this.updatePhysics(delta);
+      if (P) P.end();
+      if (P) P.begin('sim.enemies');
       this.updateEnemies(delta);
+      if (P) P.end();
+      if (P) P.begin('sim.hud');
       this.hudFace.draw(this.player.health, delta);
+      if (P) P.end();
     }
 
     // Redraw the automap every frame it is visible so the player marker,
     // heading and enemy dots track movement instead of freezing on open.
-    if (this.isAutomapOpen()) this.drawAutomap();
+    if (this.isAutomapOpen()) {
+      if (P) P.begin('sim.automap');
+      this.drawAutomap();
+      if (P) P.end();
+    }
 
+    if (P) P.begin('render');
     this.renderer.render(this.scene, this.camera);
+    if (P) P.end();
+    if (P) P.endFrame();
   }
 }
 
