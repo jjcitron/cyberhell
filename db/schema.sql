@@ -1,6 +1,8 @@
 -- Cyberhell editor metadata (Neon Postgres). Payloads live in Vercel Blob; this holds only
--- metadata and pointers. User ids are the HMAC email hash from api/_lib/store.js so raw
--- emails are never stored. Sessions are stateless HMAC cookies, so there is no sessions table --
+-- metadata and pointers. users + user_apps are the shared Acidlemon identity spine, not a
+-- Cyberhell-only login: ids are the HMAC email hash from api/_lib/store.js (so raw emails are
+-- never stored) and every Acidlemon title hashes with the same key, so the same player is the
+-- same row everywhere. Sessions are stateless HMAC cookies, so there is no sessions table --
 -- only the short-lived magic-link tokens below.
 -- Idempotent: safe to re-run.
 
@@ -8,6 +10,16 @@ CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,              -- emailHash(email)
   username    TEXT UNIQUE,
   created_at  BIGINT NOT NULL
+);
+
+-- Per-title membership on the shared Acidlemon identity spine (job 20260903-0836). One row
+-- per (player, game). Deliberately NOT a users.app column: a player who edits a Cyberhell pack
+-- and also plays Sumi is one user with two rows, not two users.
+CREATE TABLE IF NOT EXISTS user_apps (
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  app         TEXT NOT NULL,                 -- 'cyberhell', 'sumi', 'spacerunner', 'clash'
+  created_at  BIGINT NOT NULL,
+  PRIMARY KEY (user_id, app)
 );
 
 CREATE TABLE IF NOT EXISTS auth_tokens (

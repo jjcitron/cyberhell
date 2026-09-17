@@ -9,11 +9,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+// User ids are an HMAC of the email, so the raw address never reaches the store. The key is
+// ID_SECRET when set, falling back to SESSION_SECRET. Pinning ID_SECRET to the CURRENT
+// SESSION_SECRET value before that secret is ever rotated is what keeps existing accounts and
+// their packs attached -- rotating an unpinned SESSION_SECRET re-hashes every id and orphans
+// them. Same rule on every Acidlemon title, or the shared users table splits in two.
 export function emailHash(email) {
   const norm = String(email || '').trim().toLowerCase();
-  return crypto
-    .createHmac('sha256', process.env.SESSION_SECRET || 'cyberhell-dev-secret')
-    .update(norm).digest('hex').slice(0, 32);
+  const key = process.env.ID_SECRET || process.env.SESSION_SECRET || 'cyberhell-dev-secret';
+  return crypto.createHmac('sha256', key).update(norm).digest('hex').slice(0, 32);
 }
 
 export const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -25,7 +29,7 @@ export const newId = (prefix) => `${prefix}_${crypto.randomBytes(8).toString('he
 // unprovisioned deployment still answers (read-only canonical list) instead of throwing EROFS.
 const DATA_DIR = () => process.env.EDITOR_DATA_DIR
   || (process.env.VERCEL ? path.join('/tmp', 'cyberhell-editor-data') : path.join(process.cwd(), '.editor-data'));
-const EMPTY_DB = { users: {}, usernames: {}, tokens: {}, resend: {}, packs: {}, levels: {}, versions: {}, enemies: {}, midi: {} };
+const EMPTY_DB = { users: {}, usernames: {}, userApps: {}, tokens: {}, resend: {}, packs: {}, levels: {}, versions: {}, enemies: {}, midi: {} };
 
 function fsStore() {
   const dbPath = () => path.join(DATA_DIR(), 'db.json');
@@ -64,6 +68,14 @@ function fsStore() {
     async putUser(id, rec) { return mutate((db) => { db.users[id] = { id, ...db.users[id], ...rec }; return db.users[id]; }); },
     async getUsernameOwner(lower) { return (await read()).usernames[lower] || null; },
     async setUsernameOwner(lower, userId) { return mutate((db) => { if (userId) db.usernames[lower] = userId; else delete db.usernames[lower]; }); },
+
+    async listUserApps(userId) { return Object.keys((await read()).userApps[userId] || {}).sort(); },
+    async putUserApp(userId, app) {
+      return mutate((db) => {
+        const apps = (db.userApps[userId] ||= {});
+        apps[app] ||= Date.now();
+      });
+    },
 
     async putToken(token, rec) { return mutate((db) => { db.tokens[token] = rec; }); },
     async getToken(token) { return (await read()).tokens[token] || null; },
@@ -191,6 +203,12 @@ function neonStore() {
     },
     async getUsernameOwner(lower) { const r = await one('SELECT id FROM users WHERE lower(username)=$1', [lower]); return r?.id || null; },
     async setUsernameOwner(lower, userId) { if (!userId) await q('UPDATE users SET username=NULL WHERE lower(username)=$1', [lower]); },
+
+    async listUserApps(userId) { return (await rows('SELECT app FROM user_apps WHERE user_id=$1 ORDER BY app', [userId])).map((r) => r.app); },
+    async putUserApp(userId, app) {
+      await q('INSERT INTO user_apps (user_id, app, created_at) VALUES ($1,$2,$3) ON CONFLICT (user_id, app) DO NOTHING',
+        [userId, app, Date.now()]);
+    },
 
     async putToken(tok, rec) { await q('INSERT INTO auth_tokens (token,email,exp) VALUES ($1,$2,$3) ON CONFLICT (token) DO NOTHING', [tok, rec.email, rec.exp]); },
     async getToken(tok) { const r = await one('SELECT * FROM auth_tokens WHERE token=$1', [tok]); return r && { email: r.email, exp: Number(r.exp) }; },

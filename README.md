@@ -28,6 +28,7 @@ what runs in production.
 ```bash
 node tools/dev_api_server.mjs          # http://localhost:5305, static game + /api/*
 node --test tests/api.test.mjs         # end-to-end: auth, packs, levels, versions, publish
+node tests/qa-editor-entry.js          # headless: title-screen editor entry + guest-save prompt
 ```
 
 The dev server uses the `fs` store and **prints magic links to its console** instead of emailing
@@ -82,14 +83,31 @@ step. Every statement is `IF NOT EXISTS`, so re-running is safe.
 
 | Name | Required | Purpose |
 |---|---|---|
-| `SESSION_SECRET` | yes, in the cloud | signs session cookies and hashes emails into user ids |
+| `SESSION_SECRET` | yes, in the cloud | signs session cookies and hashes emails into user ids; **the same value on every Acidlemon title**, or the shared cookie is unreadable across them |
+| `ID_SECRET` | recommended | key for hashing emails into user ids. Pin it to the current `SESSION_SECRET` **before** rotating that secret — rotating it unpinned re-hashes every id and orphans every account |
 | `ADMIN_EMAIL` | yes | the only account that may edit canonical packs; unset means nobody is admin |
 | `DATABASE_URL` | for the cloud store | Neon connection string; its absence selects the `fs` store |
 | `BLOB_READ_WRITE_TOKEN` | for the cloud store | Vercel Blob, injected by the store integration |
 | `APP_URL` | recommended | base URL used in magic links |
-| `MAILGUN_API_KEY` / `_DOMAIN` / `_FROM` / `_API_BASE` | optional | magic-link delivery; without them links are logged |
+| `MAILGUN_API_KEY` | for real email | magic-link delivery. Without it links are logged to the console instead; everything else already defaults correctly |
+| `MAILGUN_DOMAIN` / `_FROM` / `_API_BASE` | optional | default to `games.acidlemon.com`, `Cyberhell <Cyberhell@games.acidlemon.com>` and the US API. Set `_API_BASE` only for the EU region |
+| `APP_ID` | optional | which title this deployment is, written into `user_apps` (default `cyberhell`) |
+| `COOKIE_DOMAIN` | optional | override the cookie scope. Left unset it derives `.acidlemon.com` from the host, and stays unscoped on `*.vercel.app` previews. `none` disables scoping |
 | `EDITOR_DATA_DIR` | local only | where the `fs` store writes (default `.editor-data/`) |
 | `EDITOR_STORE` | local only | force `fs` or `blob+neon` |
+
+### Identity
+
+Sign-in is the **shared Acidlemon account**, not a Cyberhell login (job `20260903-0836`). One
+`users` table keyed by an HMAC of the email — raw addresses are never stored — plus a `user_apps`
+row per title the account has signed in to, deliberately not a `users.app` column, so one player
+across four games is one user with four rows. The session cookie is `al_session`, scoped to
+`.acidlemon.com` so it travels between titles; the pre-spine `ch_session` is still read so the
+change signs nobody out.
+
+Magic links send from `Cyberhell@games.acidlemon.com` — the studio sending subdomain shared by
+every Acidlemon title. Mailgun and DNS setup:
+[`.claude-documentation/2026-09-14-mailgun-games-acidlemon-checklist.md`](.claude-documentation/2026-09-14-mailgun-games-acidlemon-checklist.md).
 
 ### API
 

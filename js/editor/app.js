@@ -248,7 +248,7 @@
     if (!host) return;
     var t = el('div', { class: 'ed-toast' + (kind ? ' ' + kind : '') }, msg);
     host.appendChild(t);
-    setTimeout(function () { t.remove(); }, kind === 'bad' ? 5200 : 2600);
+    setTimeout(function () { t.remove(); }, (kind === 'bad' || kind === 'warn') ? 5200 : 2600);
   };
 
   /* ---- panels / tools / menus ------------------------------------------- */
@@ -412,9 +412,29 @@
     });
   };
 
+  /* Guest editing is allowed all the way through: browse, build, Test in game, and Save into
+     a local pack. What a guest does NOT get is a pack that follows them to another browser, so
+     the first Save of a session opens the Account tab and asks for a magic link. The save still
+     completes locally -- prompting is not the same as refusing, and losing a guest's level to a
+     sign-in wall is the one thing that would make this worse than no prompt at all.
+     Once per session: Ctrl+S should not re-nag. */
+  var accountPrompted = false;
+  ed.promptAccount = function () {
+    if (accountPrompted) return;
+    var auth = window.CyberAuth;
+    if (!auth || !auth.possible()) return;      // static host: no API to sign in against
+    auth.get().then(function (u) {
+      if (u || accountPrompted) return;
+      accountPrompted = true;
+      auth.open();
+      ed.toast('Saved on this device. Sign in on the Account tab to keep it.', 'warn');
+    });
+  };
+
   ed.saveLevel = function () {
     if (!ed.level) { ed.toast('no level open', 'bad'); return Promise.resolve(null); }
     if (!ed.packId || !ed.levelId) return ed.saveLevelAs();
+    ed.promptAccount();
     return ed.storage.saveLevel(ed.packId, ed.levelId, ed.levelForGame(), { note: 'editor save' })
       .then(function (r) { ed.dirty = false; ed.toast('saved', 'ok'); ed._status(); ed.emit('pack-changed', {}); return r; })
       .catch(function (err) { ed.toast(err.message, 'bad'); return null; });
@@ -471,6 +491,7 @@
   };
 
   ed._saveLevelAs = function (packId, name) {
+    ed.promptAccount();
     return ed.storage.saveLevelAs(packId, name, ed.levelForGame()).then(function (r) {
       return ed.openLevel(packId, r.levelId).then(function () {
         ed.toast('saved as ' + name, 'ok');

@@ -4,6 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -100,7 +101,12 @@ test('magic-link sign-in: request -> link on stdout -> verify -> me', async () =
   const token = new URL(link).searchParams.get('token');
   const verified = await req('GET', `/api/auth/verify?token=${token}`);
   assert.equal(verified.status, 302);
-  assert.match(cookie, /^ch_session=/);
+  // Shared Acidlemon cookie, not the pre-spine ch_session name.
+  assert.match(cookie, /^al_session=/);
+  // localhost is not an acidlemon.com host, so the cookie must NOT be domain-scoped here --
+  // that is what keeps sign-in working on Vercel preview deployments.
+  assert.ok(!/Domain=/i.test(verified.headers.get('set-cookie') || ''),
+    'no Domain on a non-acidlemon host');
 
   // One-time use.
   const replay = await req('GET', `/api/auth/verify?token=${token}`, undefined, { keepCookie: true });
@@ -111,10 +117,73 @@ test('magic-link sign-in: request -> link on stdout -> verify -> me', async () =
   assert.equal(me.status, 200);
   assert.equal(me.json.email, EMAIL);
   assert.equal(me.json.isAdmin, true, 'ADMIN_EMAIL match should grant admin');
+  // Shared users + user_apps spine: signing in writes this title's membership row.
+  assert.deepEqual(me.json.apps, ['cyberhell']);
 
   const named = await req('POST', '/api/auth/username', { username: 'tester' });
   assert.equal(named.status, 200);
   assert.equal((await req('GET', '/api/auth/me')).json.username, 'tester');
+});
+
+// The cookie-domain branch decides whether one sign-in covers every Acidlemon title or only
+// the host it was issued on, and getting it wrong on *.vercel.app silently breaks preview
+// sign-in. Driven directly rather than over HTTP: fetch will not let a test forge a Host header.
+test('session cookie is scoped to .acidlemon.com only on acidlemon hosts', async () => {
+  process.env.SESSION_SECRET = 'test-secret-abc';
+  delete process.env.COOKIE_DOMAIN;
+  const { sessionCookie, cookieDomain } = await import('../api/_lib/session.js');
+  const at = (host) => ({ headers: { host } });
+
+  assert.equal(cookieDomain(at('cyberhell.acidlemon.com')), '.acidlemon.com');
+  assert.equal(cookieDomain(at('acidlemon.com')), '.acidlemon.com');
+  assert.equal(cookieDomain(at('sumi-game.acidlemon.com:443')), '.acidlemon.com');
+  assert.equal(cookieDomain(at('cyberhell-seven.vercel.app')), null, 'preview host stays unscoped');
+  assert.equal(cookieDomain(at('localhost:5305')), null);
+  // A lookalike must not match: notacidlemon.com is a different registrable domain.
+  assert.equal(cookieDomain(at('notacidlemon.com')), null);
+
+  assert.match(sessionCookie({ email: EMAIL }, at('cyberhell.acidlemon.com')),
+    /^al_session=.*Domain=\.acidlemon\.com/);
+  assert.ok(!/Domain=/.test(sessionCookie({ email: EMAIL }, at('cyberhell-x.vercel.app'))));
+});
+
+// The whole point of the job: the link has to leave from Cyberhell@games.acidlemon.com. Asserted
+// on the actual Mailgun request rather than on the constant, with MAILGUN_API_BASE pointed at a
+// throwaway capture server -- no key, no network, no DNS needed.
+test('magic link is sent From Cyberhell@games.acidlemon.com on the games subdomain', async () => {
+  const seen = [];
+  const capture = http.createServer((rq, rs) => {
+    let body = '';
+    rq.on('data', (c) => { body += c; });
+    rq.on('end', () => {
+      seen.push({ url: rq.url, form: new URLSearchParams(body) });
+      rs.writeHead(200, { 'Content-Type': 'application/json' });
+      rs.end('{"id":"<test>"}');
+    });
+  });
+  await new Promise((r) => capture.listen(0, '127.0.0.1', r));
+  const capturePort = capture.address().port;
+
+  const prior = { ...process.env };
+  process.env.MAILGUN_API_KEY = 'key-not-a-real-key';
+  process.env.MAILGUN_API_BASE = `http://127.0.0.1:${capturePort}`;
+  delete process.env.MAILGUN_DOMAIN;
+  delete process.env.MAILGUN_FROM;
+  try {
+    // Fresh import so the module-level defaults are computed under this env.
+    const { sendMagicLink } = await import(`../api/_lib/mail.js?from-default`);
+    const out = await sendMagicLink('player@example.com', 'https://cyberhell.acidlemon.com/api/auth/verify?token=t');
+    assert.equal(out.sent, true);
+  } finally {
+    capture.close();
+    process.env = prior;
+  }
+
+  assert.equal(seen.length, 1);
+  // Studio sending subdomain, shared by every Acidlemon title -- not a cyberhell-only domain.
+  assert.equal(seen[0].url, '/v3/games.acidlemon.com/messages');
+  assert.equal(seen[0].form.get('from'), 'Cyberhell <Cyberhell@games.acidlemon.com>');
+  assert.equal(seen[0].form.get('to'), 'player@example.com');
 });
 
 test('rate limit: a second link request inside the cooldown is 429', async () => {

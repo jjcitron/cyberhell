@@ -314,6 +314,19 @@
        all nine probe points, with the overlay not overflowing. Only the cheat
        TIP is dropped - it is a title-screen aside, and the player is already
        in-game by the time they see this screen. */
+    #overlay-screen:not(.mode-title) #editor-btn { display: none; }
+    /* .start-btn is written for <button>; an <a> needs the text-decoration and the
+       line-box reset to sit on the same baseline as ENTER THE ABYSS. */
+    a#editor-btn {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      /* Amber, not the cyan CTA -- the editor is a different destination. Black on amber
+         clears WCAG AA comfortably, which the red editor accent would not. */
+      background: linear-gradient(90deg, #ffb300, #ff6b00);
+      box-shadow: 0 0 25px #ffb300aa;
+    }
+    a#editor-btn:hover { box-shadow: 0 0 35px #ffb300; }
     #overlay-screen:not(.mode-pause) #pause-music { display: none; }
     #overlay-screen.mode-pause .title-tip { display: none; }
     #overlay-screen.mode-end #pause-music { display: none; }
@@ -888,8 +901,12 @@
           </div>
         </div>
 
-        <div style="display:flex; gap:12px;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
           <button id="start-btn" class="start-btn">ENTER THE ABYSS</button>
+          <!-- Editor entry on the main surface. A plain link, so it works before any script
+               runs and middle-click / new-tab behave the way a link should. Title screen only:
+               the same overlay is reused for pause and the end-of-mission card. -->
+          <a id="editor-btn" class="start-btn" href="editor.html">&#9998; LEVEL EDITOR</a>
           <button id="fullscreen-btn" class="start-btn touch-only" style="background:#263238;">&#x26F6; FULL SCREEN</button>
         </div>
         <!-- LEVEL CLEARED / PACK COMPLETE secondary actions. Hidden by default;
