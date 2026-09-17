@@ -4,6 +4,47 @@ A static Three.js FPS. `index.html` is the whole game; `js/` holds the engine mo
 the converted level sets, `midi/` the music, `tests/` the QA harnesses. It deploys to Vercel with no
 build step.
 
+## Performance and quality tiers
+
+`js/cyber-quality.js` resolves one of three presets at boot and everything else reads its budgets
+from it: pixel ratio, antialias, the shadow pass and its map size, anisotropy, the dynamic-light
+pools, environment prop and dust density, gore spray/decal/chunk/mist density, enemy draw distance,
+the budget half of the AI tuning table, and how much level-build work a frame is allowed to do.
+
+| Tier | Auto-selected when | What it costs |
+|---|---|---|
+| Low | coarse pointer, or `hardwareConcurrency <= 4`, or `deviceMemory <= 4` | no shadow pass, pixel ratio 1, no atmosphere particles, a third of the gore, 52-unit enemy draw distance |
+| Medium | `hardwareConcurrency <= 6` | 1024 shadow map, pixel ratio 1.25, about half the dressing and gore |
+| High | everything else | what the game shipped as before quality tiers existed |
+
+Resolution order is `?quality=low|medium|high` in the URL (QA and support) > the player's Options
+choice, which persists in `localStorage` > the device signals above. **The tier never moves on its
+own.** There is no frame-rate probe and no mid-fight downgrade: a quality flip during a fight is
+worse than the frames it buys, and a probe that samples a shader-compile stall flips on machines
+that did not need it.
+
+Combat identity is not a tier knob. Accuracy, damage, attacker count, reaction and burst timing
+stay exactly where the difficulty setting put them; Low gets fewer brains and rigs ticked per
+frame, not an easier game.
+
+### Measuring hitches
+
+```bash
+node tests/hitch.js                      # scripted enter/fight/exit, four maps, both profiles
+node tests/hitch.js --profile low --maps MAP01
+node tests/hitch-probe.js                # per-level-change: program count, first vs second render
+```
+
+`js/cyber-perf.js` (`window.CyberPerf`) records frame time rAF-to-rAF, the rAF callback's own time
+with and without `renderer.render()`, rolling p99s, and a cause tag on every frame over ~33 ms
+built from exclusive section time. It stays on in shipping builds: two `performance.now()` calls a
+frame plus one per instrumented section.
+
+Read `engBlock` from `tests/hitch.js`, not frame time. Headless renders through SwiftShader, so
+`renderer.render()` there *is* the rasteriser and frame time is mostly software raster that a
+machine with a GPU never pays. `engBlock` is the engine's own main-thread work: the rAF callback
+minus the render call, plus the level-build slice on a frame that carried one.
+
 ## Editor storage
 
 The level/pack editor can run entirely in the browser (local drafts) or against a small API in

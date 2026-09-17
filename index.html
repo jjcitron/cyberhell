@@ -2384,8 +2384,12 @@ class CyberDoomEngine {
   loadLevel(data) {
     // Claims the build. A sliced build already in flight (the boot campaign
     // load is the common one) sees its sequence number move and stops on its
-    // next pump instead of writing its half-built world over this one.
+    // next pump instead of writing its half-built world over this one, and a
+    // fetch that has not landed yet sees _loadSeq move and never starts one.
+    // Both matter now that a build spans frames: before slicing, an in-flight
+    // load either had not started or had already finished.
     this._buildSeq = (this._buildSeq || 0) + 1;
+    this._loadSeq = (this._loadSeq || 0) + 1;
     this._loadingLevel = false;
     this.hideLevelLoading();
     const it = this._levelBuildSteps(data);
