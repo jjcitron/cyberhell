@@ -86,6 +86,22 @@
     nightmare: { maxAttackers: 8, accuracy: 1.4, damageScale: 1.35, reactMax: 0.18, burstSize: 5 }
   };
 
+  /* Quality tier -> the BUDGET half of TUNING only. Perception, accuracy,
+     damage, attacker count and every other combat-identity number is left
+     exactly where setDifficulty put it: a weak machine gets fewer brains and
+     rigs ticked per frame, not an easier game. */
+  function applyQuality() {
+    var q = (typeof window !== 'undefined') && window.CyberQuality;
+    if (!q) return false;
+    TUNING.animRadius    = q.get('aiAnimRadius', TUNING.animRadius);
+    TUNING.animSlowRate  = q.get('aiAnimSlowRate', TUNING.animSlowRate);
+    TUNING.maxNear       = q.get('aiMaxNear', TUNING.maxNear);
+    TUNING.scanStripe    = q.get('aiScanStripe', TUNING.scanStripe);
+    TUNING.fieldBudget   = q.get('aiFieldBudget', TUNING.fieldBudget);
+    TUNING.fieldNewBudget = q.get('aiFieldNewBudget', TUNING.fieldNewBudget);
+    return true;
+  }
+
   function setDifficulty(name) {
     var d = DIFFICULTY[name];
     if (!d) return false;
@@ -1065,6 +1081,7 @@
 
   var API = {
     TUNING: TUNING,
+    applyQuality: applyQuality,
     setDifficulty: setDifficulty,
     update: update,
     onDamage: onDamage,
@@ -1083,4 +1100,11 @@
 
   if (typeof window !== 'undefined') window.CyberAI = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  // Budgets follow the resolved tier from boot, and follow an Options change
+  // the moment the player makes one.
+  applyQuality();
+  if (typeof window !== 'undefined' && window.CyberQuality) {
+    window.CyberQuality.onChange(applyQuality);
+  }
+
 })();

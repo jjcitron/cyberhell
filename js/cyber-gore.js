@@ -12,6 +12,13 @@
   // Scratch objects (built in init(), once THREE exists).
   var _mat, _pos, _quat, _scale, _zeroScale, _color, _color2, _UP, _FORWARD, _tmpDir;
 
+  // Quality tier knobs. Read through a helper rather than cached at load so
+  // an Options change takes effect on the next burst without a reload.
+  function Q(key, fallback) {
+    var q = (typeof window !== 'undefined') && window.CyberQuality;
+    return q ? q.get(key, fallback) : fallback;
+  }
+
   var GRAVITY = 18;             // chunks, sparks (sparks use GRAVITY*0.4)
   var DROP_GRAVITY = 14;        // droplets hang longer so they spread further
   var DRAG = 1.6;               // velocity *= (1 - DRAG*delta), clamped >=0
@@ -70,6 +77,12 @@
     mesh.count = max;
     for (var i = 0; i < max; i++) mesh.setMatrixAt(i, _zeroScale);
     mesh.instanceMatrix.needsUpdate = true;
+    // init() runs once for the page, so these meshes have to outlive the
+    // level teardown that clears scene.children -- otherwise clear() resets
+    // bookkeeping for pools whose meshes are no longer in the scene and gore
+    // silently stops after the first level change. See resetLevelScene.
+    mesh._persist = true;
+    mat._shared = true;
     scene.add(mesh);
     var pool = { mesh: mesh, max: max, free: [], active: [] };
     for (var j = max - 1; j >= 0; j--) pool.free.push(j);
@@ -168,6 +181,8 @@
     mesh.frustumCulled = false;
     mesh.count = 0; // grows as decals are placed, caps at `cap`
     for (var i = 0; i < cap; i++) mesh.setMatrixAt(i, _zeroScale);
+    mesh._persist = true;
+    mat._shared = true;
     scene.add(mesh);
     var ring = { mesh: mesh, cap: cap, next: 0, filled: 0 };
     decalRings[name] = ring;
@@ -175,9 +190,12 @@
   }
 
   function allocDecalSlot(ring) {
-    var idx = ring.next;
-    ring.next = (ring.next + 1) % ring.cap;
-    ring.filled = Math.min(ring.cap, ring.filled + 1);
+    // The buffer is always allocated at DECAL_CAP; the tier decides how much
+    // of it is used, so switching quality never reallocates a GPU buffer.
+    var cap = Math.max(16, Math.min(ring.cap, Q('goreDecalCap', ring.cap)));
+    var idx = ring.next % cap;
+    ring.next = (idx + 1) % cap;
+    ring.filled = Math.min(cap, ring.filled + 1);
     ring.mesh.count = ring.filled;
     return idx;
   }
@@ -223,6 +241,23 @@
 
   // ---- chunks (death debris): a handful of plain meshes, no pooling ----
   var chunks = [];
+  // One unit cube and two materials for the page instead of a fresh geometry
+  // and a fresh material per corpse. A crowded room is a lot of deaths, and
+  // each new material is a program lookup and each new geometry a buffer
+  // upload on the frame the enemy died.
+  var _chunkGeo = null, _chunkMatOil = null, _chunkMatBlood = null;
+  function chunkGeometry() {
+    if (!_chunkGeo) _chunkGeo = new THREE.BoxGeometry(1, 1, 1);
+    return _chunkGeo;
+  }
+  function chunkMaterial(isOil) {
+    if (isOil) {
+      if (!_chunkMatOil) { _chunkMatOil = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.7 }); _chunkMatOil._shared = true; }
+      return _chunkMatOil;
+    }
+    if (!_chunkMatBlood) { _chunkMatBlood = new THREE.MeshStandardMaterial({ color: 0x3a0a0e, roughness: 0.7 }); _chunkMatBlood._shared = true; }
+    return _chunkMatBlood;
+  }
 
   // ---- mist sprites (death only): quick expanding fade -------------------
   var mists = [];
@@ -406,6 +441,7 @@
       if (!scene) return;
       var d = (dir && dir.lengthSq() > 1e-6) ? dir.clone().normalize() : new THREE.Vector3(0, 0.3, 1);
       var count = Math.min(84, Math.max(35, Math.round((25 + (amount || 10) * 0.6) * 1.4)));
+      count = Math.max(6, Math.round(count * Q('goreSprayScale', 1)));
       var oilRatio = oilRatioFor(enemy);
       spray(pos, d, count, oilRatio, 3, 9, 0.9);
       sparks(pos, d, 6 + Math.floor(Math.random() * 7));
@@ -440,13 +476,16 @@
         spray(pos, fd, 12 + Math.floor(Math.random() * 10), oilRatio, 7, 14, 1.4);
       });
 
-      // Expanding dark mist sprite.
-      var mat = new THREE.SpriteMaterial({ map: mistTexture, transparent: true, depthWrite: false, opacity: 0.9 });
-      var sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos);
-      sprite.scale.setScalar(0.3);
-      scene.add(sprite);
-      mists.push({ sprite: sprite, life: 0.9, maxLife: 0.9 });
+      // Expanding dark mist sprite. Low drops it: an additive full-screen-ish
+      // sprite is fill rate an integrated GPU does not have to spare.
+      if (Q('goreMist', true)) {
+        var mat = new THREE.SpriteMaterial({ map: mistTexture, transparent: true, depthWrite: false, opacity: 0.9 });
+        var sprite = new THREE.Sprite(mat);
+        sprite.position.copy(pos);
+        sprite.scale.setScalar(0.3);
+        scene.add(sprite);
+        mists.push({ sprite: sprite, life: 0.9, maxLife: 0.9 });
+      }
 
       // Growing pool under the corpse.
       var poolRing = oilRatio > 0.5 ? decalRings.oilDecal : decalRings.bloodDecal;
@@ -454,11 +493,12 @@
       placeGrowingPool(poolRing, pos.x, pos.y, pos.z, poolColor, 2 + Math.random(), 1.5);
 
       // Tumbling chunks, gravity + one bounce, ~6s life.
-      var chunkCount = 3 + Math.floor(Math.random() * 3);
-      var chunkMat = new THREE.MeshStandardMaterial({ color: oilRatio > 0.5 ? 0x1a1a1e : 0x3a0a0e, roughness: 0.7 });
+      var chunkCount = Math.min(3 + Math.floor(Math.random() * 3), Q('goreChunks', 8));
+      var chunkMat = chunkMaterial(oilRatio > 0.5);
       for (var i = 0; i < chunkCount; i++) {
         var size = 0.08 + Math.random() * 0.1;
-        var mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), chunkMat);
+        var mesh = new THREE.Mesh(chunkGeometry(), chunkMat);
+        mesh.scale.setScalar(size);
         mesh.position.copy(pos);
         scene.add(mesh);
         chunks.push({
@@ -571,6 +611,17 @@
       mists = [];
       splashes = [];
       growingPools = [];
+    },
+
+    /* Called from the engine's level warm-up. A decal ring sits at count 0
+       until the first splat lands, so its program was being built during a
+       fight; drawing one zero-scale instance during the warm render moves
+       that to the loading card and costs one degenerate instance a frame. */
+    prewarm: function () {
+      Object.keys(decalRings).forEach(function (name) {
+        var r = decalRings[name];
+        if (r.mesh.count < 1) r.mesh.count = 1;
+      });
     },
 
     // QA/debug only: live counts per pool and decal ring.

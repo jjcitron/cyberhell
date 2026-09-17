@@ -40,6 +40,8 @@
       shadowMapSize: 2048,
       anisotropy: 4,
       dynLights: 5,             // neon accents kept alive per level
+      projLights: 8,            // pooled projectile lights, always in the
+      flashLights: 2,           // light set at intensity 0 (see _ensureDynLightPools)
       envPropBudget: 300,       // instanced dressing props
       envDustScale: 1,          // atmosphere particle count multiplier
       goreSprayScale: 1,        // droplets per hit
@@ -63,7 +65,9 @@
       shadows: true,
       shadowMapSize: 1024,
       anisotropy: 2,
-      dynLights: 4,
+      dynLights: 4,             // neon accents kept alive per level
+      projLights: 6,            // pooled projectile lights, always in the
+      flashLights: 2,           // light set at intensity 0 (see _ensureDynLightPools)
       envPropBudget: 160,
       envDustScale: 0.5,
       goreSprayScale: 0.65,
@@ -87,7 +91,9 @@
       shadows: false,           // the whole shadow pass, not a smaller map
       shadowMapSize: 512,
       anisotropy: 1,
-      dynLights: 2,
+      dynLights: 2,             // neon accents kept alive per level
+      projLights: 3,            // pooled projectile lights, always in the
+      flashLights: 1,           // light set at intensity 0 (see _ensureDynLightPools)
       envPropBudget: 60,
       envDustScale: 0,          // no atmosphere particles at all
       goreSprayScale: 0.35,
@@ -130,8 +136,10 @@
     if (sig.coarsePointer) return 'low';
     if (sig.cores !== null && sig.cores <= 4) return 'low';
     if (sig.deviceMemoryGB !== null && sig.deviceMemoryGB <= 4) return 'low';
-    if (sig.cores !== null && sig.cores <= 8) return 'medium';
-    if (sig.deviceMemoryGB !== null && sig.deviceMemoryGB <= 8) return 'medium';
+    // Nothing above this line uses deviceMemory again on purpose: the spec
+    // caps navigator.deviceMemory at 8, so "<= 8 GB" is true on a 64 GB
+    // workstation and would quietly demote every desktop in the world.
+    if (sig.cores !== null && sig.cores <= 6) return 'medium';
     return 'high';
   }
 

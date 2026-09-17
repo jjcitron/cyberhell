@@ -8,6 +8,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="site.webmanifest">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
+  <!-- First script in the page: every other module reads its budgets from
+       the resolved tier at load time. -->
+  <script src="js/cyber-quality.js"></script>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
   <script src="js/cyber-enemies.js"></script>
@@ -41,6 +44,19 @@
       height: 100%;
       display: block;
     }
+    #level-loading {
+      display: none;
+      position: absolute; inset: 0; z-index: 60;
+      align-items: center; justify-content: center;
+      background: rgba(2, 6, 10, 0.92);
+      font-family: monospace;
+    }
+    #level-loading .ll-box { text-align: center; min-width: 320px; }
+    #level-loading .ll-title { color: #00ffcc; letter-spacing: 4px; font-size: 13px; }
+    #level-loading .ll-name { color: #00e5ff; font-size: 22px; font-weight: bold; margin: 10px 0 16px; }
+    #level-loading .ll-track { height: 6px; background: #0d1117; border: 1px solid #00e5ff; }
+    #level-loading .ll-bar { height: 100%; width: 0%; background: #00e5ff; transition: width 80ms linear; }
+
     canvas#render-canvas {
       width: 100%;
       height: 100%;
@@ -775,6 +791,17 @@
 <body>
   <div id="game-container">
     <canvas id="render-canvas"></canvas>
+
+    <!-- LEVEL CHANGE CARD. The build runs a slice per frame (loadLevelSliced),
+         so the loop is alive underneath this and the browser is not hung; the
+         card is what turns a wait into a wait the player can read. -->
+    <div id="level-loading">
+      <div class="ll-box">
+        <div class="ll-title">ENTERING SECTOR</div>
+        <div id="level-loading-name" class="ll-name">--</div>
+        <div class="ll-track"><div id="level-loading-bar" class="ll-bar"></div></div>
+      </div>
+    </div>
     
     <!-- Reticle & Hitmarker -->
     <div id="crosshair-container">
@@ -862,11 +889,23 @@
           <button id="load-level-btn" style="background:#00e5ff; color:#000; font-weight:bold; border:none; padding:6px 16px; border-radius:3px; cursor:pointer;">LOAD LEVEL</button>
         </div>
 
-        <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center;">
           <label style="color:#00ffcc; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(0,255,204,0.1); padding:6px 14px; border:1px solid #00ffcc; border-radius:4px;">
             <input type="checkbox" id="all-weapons-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> START WITH ALL WEAPONS
           </label>
+          <!-- QUALITY. Auto-picked from device signals at boot and never
+               changed again by the game; this is the only thing that moves it. -->
+          <label style="color:#00ffcc; font-weight:bold; font-size:14px; background:rgba(0,255,204,0.1); padding:6px 14px; border:1px solid #00ffcc; border-radius:4px;">
+            QUALITY
+            <select id="quality-select" aria-label="Graphics quality preset" style="background:#0d1117; color:#00ffff; border:1px solid #00e5ff; padding:4px 10px; font-family:monospace; font-size:13px; border-radius:3px; cursor:pointer; margin-left:8px;">
+              <option value="auto">AUTO</option>
+              <option value="low">LOW</option>
+              <option value="medium">MEDIUM</option>
+              <option value="high">HIGH</option>
+            </select>
+          </label>
         </div>
+        <div id="quality-note" style="color:#7fa8b8; font-size:11px; font-family:monospace; letter-spacing:1px;"></div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
              title screen and on the end-of-mission card by #overlay-screen's
@@ -1988,6 +2027,17 @@ class HudFace {
     }
     if (this.grinTimer > 0) this.grinTimer -= delta;
 
+    // The face has three inputs and about forty fillRects. Repainting it on
+    // every frame meant a canvas upload per frame for a picture that changes
+    // a couple of times a second; on a throttled profile that showed up as
+    // sim.hud in the hitch log. Redraw only when the picture differs.
+    // The health thresholds this drawing actually branches on, not a tidy
+    // bucket that would skip a repaint across 31 -> 29.
+    const key = `${health > 30 ? 1 : 0}${health < 40 ? 1 : 0}${health > 50 ? 1 : 0}` +
+                `${health < 60 ? 1 : 0}|${this.lookDir}|${this.grinTimer > 0 ? 1 : 0}`;
+    if (key === this._drawnKey) return;
+    this._drawnKey = key;
+
     const ctx = this.ctx;
     ctx.clearRect(0, 0, 64, 64);
 
@@ -2183,6 +2233,14 @@ function disposeObject3D(root) {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) {
       if (!m) continue;
+      // A material flagged _shared is owned by a cache that outlives the level
+      // (engine.levelMaterial, cyber-enemies' matCache, the gore pools).
+      // Disposing it is what made every level change recompile the world's
+      // shaders: three drops the WebGLProgram when a material's last
+      // reference goes, so the next level paid a full first-hit compile in
+      // its first rendered frame. Measured at 340-670 ms of render() on the
+      // level-change frame before this guard existed.
+      if (m._shared) continue;
       for (const k in m) {
         const v = m[k];
         if (v && v.isTexture && !v._shared) v.dispose();
@@ -2275,15 +2333,14 @@ class CyberDoomEngine {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    // Antialias is a construction-time flag, so it is the one quality knob
+    // that cannot move without a reload. Everything else below is re-applied
+    // by applyQualityToRenderer() whenever the tier changes.
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: this.q('antialias', true) });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    // Phones ship 3x panels; rendering a Doom map at native density is three
-    // times the fragment work for detail nobody can see at arm's length.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? 1.5 : 2));
-    // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
-    // where the extra shadow-map pass isn't worth the frame cost.
-    this.renderer.shadowMap.enabled = !this.isTouch;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.applyQualityToRenderer();
+    if (window.CyberQuality) window.CyberQuality.onChange(() => this.applyQualityToRenderer());
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -2292,7 +2349,106 @@ class CyberDoomEngine {
     });
   }
 
+  /* One read of the resolved quality tier. Falls back to the value passed in
+     if cyber-quality.js is missing, so a broken load degrades to the old
+     hard-coded behaviour rather than a black screen. */
+  q(key, fallback) {
+    return window.CyberQuality ? window.CyberQuality.get(key, fallback) : fallback;
+  }
+
+  /* The live half of a tier change: pixel ratio and the shadow pass. Shadow
+     MAP SIZE and which lights cast are decided at level build (loadLevel), so
+     a tier change mid-level updates what it can and the rest lands on the
+     next load -- the Options label says as much. */
+  applyQualityToRenderer() {
+    // Phones ship 3x panels; rendering a Doom map at native density is three
+    // times the fragment work for detail nobody can see at arm's length.
+    const cap = this.q('pixelRatioCap', this.isTouch ? 1.5 : 2);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? Math.min(cap, 1.5) : cap));
+    const wantShadows = this.q('shadows', !this.isTouch) && !this.isTouch;
+    if (this.renderer.shadowMap.enabled !== wantShadows) {
+      this.renderer.shadowMap.enabled = wantShadows;
+      // three keys its programs on whether shadow mapping is on, so the flip
+      // needs the cached world materials rebuilt. Doing it here, from a menu,
+      // is the one moment in the session where that cost is acceptable.
+      if (this._matCache) for (const m of this._matCache.values()) m.needsUpdate = true;
+      if (this.sunLight) this.sunLight.castShadow = wantShadows;
+    }
+  }
+
+  /* Build the level synchronously. Unchanged contract: every existing caller
+     (boot, the editor draft, the PACK/LEVEL button, the QA suite) gets a
+     fully built level when this returns. It just drains the generator below
+     in one go instead of being the build itself. */
   loadLevel(data) {
+    // Claims the build. A sliced build already in flight (the boot campaign
+    // load is the common one) sees its sequence number move and stops on its
+    // next pump instead of writing its half-built world over this one.
+    this._buildSeq = (this._buildSeq || 0) + 1;
+    this._loadingLevel = false;
+    this.hideLevelLoading();
+    const it = this._levelBuildSteps(data);
+    let r;
+    do { r = it.next(); } while (!r.done);
+    return this.levelData;
+  }
+
+  /* Build the level across frames, ~one quality-tier slice of work per rAF.
+     This is what a level CHANGE uses. The whole build is 200 ms on a small
+     map and multiple seconds on the 20,461-wall megamap, and doing it in one
+     synchronous block is the single biggest stall in the game -- the player
+     sees the frame the exit switch was pressed on hang until the next level
+     exists. Sliced, no individual frame carries more than the slice budget.
+
+     The loop keeps running throughout (see animate): sim is held off because
+     the level is half-built, rendering is held off because the loading card
+     is over the top of it, and rAF keeps ticking so the page stays alive. */
+  loadLevelSliced(data, onProgress) {
+    const seq = this._buildSeq = (this._buildSeq || 0) + 1;
+    const it = this._levelBuildSteps(data);
+    const budget = this.q('loadSliceMs', 10);
+    this._loadingLevel = true;
+    this.showLevelLoading(data && data.name);
+    return new Promise((resolve) => {
+      const pump = () => {
+        // Somebody else started a build. Two generators sharing one engine
+        // interleave their batch maps and their wall arrays; the loser stops.
+        if (seq !== this._buildSeq) { resolve(null); return; }
+        const P = window.CyberPerf;
+        // The pump runs on its own rAF callback, outside animate(). Without
+        // this the build's own cost reads as unattributed time on whatever
+        // frame it shared, which is the opposite of a cause tag.
+        if (P) P.begin('load.slice');
+        const end = performance.now() + budget;
+        let r;
+        do { r = it.next(); } while (!r.done && performance.now() < end);
+        if (P) P.end();
+        if (typeof r.value === 'number') {
+          this.updateLevelLoading(r.value);
+          if (onProgress) onProgress(r.value);
+        }
+        if (r.done) {
+          this._loadingLevel = false;
+          this.hideLevelLoading();
+          resolve(this.levelData);
+          return;
+        }
+        schedule(pump);
+      };
+      // rAF normally, but a page the browser has decided is hidden throttles
+      // rAF to a crawl and a headless QA run would sit here for minutes.
+      // Whichever fires first wins; the other is a no-op.
+      const schedule = (fn) => {
+        let fired = false;
+        const once = () => { if (fired) return; fired = true; fn(); };
+        requestAnimationFrame(once);
+        setTimeout(once, 50);
+      };
+      schedule(pump);
+    });
+  }
+
+  *_levelBuildSteps(data) {
     if (window.CyberPerf) window.CyberPerf.note('loadLevel:' + (data && data.name ? data.name : '?'));
     this.levelData = data;
     this._wallGrid = null;   // rebuilt lazily from the new wall list
@@ -2325,7 +2481,7 @@ class CyberDoomEngine {
       sun.castShadow = true;
       // 2048 is a 16 MB depth target. Machines reporting few cores are also
       // the ones with weak integrated GPUs, so halve it there.
-      const shadowRes = (navigator.hardwareConcurrency || 8) <= 4 ? 1024 : 2048;
+      const shadowRes = this.q('shadowMapSize', (navigator.hardwareConcurrency || 8) <= 4 ? 1024 : 2048);
       sun.shadow.mapSize.set(shadowRes, shadowRes);
       sun.shadow.camera.near = 1;
       sun.shadow.camera.far = 160;
@@ -2357,26 +2513,48 @@ class CyberDoomEngine {
     // instrumentation worth hiding behind a flag.
     const lp = this._loadPhases = {};
     let _t = performance.now();
+    // Closing a phase also charges it to the hitch monitor immediately. Doing
+    // that at the END of the build instead put every phase on whichever frame
+    // happened to finish the level, which is useless for finding the phase
+    // that actually overran a slice.
+    const phase = (name) => {
+      const dt = performance.now() - _t;
+      lp[name] = +dt.toFixed(1);
+      if (window.CyberPerf) window.CyberPerf.add('load.' + name, dt);
+      _t = performance.now();
+    };
 
-    // Build Sectors (Floors & Ceilings)
-    data.sectors.forEach((sec, i) => {
-      this.buildSectorGeometry(sec, i);
-    });
-    lp.sectors = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    // Build Sectors (Floors & Ceilings). Chunk sizes are small deliberately:
+    // the caller decides how much wall clock a slice gets, so the only job
+    // here is to offer yield points often enough that it can stop near one.
+    const secs = data.sectors;
+    for (let i = 0; i < secs.length; i++) {
+      this.buildSectorGeometry(secs[i], i);
+      if ((i & 15) === 15) yield 0.20 * (i / secs.length);
+    }
+    phase('sectors');
+    yield 0.20;
 
     // Build Walls, Doors & Switches
-    data.walls.forEach(w => {
-      this.buildWall(w);
-    });
-    lp.walls = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    const wl = data.walls;
+    for (let i = 0; i < wl.length; i++) {
+      this.buildWall(wl[i]);
+      if ((i & 63) === 63) yield 0.20 + 0.30 * (i / wl.length);
+    }
+    phase('walls');
+    yield 0.50;
 
-    this.flushBatches();
-    lp.merge = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    yield* this._flushBatchesSteps(0.50, 0.60);
+    phase('merge');
 
     // Lifts, switch-raised floors, teleporters and the dead-end safety net.
     // data.walls[i] pairs 1:1 with this.walls[i]; the module relies on that.
-    if (window.CyberTraversal) window.CyberTraversal.init(this, data);
-    lp.traversal = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    if (window.CyberTraversal) {
+      if (window.CyberTraversal.initSteps) yield* window.CyberTraversal.initSteps(this, data);
+      else window.CyberTraversal.init(this, data);
+    }
+    phase('traversal');
+    yield 0.65;
 
     // The extraction switch is what ends the level, so the automap has to be
     // able to point at it.  Every level carries exactly one marked exit; if a
@@ -2389,10 +2567,11 @@ class CyberDoomEngine {
     // Capped at 5 so it leaves headroom in the ~10 dynamic-light budget for
     // live projectiles and impact flashes (see _countActiveDynLights).
     const NEON = [0x00eaff, 0xff00c8, 0xff2244, 0x8f2bff];
+    const neonCap = this.q('dynLights', 5);
     let neonI = 0;
     const addNeon = (x, y, z, color) => {
       if (!x && x !== 0) return;
-      if (this._levelDynLights.length >= 5) return;
+      if (this._levelDynLights.length >= neonCap) return;
       const l = new THREE.PointLight(color, 1.6, 15, 2);
       l.position.set(x, y, z);
       this.scene.add(l);
@@ -2410,7 +2589,7 @@ class CyberDoomEngine {
       .filter(sec => !sec.isSky)
       .slice()
       .sort((a, b) => (b.light || 0) - (a.light || 0) || (b.width || 0) * (b.depth || 0) - (a.width || 0) * (a.depth || 0));
-    for (let i = 0; i < brightestSectors.length && this._levelDynLights.length < 5; i++) {
+    for (let i = 0; i < brightestSectors.length && this._levelDynLights.length < neonCap; i++) {
       const sec = brightestSectors[i];
       const rect = (sec.resolvedFloors && sec.resolvedFloors[0]) || sec;
       if (rect && rect.x !== undefined) {
@@ -2419,22 +2598,60 @@ class CyberDoomEngine {
       }
     }
 
-    lp.lights = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    this._ensureDynLightPools();
+    phase('lights');
 
-    // Spawn Entities
-    data.entities.forEach(ent => {
-      this.spawnEntity(ent);
-    });
-    lp.entities = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    yield 0.67;
+
+    // Spawn Entities. An enemy is a whole rig, so these are the expensive
+    // ones -- four per yield, not sixty-four.
+    const ents = data.entities;
+    for (let i = 0; i < ents.length; i++) {
+      this.spawnEntity(ents[i]);
+      if ((i & 3) === 3) yield 0.67 + 0.21 * (i / ents.length);
+    }
+    phase('entities');
+    yield 0.88;
 
     // Environment dressing: sky/fog per theme, atmosphere particles, and
     // instanced props (lights, pipes, crates, racks, cables, signs). Runs
     // after entities so crate placement can anchor to pickup positions.
     if (window.CyberEnv) {
       if (!this._envInited) { window.CyberEnv.init(this.scene, THREE); this._envInited = true; }
-      window.CyberEnv.decorate(data, this);
+      if (window.CyberEnv.decorateSteps) yield* window.CyberEnv.decorateSteps(data, this);
+      else window.CyberEnv.decorate(data, this);
     }
-    lp.env = +(performance.now() - _t).toFixed(1); _t = performance.now();
+    phase('env');
+    yield 0.92;
+
+    // Compile the world's shaders here, inside the load, instead of letting
+    // the first rendered frame discover them. With the shared material cache
+    // this is usually a no-op after the first level -- but "usually" is not
+    // "never", and a 400 ms first-hit compile in the frame the player spawns
+    // is exactly the stall this job exists to remove.
+    //
+    // renderer.compile() only covers the colour pass. The shadow pass builds
+    // its own depth-material programs and compiles them at the first shadow
+    // render, which is how an 800 ms render() still turned up on a level
+    // change after the colour programs were already cached. So the warm-up
+    // also renders one frame -- scissored to a single pixel, because it is
+    // the compile we want and not the raster.
+    try {
+      // Effects that only exist once something has been shot or bled on are
+      // put in the scene for the duration of this one render, so their
+      // programs are built here and not in the middle of the first fight
+      // (the hitch log tagged those frames shaderCompile+N).
+      const undoPrewarm = this._prewarmEffects();
+      this.renderer.compile(this.scene, this.camera);
+      const hadScissor = this.renderer.getScissorTest();
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(0, 0, 1, 1);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setScissorTest(hadScissor);
+      undoPrewarm();
+    } catch (err) { /* nothing worth failing a load over */ }
+    phase('warm');
+    yield 0.96;
 
     // Set Spawn
     const spawnFloor = this.getFloorAt(data.playerSpawn.pos[0], data.playerSpawn.pos[2]);
@@ -2454,14 +2671,8 @@ class CyberDoomEngine {
     // Settle every body's level of detail against the spawn point before the
     // first frame renders: otherwise frame one of a 4,161-enemy map submits
     // every rig in full and stalls for a beat.
-    for (let i = 0; i < 8; i++) this.updateEnemyLOD();
-    lp.lod = +(performance.now() - _t).toFixed(1);
-
-    // Every build phase is also a hitch cause: a level change is one long
-    // interval between two rAF callbacks, and this is what it was spent on.
-    if (window.CyberPerf) {
-      for (const k in lp) window.CyberPerf.add('load.' + k, lp[k]);
-    }
+    for (let i = 0; i < 8; i++) { this.updateEnemyLOD(); yield 0.96 + 0.04 * (i / 8); }
+    phase('lod');
   }
 
   // One texture per name per level. TextureFactory.create() paints a fresh
@@ -2474,7 +2685,7 @@ class CyberDoomEngine {
     let t = this._texCache[key];
     if (!t) {
       t = TextureFactory.create(name, variant);
-      t.anisotropy = 4;
+      t.anisotropy = this.q('anisotropy', 4);
       t._shared = true;    // survives resetLevelScene; see disposeObject3D
       this._texCache[key] = t;
     }
@@ -2489,7 +2700,7 @@ class CyberDoomEngine {
     const key = `${name}#${variant || 0}`;
     if (!(key in this._texEmCache)) {
       const t = TextureFactory.createEmissive(name, variant);
-      if (t) { t.anisotropy = 4; t._shared = true; }
+      if (t) { t.anisotropy = this.q('anisotropy', 4); t._shared = true; }
       this._texEmCache[key] = t;
     }
     return this._texEmCache[key];
@@ -2823,23 +3034,48 @@ class CyberDoomEngine {
     b.geos.push(geo);
   }
 
+  /* One material per (texture, variant, role) for the whole page, not per
+     level. Same discipline as levelTexture(): the shader configuration a
+     merged world chunk needs is identical from map to map, so building a
+     fresh material every load bought nothing and cost a full program
+     compile on the first frame of every new level. Flagged _shared so
+     disposeObject3D leaves it alone. */
+  levelMaterial(b) {
+    if (!this._matCache) this._matCache = new Map();
+    const key = `${b.tex}#${b.variant || 0}|${b.role}|${b.emMap ? 1 : 0}`;
+    let mat = this._matCache.get(key);
+    if (mat) return mat;
+    mat = new THREE.MeshStandardMaterial({
+      map: this.levelTexture(b.tex, b.variant),
+      roughness: b.role === 'wall' ? 0.7 : 0.8,
+      vertexColors: true,
+      ...(b.role === 'ceil' ? { side: THREE.BackSide } : {}),
+      ...(b.emMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: b.emMap, emissiveIntensity: 0.8 } : {})
+    });
+    if (b.role === 'floor') {
+      mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1;
+    }
+    mat._shared = true;
+    this._matCache.set(key, mat);
+    return mat;
+  }
+
   /* Merge every collected bucket into one mesh each. Called once at the end
      of loadLevel, after both the sector and the wall pass. */
   flushBatches() {
+    const it = this._flushBatchesSteps(0, 1);
+    let r; do { r = it.next(); } while (!r.done);
+  }
+
+  *_flushBatchesSteps(from, to) {
     if (!this._batches) return;
+    const total = this._batches.size || 1;
+    let n = 0;
     for (const b of this._batches.values()) {
+      if ((n++ & 7) === 7) yield from + (to - from) * (n / total);
       const geo = mergeGeos(b.geos);
       if (b.geos.length > 1) for (const g of b.geos) g.dispose();
-      const mat = new THREE.MeshStandardMaterial({
-        map: this.levelTexture(b.tex, b.variant),
-        roughness: b.role === 'wall' ? 0.7 : 0.8,
-        vertexColors: true,
-        ...(b.role === 'ceil' ? { side: THREE.BackSide } : {}),
-        ...(b.emMap ? { emissive: new THREE.Color(0xffffff), emissiveMap: b.emMap, emissiveIntensity: 0.8 } : {})
-      });
-      if (b.role === 'floor') {
-        mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1;
-      }
+      const mat = this.levelMaterial(b);
       const mesh = new THREE.Mesh(geo, mat);
       // Floors keep the tag qa-collision raycasts; the bucket key carries the
       // height, so every surface in one merged floor mesh shares it.
@@ -2852,6 +3088,65 @@ class CyberDoomEngine {
       this.scene.add(mesh);
     }
     this._batches = null;
+  }
+
+  /* Put one of everything transient in the scene so the warm render compiles
+     it: a projectile of each kind, one trail sprite, one flash sprite, and
+     the gore decal rings (which draw nothing until the first splat, so they
+     would otherwise compile on the first kill). Returns the undo. */
+  _prewarmEffects() {
+    const temp = [];
+    if (window.CyberGore) {
+      if (!this._goreInited) { window.CyberGore.init(this.scene, THREE); this._goreInited = true; }
+      if (window.CyberGore.prewarm) window.CyberGore.prewarm();
+    }
+    for (const kind in PROJECTILE_KINDS) {
+      const cfg = PROJECTILE_KINDS[kind];
+      const a = this._projAssets(kind, cfg);
+      const add = (geo, mat) => {
+        if (!geo || !mat) return;
+        const m = new THREE.Mesh(geo, mat);
+        m.position.copy(this.camera.position);
+        m.scale.setScalar(1e-4);
+        m.frustumCulled = false;      // a 0.1 mm mesh is not worth culling maths
+        this.scene.add(m);
+        temp.push(m);
+      };
+      add(a.coreGeo, a.coreMat);
+      add(a.haloGeo, a.haloMat);
+      add(a.ringGeo, a.ringMat);
+    }
+    if (!this._trailPool) this._trailPool = [];
+    if (!this._flashSpritePool) this._flashSpritePool = [];
+    const s1 = this._acquireSprite(this._trailPool, 0xffffff, 0);
+    const s2 = this._acquireSprite(this._flashSpritePool, 0xffffff, 0);
+    s1.position.copy(this.camera.position); s1.scale.setScalar(1e-4);
+    s2.position.copy(this.camera.position); s2.scale.setScalar(1e-4);
+    return () => {
+      for (const m of temp) this.scene.remove(m);
+      this._releaseSprite(s1);
+      this._releaseSprite(s2);
+    };
+  }
+
+  /* ---- loading card -------------------------------------------------------
+     A level change is the one place a wait is legitimate, so it gets a card
+     that says what is happening instead of a frozen last frame. */
+  showLevelLoading(name) {
+    const el = document.getElementById('level-loading');
+    if (!el) return;
+    const t = document.getElementById('level-loading-name');
+    if (t) t.innerText = name || 'LOADING SECTOR';
+    this.updateLevelLoading(0);
+    el.style.display = 'flex';
+  }
+  updateLevelLoading(frac) {
+    const bar = document.getElementById('level-loading-bar');
+    if (bar) bar.style.width = Math.round(Math.max(0, Math.min(1, frac)) * 100) + '%';
+  }
+  hideLevelLoading() {
+    const el = document.getElementById('level-loading');
+    if (el) el.style.display = 'none';
   }
 
   // Public hook for other regions (enemies/pickups) that build meshes outside
@@ -3082,7 +3377,10 @@ class CyberDoomEngine {
     const list = this.enemies;
     if (!list.length) return;
     const cam = this.camera.position;
-    const NEAR = 22, FAR = 95, HYST = 3;
+    // Draw distance is a tier knob: a Low machine stops submitting full rigs
+    // sooner and drops distant bodies entirely, which is most of what makes a
+    // 4,000-body map survivable on integrated graphics.
+    const NEAR = this.q('enemyLodNear', 22), FAR = this.q('enemyLodFar', 95), HYST = 3;
     const lane = (this._lodLane = ((this._lodLane || 0) + 1) & 7);
     for (let i = lane; i < list.length; i += 8) {
       const e = list[i];
@@ -3177,6 +3475,8 @@ class CyberDoomEngine {
         }
       }
     });
+
+    this.initQualityOption();
 
     // Master Pack & Level Loader
     const packSelect = document.getElementById('pack-select');
@@ -3481,6 +3781,36 @@ class CyberDoomEngine {
       const p = this.canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => {});
     } catch (err) { /* lock refused: the overlay stays up, click again */ }
+  }
+
+  /* QUALITY dropdown. AUTO means "whatever the device signals say", which is
+     what a fresh install gets; picking a tier pins it and survives a reload.
+     Nothing in the game writes to this control -- the tier does not move on
+     its own, by design (see js/cyber-quality.js). */
+  initQualityOption() {
+    const sel = document.getElementById('quality-select');
+    const note = document.getElementById('quality-note');
+    const Q = window.CyberQuality;
+    if (!sel || !Q) return;
+    sel.value = Q.source === 'auto' ? 'auto' : Q.tier;
+    const describe = () => {
+      if (!note) return;
+      const sig = Q.signals || {};
+      const bits = [];
+      if (sig.cores) bits.push(sig.cores + ' cores');
+      if (sig.deviceMemoryGB) bits.push(sig.deviceMemoryGB + ' GB');
+      if (sig.coarsePointer) bits.push('touch');
+      note.innerText = `${Q.settings.label} — auto for this device: ${Q.TIERS[Q.autoTier].label}` +
+        (bits.length ? ` (${bits.join(', ')})` : '') +
+        '  ·  shadows and set dressing apply from the next level';
+    };
+    describe();
+    sel.addEventListener('change', () => {
+      if (sel.value === 'auto') Q.clearOverride();
+      else Q.set(sel.value, true);
+      describe();
+      this.showHudMessage(`QUALITY: ${Q.settings.label}`);
+    });
   }
 
   unlockPointer() {
@@ -4702,10 +5032,21 @@ class CyberDoomEngine {
   resetLevelScene() {
     for (const child of this.scene.children.slice()) {
       if (child === this.camera) continue;
+      // Pools that are built once for the page and reset per level rather
+      // than rebuilt (the gore instanced meshes). Dropping them here both
+      // threw away the buffers and left CyberGore holding meshes that were no
+      // longer in the scene, which is why gore went silent after the first
+      // level change.
+      if (child._persist) continue;
       this.scene.remove(child);
       disposeObject3D(child);
     }
     if (!this.scene.children.includes(this.camera)) this.scene.add(this.camera);
+    // The sprite pools stay in the scene across levels (that is the point of
+    // _persist), so the bookkeeping that says which of them are in use has to
+    // be reset with everything else that referenced them.
+    for (const sp of (this._trailPool || [])) this._releaseSprite(sp);
+    for (const sp of (this._flashSpritePool || [])) this._releaseSprite(sp);
     this.scene.background = null;
     this.walls = [];
     this.doors = {};
@@ -4745,7 +5086,12 @@ class CyberDoomEngine {
         if (P) { P.begin('load.reset'); }
         this.resetLevelScene();
         if (P) P.end();
-        this.loadLevel(mapData);
+        // A null here means another load claimed the engine mid-build; the
+        // rest of this chain belongs to that load, not this one.
+        return this.loadLevelSliced(mapData).then(built => (built ? mapData : null));
+      })
+      .then(mapData => {
+        if (!mapData) return;
         // buildWall doesn't carry ledge-riser data onto the runtime wall
         // objects it builds; attach it here (mapData.walls and this.walls
         // stay 1:1 since loadLevel pushes exactly one wall object per entry).
@@ -5005,30 +5351,46 @@ class CyberDoomEngine {
      player shots and by enemyAttack above for enemy attacks.
      kind: fireball | plasma | laser | energy_bolt | energy_burst
      ------------------------------------------------------------------- */
+  /* Geometry and materials for one projectile kind, built once for the page.
+     Nothing here is per-shot: the colour, size and blending of a fireball do
+     not change between fireballs. Materials are flagged _shared so the level
+     teardown leaves them (and their compiled programs) alone. */
+  _projAssets(kind, cfg) {
+    if (!this._projAssetCache) this._projAssetCache = new Map();
+    let a = this._projAssetCache.get(kind);
+    if (a) return a;
+    const size = cfg.radius;
+    const mk = (m) => { m._shared = true; return m; };
+    a = {
+      coreGeo: cfg.thin
+        ? new THREE.CylinderGeometry(size * 0.4, size * 0.4, size * 6, 6)
+        : new THREE.IcosahedronGeometry(size, cfg.stretch ? 2 : 1),
+      coreMat: mk(new THREE.MeshBasicMaterial({ color: cfg.color })),
+      haloGeo: new THREE.SphereGeometry(size * 1.8, 8, 8),
+      haloMat: mk(new THREE.MeshBasicMaterial({ color: cfg.halo, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })),
+      ringGeo: cfg.ring ? new THREE.TorusGeometry(size * 1.7, size * 0.15, 6, 14) : null,
+      ringMat: cfg.ring ? mk(new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })) : null
+    };
+    this._projAssetCache.set(kind, a);
+    return a;
+  }
+
   spawnProjectile({ from, dir, speed, kind = 'fireball', owner = 'enemy', damage, radius, life }) {
     const cfg = PROJECTILE_KINDS[kind] || PROJECTILE_KINDS.fireball;
     const group = new THREE.Group();
     const size = cfg.radius;
+    const assets = this._projAssets(kind, cfg);
 
-    const coreGeo = cfg.thin
-      ? new THREE.CylinderGeometry(size * 0.4, size * 0.4, size * 6, 6)
-      : new THREE.IcosahedronGeometry(size, cfg.stretch ? 2 : 1);
-    const core = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({ color: cfg.color }));
+    const core = new THREE.Mesh(assets.coreGeo, assets.coreMat);
     if (cfg.thin) core.rotation.x = Math.PI / 2;
     group.add(core);
 
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(size * 1.8, 8, 8),
-      new THREE.MeshBasicMaterial({ color: cfg.halo, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
-    );
+    const halo = new THREE.Mesh(assets.haloGeo, assets.haloMat);
     group.add(halo);
 
     let ring = null;
-    if (cfg.ring) {
-      ring = new THREE.Mesh(
-        new THREE.TorusGeometry(size * 1.7, size * 0.15, 6, 14),
-        new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })
-      );
+    if (assets.ringGeo) {
+      ring = new THREE.Mesh(assets.ringGeo, assets.ringMat);
       group.add(ring);
     }
 
@@ -5192,26 +5554,55 @@ class CyberDoomEngine {
     this._updateFlashes(delta);
   }
 
+  /* Trail and flash sprites: pooled, colour set per use. A SpriteMaterial's
+     colour and opacity are uniforms, so recolouring one costs nothing, while
+     building and disposing four of them per shot cost a program every time
+     the last one went away. */
+  _acquireSprite(pool, color, opacity) {
+    let s = pool.find(o => !o.userData.busy);
+    if (!s) {
+      const mat = new THREE.SpriteMaterial({
+        map: getGlowTexture(), transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      mat._shared = true;
+      s = new THREE.Sprite(mat);
+      s._persist = true;          // survives the level teardown with its program
+      this.scene.add(s);
+      pool.push(s);
+    }
+    s.userData.busy = true;
+    s.visible = true;
+    s.material.color.set(color);
+    s.material.opacity = opacity;
+    return s;
+  }
+  _releaseSprite(s) {
+    s.userData.busy = false;
+    s.material.opacity = 0;
+    s.visible = false;
+  }
+
   _makeTrail(color) {
-    const tex = getGlowTexture();
+    if (!this._trailPool) this._trailPool = [];
     const trail = [];
     for (let i = 0; i < 4; i++) {
-      const mat = new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-      const spr = new THREE.Sprite(mat);
+      const spr = this._acquireSprite(this._trailPool, color, 0);
       spr.scale.setScalar(0.3);
-      this.scene.add(spr);
       trail.push(spr);
     }
     return trail;
   }
+  _releaseTrail(trail) {
+    for (const s of trail) this._releaseSprite(s);
+  }
 
   _releaseProjectile(p) {
     this.scene.remove(p.group);
-    p.core.geometry.dispose(); p.core.material.dispose();
-    p.halo.geometry.dispose(); p.halo.material.dispose();
-    if (p.ring) { p.ring.geometry.dispose(); p.ring.material.dispose(); }
-    if (p.light) { p.light.visible = false; p.light.intensity = 0; }
-    p.trail.forEach(s => { this.scene.remove(s); s.material.dispose(); });
+    // Geometry and materials belong to _projAssets and the trail pool now.
+    // Disposing them here is what made the next shot recompile a shader.
+    if (p.light) { p.light.intensity = 0; p.light.userData.busy = false; }
+    this._releaseTrail(p.trail);
   }
 
   // Total dynamic point lights currently live in the scene: static per-level
@@ -5219,25 +5610,34 @@ class CyberDoomEngine {
   // hard cap of 10 so no map can light-spam the renderer.
   _countActiveDynLights() {
     let n = this._levelDynLights ? this._levelDynLights.length : 0;
-    if (this._projLightPool) n += this._projLightPool.filter(l => l.visible).length;
-    if (this._flashLightPool) n += this._flashLightPool.filter(l => l.visible).length;
+    if (this._projLightPool) n += this._projLightPool.filter(l => l.userData.busy).length;
+    if (this._flashLightPool) n += this._flashLightPool.filter(l => l.userData.busy).length;
     return n;
   }
 
-  _acquireProjectileLight(color) {
-    if (!this._projLightPool) {
-      this._projLightPool = [];
-      for (let i = 0; i < 8; i++) {
-        const l = new THREE.PointLight(0xffffff, 0, 11, 2);
-        l.visible = false;
-        this.scene.add(l);
-        this._projLightPool.push(l);
-      }
+  _ensureDynLightPools() {
+    if (this._projLightPool) return;
+    this._projLightPool = [];
+    for (let i = 0; i < this.q('projLights', 8); i++) {
+      const l = new THREE.PointLight(0xffffff, 0, 11, 2);
+      l.userData.busy = false;
+      this.scene.add(l);
+      this._projLightPool.push(l);
     }
-    if (this._countActiveDynLights() >= 10) return null; // beyond the pool: renders without a light
-    const free = this._projLightPool.find(l => !l.visible);
+    this._flashLightPool = [];
+    for (let i = 0; i < this.q('flashLights', 2); i++) {
+      const l = new THREE.PointLight(0xffffff, 0, 8, 2);
+      l.userData.busy = false;
+      this.scene.add(l);
+      this._flashLightPool.push(l);
+    }
+  }
+
+  _acquireProjectileLight(color) {
+    this._ensureDynLightPools();
+    const free = this._projLightPool.find(l => !l.userData.busy);
     if (!free) return null;
-    free.visible = true;
+    free.userData.busy = true;
     free.color.set(color);
     free.userData.baseIntensity = 2.4;
     free.intensity = free.userData.baseIntensity;
@@ -5251,26 +5651,20 @@ class CyberDoomEngine {
   flashAt(pos, color = 0xffffff) { this._flash(pos, color, 0.16); }
 
   _flash(pos, color, life = 0.16) {
-    if (!this._flashLightPool) {
-      this._flashLightPool = [];
-      for (let i = 0; i < 2; i++) {
-        const l = new THREE.PointLight(0xffffff, 0, 8, 2);
-        l.visible = false;
-        this.scene.add(l);
-        this._flashLightPool.push(l);
-      }
+    this._ensureDynLightPools();
+    let light = this._flashLightPool.find(l => !l.userData.busy);
+    if (light) {
+      light.userData.busy = true;
+      light.color.set(color);
+      light.intensity = 3.0;
+      light.position.copy(pos);
+    } else {
+      light = null;
     }
-    let light = null;
-    if (this._countActiveDynLights() < 10) {
-      light = this._flashLightPool.find(l => !l.visible);
-      if (light) { light.visible = true; light.color.set(color); light.intensity = 3.0; light.position.copy(pos); }
-    }
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: getGlowTexture(), color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false
-    }));
+    if (!this._flashSpritePool) this._flashSpritePool = [];
+    const spr = this._acquireSprite(this._flashSpritePool, color, 0.9);
     spr.position.copy(pos);
     spr.scale.setScalar(0.4);
-    this.scene.add(spr);
     this._flashes.push({ light, sprite: spr, life, maxLife: life });
   }
 
@@ -5283,9 +5677,8 @@ class CyberDoomEngine {
       f.sprite.material.opacity = t;
       f.sprite.scale.setScalar(0.4 + (1 - t) * 0.8);
       if (f.life <= 0) {
-        if (f.light) { f.light.visible = false; f.light.intensity = 0; }
-        this.scene.remove(f.sprite);
-        f.sprite.material.dispose();
+        if (f.light) { f.light.intensity = 0; f.light.userData.busy = false; }
+        this._releaseSprite(f.sprite);
         this._flashes.splice(i, 1);
       }
     }
@@ -5873,6 +6266,11 @@ class CyberDoomEngine {
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
 
+    // Mid level change: the scene is half-built, so there is nothing safe to
+    // simulate and nothing worth rendering behind the loading card. Keep
+    // ticking -- the build itself runs on its own rAF chain.
+    if (this._loadingLevel) { if (P) P.endFrame(); return; }
+
     if (this.isRunning) {
       if (P) P.begin('sim.physics');
       this.updatePhysics(delta);
@@ -5896,7 +6294,20 @@ class CyberDoomEngine {
     if (P) P.begin('render');
     this.renderer.render(this.scene, this.camera);
     if (P) P.end();
-    if (P) P.endFrame();
+    if (P) {
+      // Three compiles a program the first time it needs one, inside render().
+      // The count going up on a frame is the difference between "this frame
+      // drew a lot" and "this frame stopped to build a shader", and the two
+      // want completely different fixes. Cheap enough to leave on: one array
+      // length read per frame.
+      const n = this.renderer.info.programs ? this.renderer.info.programs.length : 0;
+      if (this._progCount === undefined) this._progCount = n;
+      if (n !== this._progCount) {
+        if (n > this._progCount) P.note('shaderCompile+' + (n - this._progCount));
+        this._progCount = n;
+      }
+      P.endFrame();
+    }
   }
 }
 
