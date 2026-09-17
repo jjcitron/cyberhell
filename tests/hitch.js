@@ -25,17 +25,19 @@
  *   low    - 4x CPU throttle, Low quality        (budget: no hang >= 250 ms)
  *
  * WHICH NUMBER IS THE BUDGET. Headless renders through SwiftShader: the
- * rasteriser is CPU work, and on these maps a single ordinary frame costs
- * 20-400 ms of it even at a 256x144 viewport. That cost does not exist on a
- * machine with a GPU, so rAF-to-rAF frame time here is not a hang -- it is a
- * software rasteriser. The budget is therefore judged on the STALL: max ms
- * spent inside the rAF callback (sim + render submit + any compile three does
- * there), which is the work a real machine would also do on its CPU and the
- * only part of a long frame a player experiences as the game stopping.
+ * rasteriser is CPU work on other threads, and on these maps one ordinary
+ * frame costs 20-400 ms of it even at a 256x144 viewport. That cost does not
+ * exist on a machine with a GPU, so rAF-to-rAF frame time here is not a hang,
+ * it is a software rasteriser.
  *
- * maxFrame is printed alongside, always, and so is the raster share, so the
- * SwiftShader tax is visible rather than hidden. Confirming the budget on a
- * real GPU is a laptop run, not a headless one.
+ * The budget is judged on the BLOCK: the longest uninterruptible main-thread
+ * task, straight from the browser's own PerformanceObserver('longtask'). That
+ * is the definition of "the game stopped" -- input queued, nothing painted --
+ * and it excludes raster, which happens on other threads. maxSim (time inside
+ * the rAF callback) and maxFrame (rAF to rAF) are printed next to it so the
+ * SwiftShader tax stays visible instead of hidden.
+ *
+ * Confirming these numbers on a real GPU is a laptop run, not a headless one.
  *
  * Usage:
  *   node tests/hitch.js
@@ -260,12 +262,19 @@ async function runProfile(prof, results) {
     const phases = { enter, fight, exit };
     const worstRaw = Math.max(enter.maxFrameMs, fight.maxFrameMs, exit.maxFrameMs);
     const worst = norm(worstRaw);
-    const stallRaw = Math.max(enter.maxSimMs, fight.maxSimMs, exit.maxSimMs);
+    const simRaw = Math.max(enter.maxSimMs, fight.maxSimMs, exit.maxSimMs);
+    // The browser's own long-task record if it has one; the rAF-callback time
+    // is the floor when it does not (older engines, or a run with no task
+    // over Chrome's 50 ms reporting threshold).
+    const stallRaw = Math.max(simRaw,
+      enter.maxLongTaskMs || 0, fight.maxLongTaskMs || 0, exit.maxLongTaskMs || 0);
     const stall = norm(stallRaw);
     results.push({
       profile: prof.name, map: file, name: scale.name, scale,
       budgetMs: prof.budgetMs,
       worstStallMs: stall, worstStallRawMs: +stallRaw.toFixed(1),
+      worstSimMs: norm(simRaw),
+      longTaskCount: enter.longTaskCount + fight.longTaskCount + exit.longTaskCount,
       worstHangMs: worst, worstHangRawMs: +worstRaw.toFixed(1),
       p99FrameMs: norm(Math.max(enter.p99FrameMs, fight.p99FrameMs, exit.p99FrameMs)),
       p99SimMs: norm(Math.max(enter.p99SimMs, fight.p99SimMs, exit.p99SimMs)),
@@ -278,12 +287,13 @@ async function runProfile(prof, results) {
     const row = (p, s) => ({
       map: `${file} [${p}]`, frames: s.frames,
       medFrame: norm(s.medianFrameMs), p99Frame: norm(s.p99FrameMs),
-      maxFrame: norm(s.maxFrameMs), rawMax: s.maxFrameMs,
-      maxSim: norm(s.maxSimMs), over33: s.overBudgetFrames,
+      maxFrame: norm(s.maxFrameMs),
+      maxSim: norm(s.maxSimMs), maxBlock: norm(s.maxLongTaskMs || 0),
+      over33: s.overBudgetFrames,
       cause: s.maxFrameCause
     });
     table([row('enter', enter), row('fight', fight), row('exit', exit)],
-      ['map', 'frames', 'medFrame', 'p99Frame', 'maxFrame', 'rawMax', 'maxSim', 'over33', 'cause']);
+      ['map', 'frames', 'medFrame', 'p99Frame', 'maxFrame', 'maxSim', 'maxBlock', 'over33', 'cause']);
   }
 
   if (prof.cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
@@ -303,16 +313,32 @@ async function runProfile(prof, results) {
   }
 
   console.log('\n=== HITCH BUDGET ===');
-  console.log('(worstStall = max ms inside the rAF callback: the budget metric.');
-  console.log(' worstFrame = rAF-to-rAF, which in headless is mostly SwiftShader raster.');
-  console.log(' Both contention-normalised against the CALIB_REF this repo already uses.)');
+  console.log('(worstBlock = longest main-thread task, from the browser: the budget metric.');
+  console.log(' worstSim = longest rAF callback. worstFrame = rAF to rAF, which in headless');
+  console.log(' is mostly SwiftShader raster on other threads and is NOT a hang.');
+  console.log(' All contention-normalised against the CALIB_REF this repo already uses.)');
   table(results.map(r => ({
     profile: r.profile, map: r.map, walls: r.scale.walls, enemies: r.scale.enemies,
-    worstStall: r.worstStallMs, p99Sim: r.p99SimMs, worstFrame: r.worstHangMs,
-    loadX: r.machineLoadX, budget: r.budgetMs, verdict: r.pass ? 'PASS' : 'FAIL'
-  })), ['profile', 'map', 'walls', 'enemies', 'worstStall', 'p99Sim', 'worstFrame', 'loadX', 'budget', 'verdict']);
+    worstBlock: r.worstStallMs, worstSim: r.worstSimMs, p99Sim: r.p99SimMs,
+    worstFrame: r.worstHangMs, loadX: r.machineLoadX, budget: r.budgetMs,
+    verdict: r.pass ? 'PASS' : 'FAIL'
+  })), ['profile', 'map', 'walls', 'enemies', 'worstBlock', 'worstSim', 'p99Sim', 'worstFrame', 'loadX', 'budget', 'verdict']);
 
-  console.log('\n=== WORST HITCHES (top 8 overall, with cause) ===');
+  console.log('\n=== WORST MAIN-THREAD BLOCKS (top 10, with the cause tag of the frame they hit) ===');
+  const blocks = [];
+  for (const r of results) {
+    for (const ph of ['enter', 'fight', 'exit']) {
+      for (const b of (r.phases[ph].worstLongTasks || [])) {
+        blocks.push({ profile: r.profile, map: r.map, phase: ph, ms: b.ms,
+                      cause: b.cause || '', notes: (b.notes || []).join(',') });
+      }
+    }
+  }
+  blocks.sort((a, b) => b.ms - a.ms);
+  if (blocks.length) table(blocks.slice(0, 10), ['profile', 'map', 'phase', 'ms', 'cause', 'notes']);
+  else console.log('  (no task over the browser long-task threshold)');
+
+  console.log('\n=== WORST HITCHES (top 10 by rAF-callback time, with cause) ===');
   const all = [];
   for (const r of results) {
     for (const ph of ['enter', 'fight', 'exit']) {

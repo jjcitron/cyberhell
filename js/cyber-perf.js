@@ -30,8 +30,37 @@
   function Perf() {
     this.budgetMs = 33;     // "frame took longer than two vsyncs"
     this.enabled = true;
+    this.longTasks = [];
+    this.maxLongTask = 0;
     this.reset('boot');
+    this._initLongTasks();
   }
+
+  /* The browser's own answer to "how long was the main thread blocked".
+     Frame time cannot answer it: a frame can be long because the GPU is slow
+     (or, in a headless QA run, because the rasteriser is software), and none
+     of that is a hang. A long task is main-thread work that could not be
+     interrupted, which is exactly what a player feels as the game stopping.
+     Chrome only reports tasks over 50 ms, which is well under any budget
+     worth arguing about. */
+  Perf.prototype._initLongTasks = function () {
+    if (this._ltObs || typeof PerformanceObserver === 'undefined') return;
+    var self = this;
+    try {
+      this._ltObs = new PerformanceObserver(function (list) {
+        var es = list.getEntries();
+        for (var i = 0; i < es.length; i++) {
+          var e = es[i];
+          if (e.startTime + e.duration < self.t0) continue;   // before this run
+          var rec = { at: +(e.startTime - self.t0).toFixed(0), ms: +e.duration.toFixed(1) };
+          self.longTasks.push(rec);
+          if (e.duration > self.maxLongTask) self.maxLongTask = e.duration;
+          if (self.longTasks.length > 4000) self.longTasks.shift();
+        }
+      });
+      this._ltObs.observe({ entryTypes: ['longtask'] });
+    } catch (err) { /* not supported: the frame/sim numbers still stand */ }
+  };
 
   Perf.prototype.reset = function (label) {
     this.label = label || '';
@@ -54,6 +83,8 @@
     this._prevStart = this.t0;
     this._simMs = 0;
     this._notes = [];       // free-text markers carried onto the next hitch
+    this.longTasks = [];
+    this.maxLongTask = 0;
   };
 
   /* ---- sections ---------------------------------------------------------
@@ -191,9 +222,30 @@
       var t = this.totals[k];
       mods[k] = { totalMs: +t.ms.toFixed(1), n: t.n, maxMs: +t.max.toFixed(2), avgMs: +(t.ms / t.n).toFixed(3) };
     }
+    // Pair each long task with the cause tag of the hitch it overlaps, so the
+    // "main thread was blocked for N ms" number arrives with a reason.
+    var lt = this.longTasks.slice().sort(function (a, b) { return b.ms - a.ms; }).slice(0, 8);
+    for (var i = 0; i < lt.length; i++) {
+      var best = null;
+      for (var j = 0; j < this.hitches.length; j++) {
+        var h = this.hitches[j];
+        if (h.at >= lt[i].at - 40 && h.at <= lt[i].at + lt[i].ms + 40) {
+          if (!best || h.frameMs > best.frameMs) best = h;
+        }
+      }
+      if (best) { lt[i].cause = best.cause; lt[i].notes = best.notes; }
+    }
+    var ltMs = this.longTasks.map(function (x) { return x.ms; });
+    var ltArr = new Float64Array(ltMs.length);
+    for (var k = 0; k < ltMs.length; k++) ltArr[k] = ltMs[k];
+
     return {
       label: this.label,
       durationMs: +(nowMs() - this.t0).toFixed(0),
+      maxLongTaskMs: +this.maxLongTask.toFixed(1),
+      p99LongTaskMs: pct(ltArr, ltArr.length, 0.99),
+      longTaskCount: this.longTasks.length,
+      worstLongTasks: lt,
       frames: this.frames,
       budgetMs: this.budgetMs,
       maxFrameMs: +this.maxFrame.toFixed(1),

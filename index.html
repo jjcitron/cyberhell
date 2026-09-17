@@ -2372,6 +2372,7 @@ class CyberDoomEngine {
       // needs the cached world materials rebuilt. Doing it here, from a menu,
       // is the one moment in the session where that cost is acceptable.
       if (this._matCache) for (const m of this._matCache.values()) m.needsUpdate = true;
+      this._warmedSigs = null;      // every program is rebuilt; warm them again
       if (this.sunLight) this.sunLight.castShadow = wantShadows;
     }
   }
@@ -2410,10 +2411,16 @@ class CyberDoomEngine {
     this._loadingLevel = true;
     this.showLevelLoading(data && data.name);
     return new Promise((resolve) => {
+      let lastPumpEnd = performance.now();
       const pump = () => {
         // Somebody else started a build. Two generators sharing one engine
         // interleave their batch maps and their wall arrays; the loser stops.
-        if (seq !== this._buildSeq) { resolve(null); return; }
+        // .return() rather than dropping the iterator, so the warm pass's
+        // finally block still restores what it borrowed.
+        if (seq !== this._buildSeq) { try { it.return(); } catch (e) {} resolve(null); return; }
+        // Time parked since the last slice. _levelBuildSteps subtracts this
+        // from its phase timings so they stay CPU cost, not wall clock.
+        this._buildIdle = (this._buildIdle || 0) + (performance.now() - lastPumpEnd);
         const P = window.CyberPerf;
         // The pump runs on its own rAF callback, outside animate(). Without
         // this the build's own cost reads as unattributed time on whatever
@@ -2433,6 +2440,7 @@ class CyberDoomEngine {
           resolve(this.levelData);
           return;
         }
+        lastPumpEnd = performance.now();
         schedule(pump);
       };
       // rAF normally, but a page the browser has decided is hidden throttles
@@ -2517,11 +2525,17 @@ class CyberDoomEngine {
     // that at the END of the build instead put every phase on whichever frame
     // happened to finish the level, which is useless for finding the phase
     // that actually overran a slice.
+    this._buildIdle = 0;
+    let _idle0 = 0;
     const phase = (name) => {
-      const dt = performance.now() - _t;
+      // Wall clock minus the time this build spent parked between slices.
+      // Without that subtraction a phase containing a yield reports the
+      // frames the pump waited, not the work it did.
+      const dt = Math.max(0, (performance.now() - _t) - (this._buildIdle - _idle0));
       lp[name] = +dt.toFixed(1);
       if (window.CyberPerf) window.CyberPerf.add('load.' + name, dt);
       _t = performance.now();
+      _idle0 = this._buildIdle;
     };
 
     // Build Sectors (Floors & Ceilings). Chunk sizes are small deliberately:
@@ -2624,32 +2638,20 @@ class CyberDoomEngine {
     phase('env');
     yield 0.92;
 
-    // Compile the world's shaders here, inside the load, instead of letting
-    // the first rendered frame discover them. With the shared material cache
-    // this is usually a no-op after the first level -- but "usually" is not
-    // "never", and a 400 ms first-hit compile in the frame the player spawns
-    // is exactly the stall this job exists to remove.
+    // Shaders get built here, inside the load, instead of being discovered by
+    // the first rendered frame. Two things have to happen: the colour programs
+    // (renderer.compile would do those) and the shadow pass's own depth
+    // programs (it would not -- three builds those at the first shadow render,
+    // which is how an 800 ms render() still turned up on a level change after
+    // the colour programs were already cached).
     //
-    // renderer.compile() only covers the colour pass. The shadow pass builds
-    // its own depth-material programs and compiles them at the first shadow
-    // render, which is how an 800 ms render() still turned up on a level
-    // change after the colour programs were already cached. So the warm-up
-    // also renders one frame -- scissored to a single pixel, because it is
-    // the compile we want and not the raster.
-    try {
-      // Effects that only exist once something has been shot or bled on are
-      // put in the scene for the duration of this one render, so their
-      // programs are built here and not in the middle of the first fight
-      // (the hitch log tagged those frames shaderCompile+N).
-      const undoPrewarm = this._prewarmEffects();
-      this.renderer.compile(this.scene, this.camera);
-      const hadScissor = this.renderer.getScissorTest();
-      this.renderer.setScissorTest(true);
-      this.renderer.setScissor(0, 0, 1, 1);
-      this.renderer.render(this.scene, this.camera);
-      this.renderer.setScissorTest(hadScissor);
-      undoPrewarm();
-    } catch (err) { /* nothing worth failing a load over */ }
+    // Both fall out of actually rendering the scene, so that is what this
+    // does -- in chunks, one slice at a time, with the colour pass scissored
+    // to a single pixel and the shadow map temporarily at 64x64. It is the
+    // compiles and the first buffer uploads we want, not the picture: left at
+    // the real 2048x2048 shadow map this rasterised a whole shadow atlas for
+    // the whole map for a frame nobody sees.
+    yield* this._warmSteps();
     phase('warm');
     yield 0.96;
 
@@ -3090,12 +3092,184 @@ class CyberDoomEngine {
     this._batches = null;
   }
 
+  /* Build every program this level needs, a slice at a time.
+
+     Rendering is what compiles a program in three, so this renders -- but
+     with only a chunk of the scene visible at a time, the colour pass
+     scissored to one pixel, and the sun's shadow map dropped to 64x64 for the
+     duration. That gets the colour programs, the shadow pass's depth programs
+     and the first geometry upload for every drawable in the level, without
+     any single step being long enough to be felt. renderer.compile() is not
+     used: it covers the colour pass only and cannot be sliced. */
+  /* A program's identity, near enough. three keys its compiled programs on
+     the shader family plus the defines a material and its geometry imply --
+     which maps it has, whether it is instanced, which side it draws, whether
+     it is fogged. It does NOT depend on colour, roughness, or which texture
+     object is bound. So a level with 3,300 distinct materials needs about
+     fifteen programs, and warming by material warms the same program hundreds
+     of times. This is the key that collapses it. */
+  static warmSignature(obj, mat) {
+    const kind = obj.isInstancedMesh ? 'inst'
+      : obj.isSprite ? 'spr'
+      : obj.isPoints ? 'pts'
+      : obj.isLine ? 'line'
+      : obj.isSkinnedMesh ? 'skin' : 'mesh';
+    const geo = obj.geometry;
+    return [
+      mat.type, kind,
+      mat.map ? 1 : 0, mat.emissiveMap ? 1 : 0, mat.alphaMap ? 1 : 0,
+      mat.normalMap ? 1 : 0, mat.aoMap ? 1 : 0, mat.lightMap ? 1 : 0,
+      mat.roughnessMap ? 1 : 0, mat.metalnessMap ? 1 : 0,
+      mat.specularMap ? 1 : 0, mat.envMap ? 1 : 0, mat.displacementMap ? 1 : 0,
+      mat.vertexColors ? 1 : 0, mat.transparent ? 1 : 0, mat.fog ? 1 : 0,
+      mat.flatShading ? 1 : 0, mat.toneMapped ? 1 : 0, mat.depthWrite ? 1 : 0,
+      mat.side, mat.blending,
+      geo && geo.attributes && geo.attributes.uv2 ? 1 : 0,
+      obj.castShadow ? 1 : 0, obj.receiveShadow ? 1 : 0
+    ].join('|');
+  }
+
+  /* Build every program this level needs before the level is handed over.
+
+     Rendering is what compiles a program in three -- including the shadow
+     pass's own depth programs, which renderer.compile() does not touch and
+     which is how an 800 ms render() still showed up on a level change after
+     the colour programs were already cached. So this renders: one
+     representative object per program signature, everything else hidden, the
+     colour pass scissored to a single pixel and the sun's shadow map dropped
+     to 64x64 for the duration. It is the compiles we want, not the picture.
+
+     On a level change where nothing new turns up, it renders nothing at all. */
+  *_warmSteps() {
+    let undoPrewarm = () => {};
+    const hidden = [];
+    const restoreCull = [];
+    const sun = this.sunLight;
+    let restoreShadow = null;
+    const hadScissor = this.renderer.getScissorTest();
+    try {
+      undoPrewarm = this._prewarmEffects();
+      if (!this._warmedSigs) this._warmedSigs = new Set();
+
+      const reps = new Set();
+      const freshSigs = [];
+      const drawables = [];
+      this.scene.traverse(o => {
+        if (!(o.isMesh || o.isSprite || o.isPoints || o.isLine) || !o.material) return;
+        drawables.push(o);
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          const sig = CyberDoomEngine.warmSignature(o, m);
+          if (this._warmedSigs.has(sig) || freshSigs.indexOf(sig) !== -1) continue;
+          freshSigs.push(sig);
+          reps.add(o);
+        }
+      });
+      this._warmStats = { drawables: drawables.length, newPrograms: freshSigs.length };
+      if (!reps.size) return;
+
+      for (const o of drawables) {
+        if (reps.has(o)) {
+          // Frustum culling off: a program only needed by something behind the
+          // player at spawn is exactly the one that compiles later, mid-fight.
+          restoreCull.push([o, o.frustumCulled]);
+          o.frustumCulled = false;
+          if (!o.visible) { hidden.push([o, false]); o.visible = true; }
+        } else if (o.visible) {
+          hidden.push([o, true]);
+          o.visible = false;
+        }
+      }
+      yield 0.93;
+
+      if (sun && sun.castShadow && sun.shadow) {
+        const wanted = sun.shadow.mapSize.x;
+        if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+        sun.shadow.mapSize.set(64, 64);
+        restoreShadow = () => {
+          if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+          sun.shadow.mapSize.set(wanted, wanted);
+        };
+      }
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(0, 0, 1, 1);
+      this.renderer.render(this.scene, this.camera);
+      for (const sig of freshSigs) this._warmedSigs.add(sig);
+      yield 0.96;
+    } catch (err) {
+      /* a warm-up is an optimisation; a level that fails to warm still plays */
+    } finally {
+      for (const [o, was] of hidden) o.visible = was;
+      for (const [o, c] of restoreCull) o.frustumCulled = c;
+      this.renderer.setScissorTest(hadScissor);
+      if (restoreShadow) restoreShadow();
+      undoPrewarm();
+    }
+  }
+
   /* Put one of everything transient in the scene so the warm render compiles
      it: a projectile of each kind, one trail sprite, one flash sprite, and
      the gore decal rings (which draw nothing until the first splat, so they
      would otherwise compile on the first kill). Returns the undo. */
+  /* One tiny mesh for every world-material shape the converted maps use, so
+     the programs behind them are compiled at boot, on the title screen, and
+     not on the first level transition of the session. The real materials are
+     built later with real textures, but a program does not depend on which
+     texture is bound -- only on which SLOTS are filled, which side is drawn
+     and whether the object casts or receives a shadow. Those are the axes
+     warmSignature() keys on, so these stand in for all of them.
+
+     Built once per page and parked outside the scene between warm passes. */
+  _warmProbeMeshes() {
+    if (this._warmProbes) return this._warmProbes;
+    const px = document.createElement('canvas');
+    px.width = px.height = 2;
+    const pctx = px.getContext('2d');
+    pctx.fillStyle = '#808080'; pctx.fillRect(0, 0, 2, 2);
+    const tex = new THREE.CanvasTexture(px);
+    tex._shared = true;
+
+    const geo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+    const n = geo.attributes.position.count;
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+
+    const probes = [];
+    for (const emissive of [false, true]) {
+      for (const side of [THREE.FrontSide, THREE.BackSide]) {
+        const mat = new THREE.MeshStandardMaterial({
+          map: tex, vertexColors: true, side,
+          ...(emissive ? { emissive: new THREE.Color(0xffffff), emissiveMap: tex, emissiveIntensity: 0.8 } : {})
+        });
+        mat._shared = true;
+        for (const casts of [false, true]) {
+          const m = new THREE.Mesh(geo, mat);
+          m.castShadow = casts;
+          m.receiveShadow = true;
+          m.frustumCulled = false;
+          probes.push(m);
+        }
+      }
+    }
+    // The instanced shapes: env props and the gore pools both draw this way.
+    const instMat = new THREE.MeshStandardMaterial({ vertexColors: true });
+    instMat._shared = true;
+    const inst = new THREE.InstancedMesh(geo, instMat, 1);
+    inst.frustumCulled = false;
+    inst.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0));
+    probes.push(inst);
+
+    this._warmProbes = probes;
+    return probes;
+  }
+
   _prewarmEffects() {
     const temp = [];
+    for (const m of this._warmProbeMeshes()) {
+      m.position.copy(this.camera.position);
+      this.scene.add(m);
+      temp.push(m);
+    }
     if (window.CyberGore) {
       if (!this._goreInited) { window.CyberGore.init(this.scene, THREE); this._goreInited = true; }
       if (window.CyberGore.prewarm) window.CyberGore.prewarm();
