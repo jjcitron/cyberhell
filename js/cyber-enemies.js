@@ -114,6 +114,11 @@
       var def = { color: color, metalness: metalness, roughness: roughness };
       for (var k in opts) def[k] = opts[k];
       m = new T.MeshStandardMaterial(def);
+      // Cached for the page, so the engine's level teardown must not dispose
+      // it -- see disposeObject3D in index.html. Without the flag the cache
+      // handed back materials whose GPU program had already been released and
+      // every level change recompiled the whole bestiary.
+      m._shared = true;
       matCache.set(key, m);
     }
     if (lk.slot) slotOfMat.set(m, lk.slot);
