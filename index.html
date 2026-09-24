@@ -2997,16 +2997,20 @@ class CyberDoomEngine {
     const spot = this.getFloorAt(ent.pos[0], ent.pos[2]);
     const baseY = spot.inside ? spot.floorY : ent.pos[1];
     const hoverY = baseY + (st0 && st0.fly ? ENEMY_HOVER : 0);
+    const radius = this.enemyRadius(ent.enemyType, group);
     // Some WAD things sit inside a wall. moveEnemy only refuses bad steps, it
     // never corrects a bad start, so un-stick here: push out, and if that lands
     // off the floor try a short ring of offsets before giving up.
+    // A closet too tight for the rig's full radius still gets the old 0.6.
     let sx = ent.pos[0], sz = ent.pos[2];
-    for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
-                            [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
-      const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, 0.6, hoverY, 1.6);
-      if (!this.getFloorAt(c.x, c.z).inside) continue;
-      sx = c.x; sz = c.z;
-      break;
+    unstick: for (const rr of radius > 0.6 ? [radius, 0.6] : [0.6]) {
+      for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
+                              [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
+        const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, rr, hoverY, 1.6);
+        if (!this.getFloorAt(c.x, c.z).inside) continue;
+        sx = c.x; sz = c.z;
+        break unstick;
+      }
     }
     // The un-stick above can move the body into a different sector, so the
     // floor has to be read at where it ENDED UP. Reading it at ent.pos left
@@ -3038,12 +3042,50 @@ class CyberDoomEngine {
       speed: (st && st.speed) || (isBoss ? 2.5 : 3.5),
       limbs: group.userData.limbs || null,
       stats: st,
-      radius: 0.6,
+      radius: radius,
       floorY: floorY,
       bobT: Math.random() * Math.PI * 2
     };
     this.classifyEnemyDetail(rec);
     this.enemies.push(rec);
+  }
+
+  /* Collision radius from the rig's own footprint. The rigs face the player,
+     so their guns and arms lead into whatever wall they chase along; a flat
+     0.6 let a Chaingunner's barrel reach 0.8 through it. Radius is the
+     furthest vertex from the body's axis at rest, floored at 0.6 (the old
+     value, so small bodies behave as before) and capped at 1.0: Doom's
+     smallest monster radius (20 units at the converter's 0.05 scale), so
+     every map route that fits a Doom monster still fits every rig.
+     A rig whose front (+Z, the way it faces) still reaches past that cap --
+     the Chaingunner's barrel, the Mancubus's arm cannons -- has its inner
+     body slid back toward its footprint centre, just far enough to bring the
+     front inside the circle.
+     ponytail: rest pose only, cached per type for the page; a custom look
+     edited mid-session keeps its first footprint until reload. */
+  enemyRadius(type, group) {
+    const cache = this._enemyFoot || (this._enemyFoot = new Map());
+    let foot = cache.get(type);
+    if (!foot) {
+      const v = new THREE.Vector3();
+      let reach = 0, minZ = 0, maxZ = 0;
+      group.updateMatrixWorld(true);
+      group.traverse(o => {
+        const pa = o.isMesh && o.geometry && o.geometry.attributes.position;
+        if (!pa) return;
+        for (let i = 0; i < pa.count; i++) {
+          v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+          reach = Math.max(reach, Math.hypot(v.x, v.z));
+          minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+        }
+      });
+      const r = Math.min(1.0, Math.max(0.6, reach));
+      foot = { r, shift: Math.max(0, Math.min((minZ + maxZ) / 2, maxZ - r)) };
+      cache.set(type, foot);
+    }
+    // Every rig is one inner body group under the root (cyber-enemies.js).
+    if (foot.shift && group.children.length === 1) group.children[0].position.z -= foot.shift;
+    return foot.r;
   }
 
   /* Rig detail level of detail.
