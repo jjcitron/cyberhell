@@ -3068,7 +3068,7 @@ class CyberDoomEngine {
     let foot = cache.get(type);
     if (!foot) {
       const v = new THREE.Vector3();
-      let reach = 0, minZ = 0, maxZ = 0;
+      let reach = 0, minZ = 0, maxZ = 0, maxY = 0, halfX = 0;
       group.updateMatrixWorld(true);
       group.traverse(o => {
         const pa = o.isMesh && o.geometry && o.geometry.attributes.position;
@@ -3077,15 +3077,90 @@ class CyberDoomEngine {
           v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
           reach = Math.max(reach, Math.hypot(v.x, v.z));
           minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+          maxY = Math.max(maxY, v.y); halfX = Math.max(halfX, Math.abs(v.x));
         }
       });
       const r = Math.min(1.0, Math.max(0.6, reach));
-      foot = { r, shift: Math.max(0, Math.min((minZ + maxZ) / 2, maxZ - r)) };
+      foot = { r, h: maxY, halfX, shift: Math.max(0, Math.min((minZ + maxZ) / 2, maxZ - r)) };
       cache.set(type, foot);
     }
     // Every rig is one inner body group under the root (cyber-enemies.js).
     if (foot.shift && group.children.length === 1) group.children[0].position.z -= foot.shift;
     return foot.r;
+  }
+
+  /* Where a body can fall without going through a wall. The death poses in
+     cyber-enemies.js used to tip every corpse over toward world +Z and fling
+     an exploding rig's parts up to ~2.5 out, blind to the map, so a kill next
+     to a wall left legs, torsos and gun arms sticking out the far side of it.
+     Sixteen headings, away from the shooter first: the first one with room
+     for the whole body lying down wins; with none, the roomiest one, tipped
+     only as far as it fits (the body slumps against the wall). Exploding
+     rigs spread their parts only as far as the tightest heading allows.
+     Once per kill, so the ray march is cheap next to the gore it rides with. */
+  planDeath(enemy) {
+    const p = enemy.group.position;
+    const foot = this._enemyFoot && this._enemyFoot.get(enemy.enemyType);
+    const len = (foot ? foot.h : 2) + 0.3;
+    // The legs lie within the collision radius; past them the crumple swings
+    // the arms out sideways, so the corridor there is the rig's side-to-side
+    // half-span plus that swing.
+    const nearW = enemy.radius || 0.6;
+    const halfW = (foot ? foot.halfX : nearW) + 0.3;
+    const feet = enemy.floorY !== undefined ? enemy.floorY : p.y;
+    const cam = this.camera.position;
+    const away = Math.atan2(p.x - cam.x, p.z - cam.z);
+    let best = null, tightest = Infinity;
+    for (let i = 0; i < 16; i++) {
+      const a = away + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8;
+      const room = this.corpseRoom(p.x, p.z, Math.sin(a), Math.cos(a), len, nearW, halfW, feet);
+      tightest = Math.min(tightest, room);
+      if (!best || room > best.room + 0.01) best = { a, room };
+    }
+    // cyber-enemies.js turns the body to fallYaw and tips it onto its back,
+    // so the yaw faces opposite the heading it falls along.
+    enemy.fallYaw = best.a + Math.PI;
+    enemy.fallMax = best.room >= len ? Math.PI / 2 : Math.asin(Math.max(0, best.room - 0.3) / len);
+    // Explode parts travel ~1.1 x the rig's scale at most (deathPose).
+    enemy.deathSpread = Math.max(0, Math.min(1, (tightest - (enemy.radius || 0.6)) / (1.1 * enemy.group.scale.x)));
+  }
+
+  // Does the step (x0, z0) -> (x1, z1) at height y cross a solid wall? Gore
+  // debris asks once per chunk per frame, so it stays a plain plan-view test.
+  wallBetween(x0, z0, x1, z1, y) {
+    const r = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.1;
+    for (const w of this.wallsNear((x0 + x1) / 2, (z0 + z1) / 2, r)) {
+      if (!w.solid) continue;
+      if (w.topY !== undefined && y >= w.topY) continue;
+      if (w.bottomY !== undefined && y <= w.bottomY) continue;
+      const ax = w.p1.x, az = w.p1.z, bx = w.p2.x, bz = w.p2.z;
+      if (((bx - ax) * (z0 - az) - (bz - az) * (x0 - ax) > 0) === ((bx - ax) * (z1 - az) - (bz - az) * (x1 - ax) > 0)) continue;
+      if (((x1 - x0) * (az - z0) - (z1 - z0) * (ax - x0) > 0) === ((x1 - x0) * (bz - z0) - (z1 - z0) * (bx - x0) > 0)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  // Free run from (x, z) along unit (dx, dz), up to len: stops at a solid
+  // wall inside the body's half-width of the line (nearW over the legs,
+  // halfW past them), a floor step up, or the edge of the map. A wall that
+  // starts overhead still blocks if the falling head sweeps through it: at
+  // s out, a body of length len tipping over reaches sqrt(len^2 - s^2) up.
+  corpseRoom(x, z, dx, dz, len, nearW, halfW, feetY) {
+    for (let s = 0.25; s <= len; s += 0.25) {
+      const qx = x + dx * s, qz = z + dz * s;
+      const f = this.getFloorAt(qx, qz);
+      if (!f.inside || f.floorY > feetY + 0.3) return s - 0.25;
+      const hw = s < 0.75 ? nearW : halfW;
+      const arcY = feetY + Math.max(1.2, Math.sqrt(Math.max(0, len * len - s * s)));
+      for (const w of this.wallsNear(qx, qz, hw)) {
+        if (!w.solid) continue;
+        if (w.topY !== undefined && w.topY <= feetY + 0.05) continue;
+        if (w.bottomY !== undefined && w.bottomY >= arcY) continue;
+        if (getSegDist(qx, qz, w.p1.x, w.p1.z, w.p2.x, w.p2.z).dist < hw) return s - 0.25;
+      }
+    }
+    return len;
   }
 
   /* Rig detail level of detail.
@@ -4196,6 +4271,7 @@ class CyberDoomEngine {
     const deathPos = enemy.group.position.clone();
     this.flashAt(enemy.group.position, 0xff4422);
     if (window.CyberGore) window.CyberGore.death(deathPos, enemy);
+    this.planDeath(enemy);
     // No snap here. js/cyber-enemies.js poses its own death off state ===
     // 'DEAD' (crumple / topple / explode / fade). Forcing rotation.x = PI/2
     // and y = 0.2 fought that animation and, because 0.2 is a world height,
@@ -5353,7 +5429,8 @@ class CyberDoomEngine {
     }
     if (window.CyberGore) {
       const t = this.perfMark();
-      window.CyberGore.update(delta, this._floorAtFn || (this._floorAtFn = (x, z) => this.getFloorAt(x, z)));
+      window.CyberGore.update(delta, this._floorAtFn || (this._floorAtFn = (x, z) => this.getFloorAt(x, z)),
+        this._wallHitFn || (this._wallHitFn = (x0, z0, x1, z1, y) => this.wallBetween(x0, z0, x1, z1, y)));
       this.perfAdd('gore', t);
     }
     if (window.CyberEnv) { const t = this.perfMark(); window.CyberEnv.update(delta); this.perfAdd('env', t); }

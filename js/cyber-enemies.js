@@ -1728,6 +1728,9 @@
     var kind = A.pose.death, s0 = A.s0 || 1;
 
     if (kind === 'explode') {
+      // deathSpread (engine, 0..1): how far the parts may fly (and spin)
+      // before the nearest wall; unset keeps the full burst.
+      var sp = enemy.deathSpread === undefined ? 1 : num(enemy.deathSpread);
       if (!A.frag) {
         A.frag = [];
         var host = A.bobRoot || g;
@@ -1741,8 +1744,11 @@
       var fall = e * e * 2.4;
       for (var j = 0; j < A.frag.length; j++) {
         var f = A.frag[j], p0 = f.o.userData.p0, r0 = f.o.userData.r0;
-        f.o.position.set(p0.x + f.dx * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * e * 1.9);
-        f.o.rotation.set(r0.x + f.sx * e, r0.y + f.sy * e, r0.z + f.sx * e * 0.6);
+        f.o.position.set(p0.x + f.dx * sp * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * sp * e * 1.9);
+        // A cornered rig spins its parts less too: a long arm spun about its
+        // shoulder reaches through the wall the burst was held back from.
+        var spin = e * (0.25 + 0.75 * sp);
+        f.o.rotation.set(r0.x + f.sx * spin, r0.y + f.sy * spin, r0.z + f.sx * spin * 0.6);
       }
       g.position.y = A.deathY;
       g.scale.setScalar(Math.max(0.001, s0 * (1 - e * 0.6)));
@@ -1757,17 +1763,30 @@
       return;
     }
     // crumple (soft, folds) / topple (stiff, falls in one piece with a bounce)
-    // ponytail: the fall is around the world X axis like the engine's old
-    // snap, not around the enemy's facing — reordering the euler is the
-    // upgrade if corpses ever need to fall away from the shot.
+    // The engine picks the fall (planDeath): fallYaw turns the body so it
+    // tips onto its back along a heading with room, fallMax caps the tip
+    // where no heading has room for the whole body. Without them the body
+    // falls around world X as it always did.
     var over = Math.sin(e * Math.PI) * (kind === 'topple' ? 0.20 : 0.05);
-    g.rotation.x = e * (Math.PI / 2) + over;
+    var tipMax = enemy.fallMax === undefined ? Math.PI / 2 : num(enemy.fallMax);
+    if (enemy.fallYaw === undefined) {
+      g.rotation.x = e * tipMax + over;
+    } else {
+      if (A.yaw0 === undefined) A.yaw0 = g.rotation.y;
+      var dy = Math.atan2(Math.sin(enemy.fallYaw - A.yaw0), Math.cos(enemy.fallYaw - A.yaw0));
+      g.rotation.order = 'YXZ';
+      g.rotation.y = A.yaw0 + dy * Math.min(1, k * 4);
+      g.rotation.x = -(e * tipMax + over * tipMax / (Math.PI / 2));
+    }
     g.position.y = A.deathY + e * 0.28;
     if (kind === 'crumple') {
+      // The arms swing out as the body folds; a body with no room to lie down
+      // (tip capped) only slumps, so it folds and swings its arms that much less.
+      var fold = e * Math.max(0.3, tipMax / (Math.PI / 2));
       addRot(P.torso, -0.5 * e, 0, 0.18 * e);
       addRot(P.head, 0.7 * e, 0, 0);
-      addRot(P.leftShoulder, -0.6 * e, 0, -0.45 * e);
-      addRot(P.rightShoulder, -0.5 * e, 0, 0.45 * e);
+      addRot(P.leftShoulder, -0.6 * fold, 0, -0.45 * fold);
+      addRot(P.rightShoulder, -0.5 * fold, 0, 0.45 * fold);
       if (L) {
         addRot(L.leftLeg, 0.9 * e, 0, 0);
         addRot(L.rightLeg, 0.7 * e, 0, 0);
@@ -1797,7 +1816,7 @@
 
     // ---- resolve the four drivers, defensively -------------------------
     if (dead) A.deadT = Math.min(1, (A.deadT || 0) + delta / A.pose.deathDur);
-    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; g.visible = true; g.scale.setScalar(A.s0 || 1); }
+    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; A.yaw0 = undefined; g.rotation.order = 'XYZ'; g.rotation.x = 0; g.visible = true; g.scale.setScalar(A.s0 || 1); }
     var deathK = Math.max(num(enemy.deathT), A.deadT || 0);
 
     // Either cooldown jumping back up means a shot just went off. The AI winds
