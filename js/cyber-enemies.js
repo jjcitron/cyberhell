@@ -403,7 +403,7 @@
     zflash.visible = false;
     A.extraPivots = [gun];
     A.attackFn = function (w, s) {
-      addRot(gun, -0.55 * w + 0.40 * s, 0, 0);
+      addRot(gun, -0.55 * w + 0.40 * s - (w || s ? A.aimKink || 0 : 0), 0, 0);
       zflash.visible = s > 0.5;
       zflash.scale.set(0.7 + s * 0.7, 0.6 + s * 0.8, 0.7 + s * 0.7);
       zflash.rotation.z = s * 9.1;
@@ -1518,7 +1518,7 @@
       bob: [], sway: [], spin: [], pulse: [], blink: [], flame: [], slide: [],
       jaw: null, legs: null, eyeMeshes: [], t: 0, flashT: 0,
       // pose-layer state
-      pose: null, pivots: [], walk: 0, gait: 0, prevCd: 0,
+      pose: null, pivots: [], walk: 0, gait: 0, run: 0, vel: 0, prevCd: 0,
       ownAtk: 0, ownPain: 0, deadT: 0, frag: null, attackFn: null
     };
     var accents = [];
@@ -1530,18 +1530,20 @@
       buildAccents = null;
     }
 
-    // A bob on the ROOT group would write an absolute world y over whatever
-    // the engine placed the body at this frame — the baked rest height is 0,
-    // so flyers got dragged to the floor and through walls. Wrap the body in
-    // an inner group and bob that: the root stays owned by whoever places it,
-    // and the bob is a local offset that needs no ordering with the AI.
-    if (A.bob.some(function (b) { return b.o === root; })) {
-      var body = new T.Group();
-      while (root.children.length) body.add(root.children[0]);
-      root.add(body);
-      A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
-      A.bobRoot = body;
-    }
+    // Every rig lives in an inner body group, for two reasons:
+    //  - the rigs are modelled facing -Z (eyes, toes, muzzles), but the AI's
+    //    face() and vision cone point the ROOT's +Z at the target, so the body
+    //    turns half a revolution inside the root and monsters stop walking at
+    //    the player backwards;
+    //  - a bob on the ROOT would write an absolute world y over wherever the
+    //    engine placed the body this frame, so flyers bob the inner group and
+    //    the root stays owned by whoever places it.
+    var body = new T.Group();
+    body.rotation.y = Math.PI;
+    while (root.children.length) body.add(root.children[0]);
+    root.add(body);
+    A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
+    A.bobRoot = body;
 
     // bake rest positions so animate() never accumulates drift
     A.bob.forEach(function (b) { b.y0 = b.o.position.y; });
@@ -1683,8 +1685,12 @@
       // hip-carried sidearm needs it; a gunner already holding the weapon
       // level does not.
       var aim = (A.pose.aim || 0) * Math.min(1, w * 2 + s);
-      addRot(AR, aim - 0.22 * w - 0.14 * s * big, 0, 0);
-      addRot(lower(AR), -aim * 0.35, 0, 0);
+      // The upper arm only comes part way up; the elbow kinks to bring the
+      // forearm level, so the gun arm reads as braced, not a straight stick.
+      // A.aimKink lets the builder's attackFn counter-pitch the weapon.
+      A.aimKink = aim * 0.55;
+      addRot(AR, aim * 0.75 - 0.22 * w - 0.14 * s * big, 0, 0);
+      addRot(lower(AR), aim * 0.45, 0, 0);
       addRot(AL, aim * 0.45 - 0.18 * w - 0.12 * s * big, 0, 0);
       addRot(P.torso, -0.06 * w + 0.10 * s * big, 0, 0);
       addRot(P.head, -0.05 * w, 0, 0);
@@ -1765,8 +1771,8 @@
       if (L) {
         addRot(L.leftLeg, 0.9 * e, 0, 0);
         addRot(L.rightLeg, 0.7 * e, 0, 0);
-        addRot(lower(L.leftLeg), 1.5 * e, 0, 0);
-        addRot(lower(L.rightLeg), 1.2 * e, 0, 0);
+        addRot(lower(L.leftLeg), -1.5 * e, 0, 0);
+        addRot(lower(L.rightLeg), -1.2 * e, 0, 0);
       }
     }
   }
@@ -1882,23 +1888,45 @@
       Math.sin(t * 0.9) * 0.02 * idle);
     addRot(P.head, Math.sin(t * 1.15 + 1.2) * 0.03 * idle, Math.sin(t * 0.41) * 0.12 * idle, 0);
 
-    // walk cycle — legs from the shared rig, arms counter-swinging
+    // Ground speed actually covered, smoothed: a charging Demon runs, a
+    // Zombieman shuffling round a corner walks. Capped so a teleport or a
+    // spawn snap does not read as a sprint.
+    var gx = g.position.x, gz = g.position.z;
+    if (A.px !== undefined) {
+      var inst = Math.min(12, Math.sqrt((gx - A.px) * (gx - A.px) + (gz - A.pz) * (gz - A.pz)) / delta);
+      A.vel += (inst - A.vel) * Math.min(1, delta * 6);
+    }
+    A.px = gx; A.pz = gz;
+
+    // walk / run cycle — legs from the shared rig, arms counter-swinging
     if (A.gait > 0.01) {
-      var spd = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
-      A.walk += delta * spd * 2.3 * A.gait;
-      var sw = Math.sin(A.walk), amp = A.gait;
+      var stat = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
+      var spd = A.vel > 0.5 ? A.vel : stat;
+      A.run += (clamp01((spd - 4.0) / 1.6) - A.run) * Math.min(1, delta * 4);
+      var run = A.run, amp = A.gait;
+      // longer strides, not just faster ones, as the gait opens into a run
+      A.walk += delta * spd * (2.3 - 0.5 * run) * amp;
+      var sw = Math.sin(A.walk), cw = Math.cos(A.walk);
       if (L) {
-        addRot(L.leftLeg, sw * 0.62 * amp, 0, 0);
-        addRot(L.rightLeg, -sw * 0.62 * amp, 0, 0);
-        addRot(lower(L.leftLeg), Math.max(0, sw) * 0.85 * amp, 0, 0);
-        addRot(lower(L.rightLeg), Math.max(0, -sw) * 0.85 * amp, 0, 0);
+        // Knees bend the human way (shin trails, -x) and fold hardest while
+        // the leg swings through under the hip (cw > 0 is the left leg's
+        // swing); the planted leg keeps a soft knee. A run swings the thighs
+        // wider, carries them a little forward and folds the swing knee deep.
+        var hip = (0.55 + 0.25 * run) * amp, knee = (0.8 + 0.75 * run) * amp;
+        addRot(L.leftLeg, sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(L.rightLeg, -sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(lower(L.leftLeg), -(Math.max(0, cw) * knee + 0.10 * amp), 0, 0);
+        addRot(lower(L.rightLeg), -(Math.max(0, -cw) * knee + 0.10 * amp), 0, 0);
       }
-      addRot(P.leftShoulder, -sw * 0.34 * amp, 0, 0);
-      addRot(P.rightShoulder, sw * 0.34 * amp, 0, 0);
-      addRot(lower(P.leftShoulder), Math.max(0, -sw) * 0.4 * amp, 0, 0);
-      addRot(lower(P.rightShoulder), Math.max(0, sw) * 0.4 * amp, 0, 0);
-      // torso counter-rotates and the whole body rocks on each footfall
-      addRot(P.torso, Math.abs(Math.cos(A.walk)) * 0.05 * amp, -sw * 0.10 * amp, 0);
+      // arms pump harder and hold a deeper elbow bend at a run
+      var arm = (0.34 + 0.24 * run) * amp, bend = (0.18 + 0.85 * run) * amp;
+      addRot(P.leftShoulder, -sw * arm, 0, 0);
+      addRot(P.rightShoulder, sw * arm, 0, 0);
+      addRot(lower(P.leftShoulder), bend + Math.max(0, -sw) * 0.4 * amp, 0, 0);
+      addRot(lower(P.rightShoulder), bend + Math.max(0, sw) * 0.4 * amp, 0, 0);
+      // torso counter-rotates, leans into a run, and the whole body rocks on
+      // each footfall
+      addRot(P.torso, Math.abs(cw) * 0.05 * amp - 0.20 * run * amp, -sw * 0.10 * amp, 0);
       root.z += Math.sin(A.walk * 2) * 0.03 * amp;
     }
 
