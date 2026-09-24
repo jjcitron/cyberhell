@@ -870,7 +870,11 @@ function aimDir(engine, spread) {
     dir.x += (Math.random() - 0.5) * spread;
     dir.y += (Math.random() - 0.5) * spread;
   }
-  return dir.normalize();
+  dir.normalize();
+  if (engine && typeof engine.applyAimMagnetism === 'function') {
+    engine.applyAimMagnetism(dir);
+  }
+  return dir;
 }
 
 // Energy weapons prefer the lighting agent's pooled projectiles; if that API

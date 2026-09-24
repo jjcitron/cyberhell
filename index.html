@@ -73,6 +73,11 @@
     .crosshair::after {
       top: 0; left: 8px; width: 2px; height: 18px;
     }
+    #crosshair-container.assist-lock .crosshair::before,
+    #crosshair-container.assist-lock .crosshair::after {
+      background: rgba(255, 68, 102, 0.95);
+      box-shadow: 0 0 8px #ff4466;
+    }
     #hitmarker {
       position: absolute;
       top: -12px;
@@ -874,9 +879,12 @@
           <button id="load-level-btn" style="background:#00e5ff; color:#000; font-weight:bold; border:none; padding:6px 16px; border-radius:3px; cursor:pointer;">LOAD LEVEL</button>
         </div>
 
-        <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center;">
           <label style="color:#00ffcc; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(0,255,204,0.1); padding:6px 14px; border:1px solid #00ffcc; border-radius:4px;">
             <input type="checkbox" id="all-weapons-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> START WITH ALL WEAPONS
+          </label>
+          <label id="mouse-assist-label" style="color:#00ffcc; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(0,255,204,0.1); padding:6px 14px; border:1px solid #00ffcc; border-radius:4px;">
+            <input type="checkbox" id="mouse-assist-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> MOUSE AIM ASSIST
           </label>
         </div>
 
@@ -953,6 +961,7 @@
     <!-- Touch settings sheet (gear icon). Sim is frozen while this is up. -->
     <div id="tc-settings-panel">
       <h3>TOUCH CONTROLS</h3>
+      <div class="tc-row"><label>AIM ASSIST</label><input id="tc-set-assist" type="range" min="0" max="100" step="5"><span class="tc-val" id="tc-val-assist">50%</span></div>
       <div class="tc-row"><label>LOOK SENSITIVITY</label><input id="tc-set-sens" type="range" min="30" max="250" step="5"><span class="tc-val" id="tc-val-sens">100</span></div>
       <div class="tc-row"><label>LOOK DEAD ZONE</label><input id="tc-set-dead" type="range" min="0" max="14" step="1"><span class="tc-val" id="tc-val-dead">3px</span></div>
       <div class="tc-row"><label>CONTROL OPACITY</label><input id="tc-set-op" type="range" min="15" max="100" step="5"><span class="tc-val" id="tc-val-op">55%</span></div>
@@ -2262,6 +2271,19 @@ class CyberDoomEngine {
     this.isTouch = window.matchMedia('(pointer: coarse)').matches;
     this.pausedByBlur = false;
 
+    // Aim Assist configuration & state (tunable, default ON 50% for touch, OFF for mouse)
+    this.aimAssistConfig = {
+      cone: 0.88,        // ~28.3 deg cone (cos theta)
+      range: 32,         // max distance in world units
+      pullRate: 8.0,     // angular pull rate factor
+      magnetism: 0.25    // bullet magnetism lerp factor
+    };
+    this.mouseAssist = false;
+    try {
+      this.mouseAssist = localStorage.getItem('cyberhell.mouseAssist') === 'true';
+    } catch (e) {}
+    this._aimAssistTarget = null;
+
     // Setup Components
     this.initThree();
     this.initControls();
@@ -3467,6 +3489,15 @@ class CyberDoomEngine {
     // Context menu disable for RMB
     window.addEventListener('contextmenu', e => e.preventDefault());
 
+    const mouseChk = document.getElementById('mouse-assist-chk');
+    if (mouseChk) {
+      mouseChk.checked = !!this.mouseAssist;
+      mouseChk.addEventListener('change', () => {
+        this.mouseAssist = !!mouseChk.checked;
+        try { localStorage.setItem('cyberhell.mouseAssist', String(this.mouseAssist)); } catch (e) {}
+      });
+    }
+
     this.initTouchControls();
     this.initFocusPause();
   }
@@ -3589,7 +3620,7 @@ class CyberDoomEngine {
   static get LOOK_BASE() { return 0.0105; }
 
   defaultTouchOpts() {
-    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, lefty: false };
+    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, lefty: false, assist: 50 };
   }
 
   loadTouchOpts() {
@@ -3821,6 +3852,7 @@ class CyberDoomEngine {
         this.saveTouchOpts();
       });
     };
+    bind('tc-set-assist', 'assist', 'tc-val-assist', (v) => v + '%');
     bind('tc-set-sens', 'sens', 'tc-val-sens', (v) => String(v));
     bind('tc-set-dead', 'dead', 'tc-val-dead', (v) => v + 'px');
     bind('tc-set-op', 'op', 'tc-val-op', (v) => v + '%');
@@ -3924,6 +3956,168 @@ class CyberDoomEngine {
     };
     if (portrait.addEventListener) portrait.addEventListener('change', onOrient);
     else portrait.addListener(onOrient); // older WebKit
+  }
+
+  /* ==========================================================================
+     AIM ASSIST (Mobile / Touch & Tunable Cvar)
+     Soft reticle pull toward nearest visible enemy in forward cone + light
+     bullet magnetism on shots. Default ON (50%) for touch, OFF (0%) for mouse.
+     ========================================================================== */
+  getAimAssistStrength() {
+    if (this.isTouch) {
+      const v = this.touchOpts ? this.touchOpts.assist : 50;
+      return Math.max(0, Math.min(100, typeof v === 'number' ? v : 50)) / 100;
+    }
+    return this.mouseAssist ? 0.35 : 0.0;
+  }
+
+  isAimAssistActive() {
+    const strength = this.getAimAssistStrength();
+    if (strength <= 0) return false;
+    if (this.isTouch) {
+      const touchAiming = this.touchPointers &&
+        Array.from(this.touchPointers.values()).some(p => p.role === 'look' || p.role === 'fire');
+      return touchAiming || !!this.isFiring;
+    }
+    return !!this.isFiring || !!this.isPointerLocked;
+  }
+
+  findAimAssistTarget(maxRange = 32, minDot = 0.88) {
+    if (!this.enemies || this.enemies.length === 0) return null;
+    const camPos = this.camera.position;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+
+    let bestTarget = null;
+    let bestDist = Infinity;
+
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e || e.state === 'DEAD' || !e.group) continue;
+
+      const ep = e.group.position;
+      const targetY = ep.y + (e.stats && e.stats.height ? e.stats.height * 0.55 : 0.9);
+      const dx = ep.x - camPos.x;
+      const dy = targetY - camPos.y;
+      const dz = ep.z - camPos.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+
+      if (distSq > maxRange * maxRange || distSq < 0.25) continue;
+      const dist = Math.sqrt(distSq);
+
+      const dirX = dx / dist, dirY = dy / dist, dirZ = dz / dist;
+      const dot = fwd.x * dirX + fwd.y * dirY + fwd.z * dirZ;
+      if (dot < minDot) continue;
+
+      // Line of sight: verify enemy is not occluded by a wall
+      if (window.CyberAI && typeof window.CyberAI.losBetween === 'function') {
+        if (!window.CyberAI.losBetween(this, camPos.x, camPos.y, camPos.z, ep.x, targetY, ep.z)) {
+          continue;
+        }
+      }
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTarget = {
+          enemy: e,
+          position: new THREE.Vector3(ep.x, targetY, ep.z),
+          dist: dist,
+          dot: dot
+        };
+      }
+    }
+    return bestTarget;
+  }
+
+  updateAimAssist(delta) {
+    this._aimAssistTarget = null;
+    const crosshairEl = document.getElementById('crosshair-container');
+
+    if (!this.isAimAssistActive()) {
+      if (crosshairEl) crosshairEl.classList.remove('assist-lock');
+      return;
+    }
+
+    const strength = this.getAimAssistStrength();
+    const cfg = this.aimAssistConfig;
+    const target = this.findAimAssistTarget(cfg.range, cfg.cone);
+
+    if (crosshairEl) {
+      crosshairEl.classList.toggle('assist-lock', !!target);
+    }
+
+    if (!target) return;
+    this._aimAssistTarget = target;
+
+    const camPos = this.camera.position;
+    const toX = target.position.x - camPos.x;
+    const toY = target.position.y - camPos.y;
+    const toZ = target.position.z - camPos.z;
+    const hDist = Math.hypot(toX, toZ);
+    if (hDist < 0.001) return;
+
+    const desiredYaw = Math.atan2(-toX, -toZ);
+    const desiredPitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, Math.atan2(toY, hDist)));
+
+    let dYaw = desiredYaw - this.yaw;
+    dYaw = ((dYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+
+    const dPitch = desiredPitch - this.pitch;
+    const factor = Math.min(1.0, cfg.pullRate * delta * strength);
+
+    this.yaw += dYaw * factor;
+    this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch + dPitch * factor));
+    this.applyLook(0, 0, 0);
+  }
+
+  applyAimMagnetism(dir) {
+    const strength = this.getAimAssistStrength();
+    if (strength <= 0) return dir;
+
+    let target = this._aimAssistTarget;
+    if (!target) {
+      target = this.findAimAssistTarget(this.aimAssistConfig.range, this.aimAssistConfig.cone);
+    }
+    if (!target) return dir;
+
+    const toT = target.position.clone().sub(this.camera.position).normalize();
+    const mag = this.aimAssistConfig.magnetism * strength;
+    dir.lerp(toT, mag).normalize();
+    return dir;
+  }
+
+  get aimAssist() {
+    return {
+      enabled: this.getAimAssistStrength() > 0,
+      strength: this.getAimAssistStrength(),
+      touchStrength: (this.touchOpts ? this.touchOpts.assist : 50) / 100,
+      mouseEnabled: !!this.mouseAssist,
+      cone: this.aimAssistConfig.cone,
+      range: this.aimAssistConfig.range,
+      pullRate: this.aimAssistConfig.pullRate,
+      magnetism: this.aimAssistConfig.magnetism,
+      target: this._aimAssistTarget ? this._aimAssistTarget.enemy : null
+    };
+  }
+
+  setAimAssist(opts = {}) {
+    if (opts.touchStrength != null && this.touchOpts) {
+      this.touchOpts.assist = Math.max(0, Math.min(100, Math.round(opts.touchStrength * 100)));
+      this.saveTouchOpts();
+      const el = document.getElementById('tc-set-assist');
+      const val = document.getElementById('tc-val-assist');
+      if (el) el.value = String(this.touchOpts.assist);
+      if (val) val.innerText = this.touchOpts.assist + '%';
+    }
+    if (opts.mouseEnabled != null) {
+      this.mouseAssist = !!opts.mouseEnabled;
+      try { localStorage.setItem('cyberhell.mouseAssist', String(this.mouseAssist)); } catch (e) {}
+      const chk = document.getElementById('mouse-assist-chk');
+      if (chk) chk.checked = this.mouseAssist;
+    }
+    if (opts.cone != null) this.aimAssistConfig.cone = Number(opts.cone);
+    if (opts.range != null) this.aimAssistConfig.range = Number(opts.range);
+    if (opts.pullRate != null) this.aimAssistConfig.pullRate = Number(opts.pullRate);
+    if (opts.magnetism != null) this.aimAssistConfig.magnetism = Number(opts.magnetism);
   }
 
   /* Weapons the player actually carries, in slot order. */
@@ -4068,6 +4262,9 @@ class CyberDoomEngine {
     dir.x += (Math.random() - 0.5) * spread;
     dir.y += (Math.random() - 0.5) * spread;
     dir.normalize();
+    if (typeof this.applyAimMagnetism === 'function') {
+      this.applyAimMagnetism(dir);
+    }
 
     raycaster.set(this.camera.position, dir);
 
@@ -4431,6 +4628,9 @@ class CyberDoomEngine {
       this.camera.position.y = newY;
       this.player.onGround = false;
     }
+
+    // Mobile Soft Aim Assist (tunable reticle pull toward nearest visible enemy)
+    this.updateAimAssist(delta);
 
     // Viewmodel Bob & Sway Update
     this.viewmodels.update(delta, isMoving && this.player.onGround);
@@ -5871,6 +6071,10 @@ window.onload = function() {
   const engine = new CyberDoomEngine();
   // Exposed so QA can assert pause/audio state without reaching into closures.
   window.cyberEngine = engine;
+  Object.defineProperty(window, 'aimAssist', {
+    get() { return engine.aimAssist; },
+    configurable: true
+  });
   engine.animate();
   if (location.search.indexOf('selftest=1') !== -1) runStickSelfTest();
 };
