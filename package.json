@@ -4,10 +4,18 @@
   "private": true,
   "description": "Cyberhell - static Three.js FPS with a cloud level/pack editor on Vercel.",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "dev": "node tools/dev_api_server.mjs",
     "dev:api": "node tools/dev_api_server.mjs",
     "migrate": "node tools/migrate_levels_to_blob.mjs",
-    "test:api": "node --test tests/api.test.mjs"
+    "test": "node --test tests/api.test.mjs tests/level-validate.test.mjs tests/midi-writer.test.mjs tests/midi-level-music.test.mjs && node tests/check-exits.js && node tests/editor-roundtrip.js",
+    "test:api": "node --test tests/api.test.mjs",
+    "check:levels": "node tests/check-exits.js && node tests/check-clipping.js && node tests/editor-roundtrip.js",
+    "check:polys": "node tests/check-polys.js",
+    "qa:articulation": "node tests/qa-articulation.js"
   },
   "dependencies": {
     "@vercel/blob": "^0.27.0",

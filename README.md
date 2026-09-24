@@ -1,7 +1,9 @@
 # Cyberhell
 
 A static Three.js FPS. `index.html` is the whole game; `js/` holds the engine modules, `levelPacks/`
-the converted level sets, `midi/` the music, `tests/` the QA harnesses. It deploys to Vercel with no
+the converted level sets, `midi/` the music, `tests/` the QA harnesses, `tools/` the dev server and
+the WAD -> JSON pipeline (`python tools/convert_all_wads.py` then `python tools/patch_exit_switches.py`,
+run from the repo root; the source `*.wad` files stay at the root). It deploys to Vercel with no
 build step.
 
 ## Editor storage
@@ -26,7 +28,11 @@ what runs in production.
 ### Running it locally
 
 ```bash
-node tools/dev_api_server.mjs          # http://localhost:5305, static game + /api/*
+npm install                            # only the api/ deps; the game itself has no build step
+npm run dev                            # http://localhost:5305, static game + /api/*
+npm test                               # node unit tests + exit/round-trip level checks
+npm run qa:articulation                # headless enemy-rig check (needs Playwright, see CLEANUP.md)
+node tools/dev_api_server.mjs          # same as npm run dev
 node --test tests/api.test.mjs         # end-to-end: auth, packs, levels, versions, publish
 node tests/qa-editor-entry.js          # headless: title-screen editor entry + guest-save prompt
 ```

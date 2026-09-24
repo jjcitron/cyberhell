@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { chromium } = require('C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
 
 const OUT = path.resolve('prototype_artifacts');
 fs.mkdirSync(OUT, { recursive: true });
