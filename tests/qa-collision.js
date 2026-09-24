@@ -34,6 +34,8 @@
  *             wall the model says is reachable, so the model must never claim
  *             a route the engine's own collision refuses -- that mismatch is
  *             what made converted levels unfinishable before.
+ *   CH-COL-12 Player cannot walk or camera/eye-clip into solid walls or overhead
+ *             ceilings (min camera wall distance >= 0.28, zero wall/ceiling penetrations).
  *
  * Runs its own static server on its own port and its own headless Chromium
  * via playwright-core -- never the shared bcl browser session.
@@ -71,6 +73,10 @@ function serve() {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
+      if (rel === 'favicon.ico') {
+        res.writeHead(204);
+        return res.end();
+      }
       const file = path.join(ROOT, rel);
       if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         res.writeHead(404); return res.end('not found');
@@ -143,7 +149,7 @@ const PROBE = function (samples, steps) {
     if (e.getFloorAt(x, z).inside && clearOfWalls(x, z)) spots.push([x, z]);
   }
 
-  const v = { offFloor: 0, bigRise: 0, belowFloor: 0, meshMismatch: 0, throughWall: 0, samples: spots.length };
+  const v = { offFloor: 0, bigRise: 0, belowFloor: 0, meshMismatch: 0, throughWall: 0, samples: spots.length, camWallClip: 0, minCamDist: Infinity, ceilClip: 0 };
   const examples = [];
 
   // Floor meshes, tagged by buildSectorGeometry with the height they render at.
@@ -220,6 +226,27 @@ const PROBE = function (samples, steps) {
       if (p.y < f.floorY - 0.05) {
         v.belowFloor++;
         if (examples.length < 3) examples.push({ kind: 'belowFloor', y: +p.y.toFixed(2), floorY: f.floorY, x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
+      }
+
+      // CH-COL-12: player eye and body distance to solid walls and ceiling.
+      // Wall mesh face is at 0.20 from centerline. Camera near plane is 0.01.
+      // A wall that spans the camera eye height must keep at least 0.25 clearance
+      // from the wall segment centerline (>= 0.05 from mesh surface).
+      const camEye = p.y;
+      for (const w of e.wallsNear(p.x, p.z, 1.0)) {
+        if (!w.solid) continue;
+        if (w.topY !== undefined && w.topY < camEye - 0.05) continue;
+        if (w.bottomY !== undefined && w.bottomY > camEye + 0.05) continue;
+        const d = segD(p.x, p.z, w.p1.x, w.p1.z, w.p2.x, w.p2.z);
+        if (d < v.minCamDist) v.minCamDist = d;
+        if (d < 0.25) {
+          v.camWallClip++;
+          if (examples.length < 3) examples.push({ kind: 'camWallClip', d: +d.toFixed(3), x: +p.x.toFixed(2), z: +p.z.toFixed(2), wall: [w.p1.x, w.p1.z, w.p2.x, w.p2.z] });
+        }
+      }
+      if (f.ceilY !== undefined && f.ceilY !== null && f.ceilY >= f.floorY + 1.5 && p.y > f.ceilY) {
+        v.ceilClip++;
+        if (examples.length < 3) examples.push({ kind: 'ceilClip', y: +p.y.toFixed(2), ceilY: f.ceilY });
       }
       prevY = p.y;
     }
@@ -559,6 +586,11 @@ function check(id, ok, detail) {
         `${v.samples} spots x ${STEPS} frames: offFloor=${v.offFloor} bigRise=${v.bigRise} ` +
         `belowFloor=${v.belowFloor} meshMismatch=${v.meshMismatch} throughWall=${v.throughWall}` +
         `${bad ? '  eg ' + JSON.stringify(examples) : ''}`);
+
+      const camBad = v.camWallClip + v.ceilClip;
+      check(`CH-COL-12 ${t.name}`, camBad === 0,
+        `player camera vs walls/ceiling: camWallClip=${v.camWallClip} ceilClip=${v.ceilClip} (closest wall ${v.minCamDist === Infinity ? 'none' : v.minCamDist.toFixed(3)})` +
+        `${camBad ? '  eg ' + JSON.stringify(examples.filter(x => x.kind === 'camWallClip' || x.kind === 'ceilClip')) : ''}`);
 
       const level = t.file
         ? JSON.parse(fs.readFileSync(path.join(ROOT, t.file), 'utf8'))

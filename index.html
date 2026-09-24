@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="data:,">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
@@ -3117,6 +3118,18 @@ class CyberDoomEngine {
       tightest = Math.min(tightest, room);
       if (!best || room > best.room + 0.01) best = { a, room };
     }
+
+    // Residual corpse clip (Joel mobile playtest): when an enemy dies with a wall
+    // directly behind it, the crumple fold swings legs and pelvis back into the
+    // wall. If the chosen fall heading has room in front, nudge the corpse group
+    // position slightly forward along that heading to pull the lower body clear.
+    const backRoom = this.corpseRoom(p.x, p.z, -Math.sin(best.a), -Math.cos(best.a), nearW, nearW, nearW, feet);
+    if (backRoom < nearW && best.room > 0.6) {
+      const shift = Math.min(nearW - backRoom, 0.25, (best.room - 0.5) / 2);
+      p.x += Math.sin(best.a) * shift;
+      p.z += Math.cos(best.a) * shift;
+    }
+
     // cyber-enemies.js turns the body to fallYaw and tips it onto its back,
     // so the yaw faces opposite the heading it falls along.
     enemy.fallYaw = best.a + Math.PI;
@@ -3147,17 +3160,19 @@ class CyberDoomEngine {
   // starts overhead still blocks if the falling head sweeps through it: at
   // s out, a body of length len tipping over reaches sqrt(len^2 - s^2) up.
   corpseRoom(x, z, dx, dz, len, nearW, halfW, feetY) {
-    for (let s = 0.25; s <= len; s += 0.25) {
+    // 0.08 step: tight enough that diagonal walls cannot slip between samples.
+    const step = 0.08;
+    for (let s = 0; s <= len + 1e-4; s += step) {
       const qx = x + dx * s, qz = z + dz * s;
       const f = this.getFloorAt(qx, qz);
-      if (!f.inside || f.floorY > feetY + 0.3) return s - 0.25;
+      if (!f.inside || f.floorY > feetY + 0.3) return Math.max(0, s - step);
       const hw = s < 0.75 ? nearW : halfW;
       const arcY = feetY + Math.max(1.2, Math.sqrt(Math.max(0, len * len - s * s)));
       for (const w of this.wallsNear(qx, qz, hw)) {
         if (!w.solid) continue;
         if (w.topY !== undefined && w.topY <= feetY + 0.05) continue;
         if (w.bottomY !== undefined && w.bottomY >= arcY) continue;
-        if (getSegDist(qx, qz, w.p1.x, w.p1.z, w.p2.x, w.p2.z).dist < hw) return s - 0.25;
+        if (getSegDist(qx, qz, w.p1.x, w.p1.z, w.p2.x, w.p2.z).dist < hw) return Math.max(0, s - step);
       }
     }
     return len;
@@ -4546,8 +4561,21 @@ class CyberDoomEngine {
       this.player.onGround = true;
       this.player.safePosition.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     } else {
-      this.camera.position.y = newY;
-      this.player.onGround = false;
+      // Ceiling and overhead geometry collision: player eye/head cannot penetrate ceiling or overhead walls
+      let maxCamY = (floor.ceilY !== undefined && floor.ceilY !== null ? floor.ceilY - 0.25 : Infinity);
+      for (const w of this.wallsNear(this.camera.position.x, this.camera.position.z, pRadius)) {
+        if (!w.solid || w.bottomY === undefined) continue;
+        if (w.bottomY > feetY) {
+          maxCamY = Math.min(maxCamY, w.bottomY - 0.25);
+        }
+      }
+      if (newY >= maxCamY) {
+        this.camera.position.y = Math.max(targetY, maxCamY);
+        this.player.velocity.y = 0;
+      } else {
+        this.camera.position.y = newY;
+      }
+      this.player.onGround = (this.camera.position.y <= targetY + 0.01);
     }
 
     // Viewmodel Bob & Sway Update
@@ -4617,7 +4645,9 @@ class CyberDoomEngine {
   // result is guaranteed not to be on the far side of a wall.
   resolveWallCollisions(x, z, radius, feetY, height, fromX, fromZ) {
     const gated = feetY !== undefined;
-    const headY = gated ? feetY + (height !== undefined ? height : 1.5) : 0;
+    // Eye/head margin (+0.25): overhead walls and lintels whose bottom is within
+    // 25 cm of eye height block horizontally, preventing camera eye-clipping.
+    const headY = gated ? feetY + (height !== undefined ? height : 1.5) + 0.25 : 0;
     const blocks = (w) => {
       if (!w.solid) return false;
       if (!gated) return true;
@@ -4652,18 +4682,11 @@ class CyberDoomEngine {
     let resX = x;
     let resZ = z;
 
-    // Ledge risers (w.ledge) are not solid walls. Climbing is gated by floor
-    // height in updatePhysics instead, which is one-way for free: you can drop
-    // off a ledge but not walk up it. tests/reachability.js and
-    // patch_exit_switches.py run the same directed rule, so an exit is never
-    // placed somewhere the engine cannot actually walk to.
-
-    // 3 iterations of pushback resolution
+    // 6 iterations of pushback resolution (corners and acute angles need more than 3)
     const nearby = this.wallsNear(x, z, radius * 3);
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < 6; iter++) {
+      let anyPushed = false;
       for (const w of nearby) {
-        // Below the feet (a kerb you are standing on top of) or entirely
-        // overhead (a lintel you walk under): no horizontal block.
         if (!blocks(w)) continue;
         const p1x = w.p1.x !== undefined ? w.p1.x : w.p1[0];
         const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
@@ -4672,32 +4695,44 @@ class CyberDoomEngine {
 
         const res = getSegDist(resX, resZ, p1x, p1z, p2x, p2z);
         if (res.dist < radius) {
-          const overlap = radius - res.dist;
-          let distX = resX - res.projX;
-          let distZ = resZ - res.projZ;
-          let len = Math.hypot(distX, distZ);
-          if (len <= 0.0001) {
-            const dx = p2x - p1x;
-            const dz = p2z - p1z;
-            const segLen = Math.hypot(dx, dz);
-            if (segLen > 0.0001) {
-              distX = -dz / segLen;
-              distZ = dx / segLen;
-              len = 1.0;
+          const dx = p2x - p1x;
+          const dz = p2z - p1z;
+          const segLen = Math.hypot(dx, dz);
+          if (segLen <= 1e-6) continue;
+
+          // Normal towards fromX/fromZ side if known, otherwise outward from proj
+          let nx = -dz / segLen;
+          let nz = dx / segLen;
+          if (fromX !== undefined) {
+            const fromSide = dx * (fromZ - p1z) - dz * (fromX - p1x);
+            if (fromSide < 0) { nx = -nx; nz = -nz; }
+          } else {
+            const curSide = dx * (resZ - p1z) - dz * (resX - p1x);
+            if (curSide < 0) { nx = -nx; nz = -nz; }
+          }
+
+          let pushDist = radius - res.dist;
+          if (fromX !== undefined) {
+            const fromSide = dx * (fromZ - p1z) - dz * (fromX - p1x);
+            const resSide = dx * (resZ - p1z) - dz * (resX - p1x);
+            if (fromSide !== 0 && (fromSide > 0) !== (resSide >= 0)) {
+              // Crossed the wall! Push back to radius on fromSide
+              pushDist = radius + res.dist;
             }
           }
-          if (len > 0.0001) {
-            resX += (distX / len) * overlap;
-            resZ += (distZ / len) * overlap;
+
+          if (pushDist > 1e-4) {
+            resX += nx * pushDist;
+            resZ += nz * pushDist;
+            anyPushed = true;
           }
         }
       }
+      if (!anyPushed) break;
     }
 
-    // Pushing out of one wall can shove the mover across another in a tight
-    // corner -- three iterations of radial push-out cannot guarantee otherwise.
-    // If the resolved point ended up on the far side of a wall, refuse the
-    // whole step instead. Callers sub-step, so this stops at the wall.
+    // Wall-crossing veto: segment-segment intersection test between (from -> res)
+    // and each nearby solid wall segment. Never allow crossing a solid wall.
     if (fromX !== undefined) {
       const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
       const span = Math.hypot(resX - fromX, resZ - fromZ) / 2 + radius;
@@ -4707,16 +4742,16 @@ class CyberDoomEngine {
         const p1z = w.p1.z !== undefined ? w.p1.z : w.p1[1];
         const p2x = w.p2.x !== undefined ? w.p2.x : w.p2[0];
         const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
-        // Only veto a clean crossing. If the origin is already inside this
-        // wall's band, the push-out owns the outcome -- vetoing there freezes
-        // anyone who ends up touching a wall, in every direction, forever.
-        if (getSegDist(fromX, fromZ, p1x, p1z, p2x, p2z).dist < radius) continue;
+
         const d1 = side(p1x, p1z, p2x, p2z, fromX, fromZ);
         const d2 = side(p1x, p1z, p2x, p2z, resX, resZ);
-        if ((d1 > 0) === (d2 > 0)) continue;
+        if (d1 * d2 > 0) continue;
+        if (Math.abs(d1) <= 1e-9 && d2 !== 0) continue;
+
         const d3 = side(fromX, fromZ, resX, resZ, p1x, p1z);
         const d4 = side(fromX, fromZ, resX, resZ, p2x, p2z);
-        if ((d3 > 0) === (d4 > 0)) continue;
+        if (d3 * d4 > 0) continue;
+
         return { x: fromX, z: fromZ };
       }
     }
@@ -4789,7 +4824,7 @@ class CyberDoomEngine {
             if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
           }
         }
-        if (inside) return { inside: true, floorY: sec.floorY };
+        if (inside) return { inside: true, floorY: sec.floorY, ceilY: sec.ceilY !== undefined ? sec.ceilY : sec.ceil };
         continue;
       }
       const rects = sec.resolvedFloors || sec.floors;
@@ -4809,10 +4844,12 @@ class CyberDoomEngine {
       // floor covering the point, which is the one actually drawn on top and
       // the one the player stands on -- array order picked an invisible floor
       // underneath and dropped the camera into it.
-      if (hit && (bestRect === null || sec.floorY > bestRect)) bestRect = sec.floorY;
+      if (hit && (bestRect === null || sec.floorY > bestRect.floorY)) {
+        bestRect = { floorY: sec.floorY, ceilY: sec.ceilY !== undefined ? sec.ceilY : sec.ceil };
+      }
     }
-    if (bestRect !== null) return { inside: true, floorY: bestRect };
-    return { inside: false, floorY: 0.0 };
+    if (bestRect !== null) return { inside: true, floorY: bestRect.floorY, ceilY: bestRect.ceilY };
+    return { inside: false, floorY: 0.0, ceilY: Infinity };
   }
 
   /* Tear the current level down: drop every scene object and free the GPU

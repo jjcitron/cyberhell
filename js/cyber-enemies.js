@@ -1788,10 +1788,11 @@
       addRot(P.leftShoulder, -0.6 * fold, 0, -0.45 * fold);
       addRot(P.rightShoulder, -0.5 * fold, 0, 0.45 * fold);
       if (L) {
-        addRot(L.leftLeg, 0.9 * e, 0, 0);
-        addRot(L.rightLeg, 0.7 * e, 0, 0);
-        addRot(lower(L.leftLeg), -1.5 * e, 0, 0);
-        addRot(lower(L.rightLeg), -1.2 * e, 0, 0);
+        var legFold = e * Math.min(1, Math.max(0.2, tipMax / (Math.PI / 2)));
+        addRot(L.leftLeg, 0.9 * legFold, 0, 0);
+        addRot(L.rightLeg, 0.7 * legFold, 0, 0);
+        addRot(lower(L.leftLeg), -1.5 * legFold, 0, 0);
+        addRot(lower(L.rightLeg), -1.2 * legFold, 0, 0);
       }
     }
   }
