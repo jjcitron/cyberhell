@@ -3060,6 +3060,10 @@ class CyberDoomEngine {
       limbs: group.userData.limbs || null,
       stats: st,
       radius: radius,
+      // Hurt volume for projectiles: the rig's own rest height and half-width
+      // (see enemyRadius), so tall and fat bodies are hit where they are drawn.
+      bodyH: (this._enemyFoot.get(ent.enemyType) || {}).h || 2.3,
+      bodyHalfW: (this._enemyFoot.get(ent.enemyType) || {}).halfX || 0.8,
       floorY: floorY,
       bobT: Math.random() * Math.PI * 2
     };
@@ -4385,8 +4389,13 @@ class CyberDoomEngine {
     let hits = 0;
     this.enemies.forEach(e => {
       if (e.state === 'DEAD') return;
-      const dist = pPos.distanceTo(e.group.position);
+      // Reach to the body's edge in plan, not the 3D distance to its feet:
+      // the camera sits 1.5 up and a big rig is held ~1.6 off by its radius,
+      // so the saw could never touch a Demon standing right in front of it.
+      const ep = e.group.position;
+      const dist = Math.hypot(ep.x - pPos.x, ep.z - pPos.z) - Math.max(0, (e.radius || 0.6) - 0.6);
       if (dist >= range) return;
+      if (pPos.y < ep.y - 1.0 || pPos.y > ep.y + (e.bodyH || 2.3) + 1.8) return;
       if (facing) {
         const to = e.group.position.clone().sub(pPos).setY(0);
         if (to.lengthSq() > 1e-6 && to.normalize().dot(facing) < minDot) return;
@@ -5456,19 +5465,31 @@ class CyberDoomEngine {
       let hitPoint = null;
 
       if (p.owner === 'player') {
+        // Swept along this frame's step, not tested at its end: a repeater
+        // bolt covers 55 u/s, 2.7 m a frame at 20 fps, and stepped straight
+        // over bodies that the old end-point test only caught at 60 fps. The
+        // wall test below was already swept, so walls won and enemies lived.
+        const a = hist[0], b = p.group.position;
+        const sx = b.x - a.x, sy = b.y - a.y, sz = b.z - a.z;
+        const L2 = sx * sx + sz * sz;
+        let bestT = Infinity, best = null;
         for (const enemy of targets) {
           if (enemy.state === 'DEAD') continue;
           const ePos = enemy.group.position;
-          const dx = p.group.position.x - ePos.x;
-          const dz = p.group.position.z - ePos.z;
-          const dy = p.group.position.y - (ePos.y + 1.0);
-          if (Math.hypot(dx, dz) < (p.radius + 0.8) && Math.abs(dy) < 1.3 &&
-              !this.wallBetween(p.group.position.x, p.group.position.z, ePos.x, ePos.z, p.group.position.y, true)) {
-            hitPoint = p.group.position.clone();
-            this.damageEnemy(enemy, p.damage, hitPoint);
-            hit = true;
-            break;
-          }
+          // Closest approach of the step to the body's vertical axis, in plan.
+          const t = L2 > 1e-9 ? Math.max(0, Math.min(1, ((ePos.x - a.x) * sx + (ePos.z - a.z) * sz) / L2)) : 1;
+          const qx = a.x + sx * t, qy = a.y + sy * t, qz = a.z + sz * t;
+          const reach = p.radius + Math.max(0.8, Math.min(1.6, enemy.bodyHalfW || 0.8));
+          if (Math.hypot(qx - ePos.x, qz - ePos.z) >= reach) continue;
+          if (qy < ePos.y - 0.3 || qy > ePos.y + (enemy.bodyH || 2.3) + 0.2) continue;
+          if (t >= bestT || this.wallBetween(a.x, a.z, qx, qz, qy, true)) continue;
+          bestT = t; best = enemy;
+        }
+        if (best) {
+          hitPoint = new THREE.Vector3(a.x + sx * bestT, a.y + sy * bestT, a.z + sz * bestT);
+          p.group.position.copy(hitPoint);
+          this.damageEnemy(best, p.damage, hitPoint);
+          hit = true;
         }
       } else if (p.group.position.distanceTo(this.camera.position) < 0.9 + p.radius &&
                  !this.wallBetween(p.group.position.x, p.group.position.z, this.camera.position.x, this.camera.position.z, p.group.position.y, true)) {
