@@ -3294,7 +3294,12 @@ class CyberDoomEngine {
   keepRigOffWalls(rec) {
     const g = rec.group, body = g.children.length === 1 ? g.children[0] : null;
     if (!body || rec.state === 'DEAD' || !g.visible) return;
-    const WALL_FACE = 0.2, REACH = 2.2, MAX_OFF = 1.4;
+    // Looming rigs (1.5x+, see enemyRadius) reach and need to slide further,
+    // and their bigger swing carries a part further between two corrections.
+    // ponytail: flat 0.04/scale-unit margin, measured (Mancubus 1.6x reached
+    // 0.051 on the riser press without it); per-part swing speed if it bites.
+    const big = Math.max(1, g.scale.x);
+    const WALL_FACE = 0.2 + 0.04 * (big - 1), REACH = 2.2 * big, MAX_OFF = 1.4 * big;
     const off = rec.wallOff || (rec.wallOff = { x: 0, z: 0, lx: 0, lz: 0 });
     // Take last frame's slide back out, so what is measured is the rig alone.
     body.position.x -= off.lx; body.position.z -= off.lz;
@@ -5209,7 +5214,10 @@ class CyberDoomEngine {
         const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
 
         const res = getSegDist(resX, resZ, p1x, p1z, p2x, p2z);
-        const r = w.solid ? radius : Math.min(radius, RISER_R);
+        // Risers keep a body RISER_R off (the player's squeeze rule). A
+        // looming rig past the stock 1.0 cap keeps its extra radius too, or
+        // its drawn body leans a metre and more off its own centre.
+        const r = w.solid ? radius : Math.min(radius, RISER_R + Math.max(0, radius - 1.0));
         if (res.dist < r && (w.solid || this.riserBlocks(w, fromX !== undefined ? fromX : resX, fromX !== undefined ? fromZ : resZ, feetY, climb))) {
           const dx = p2x - p1x;
           const dz = p2z - p1z;

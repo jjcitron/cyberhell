@@ -1002,7 +1002,8 @@
         // Its feet may still be inside the view even when the origin is not,
         // so allow a body's worth of slack before skipping.
         var cp = e.group.position;
-        if (!_frustum.intersectsSphere(_sphere.set(cp, 1.6))) { reassert(e); continue; }
+        // (A looming 1.7x rig's body reaches that much further.)
+        if (!_frustum.intersectsSphere(_sphere.set(cp, 1.6 * Math.max(1, e.group.scale.x)))) { reassert(e); continue; }
       }
       // Rig animation is the most expensive thing per body (limbs, jaws,
       // emissive pulses). Close bodies animate every frame; the rest of the
