@@ -241,7 +241,17 @@
       border-radius: 3px;
       font-weight: bold;
     }
+    #difficulty-panel { background: rgba(0,0,0,0.6); border: 1px solid #ff3355; border-radius: 4px; padding: 8px 14px; color: #ffb3c0; font-family: monospace; font-size: 13px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+    #difficulty-panel .dp-presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    #difficulty-panel button { background: #1a0d12; color: #ff8fa3; border: 1px solid #ff3355; padding: 4px 10px; font-family: monospace; font-weight: bold; border-radius: 3px; cursor: pointer; }
+    #difficulty-panel button.on { background: #ff3355; color: #000; }
+    #difficulty-panel label { display: flex; align-items: center; gap: 8px; }
+    #difficulty-panel input[type=range] { width: 170px; accent-color: #ff3355; }
+    #difficulty-panel .dp-val { min-width: 44px; color: #fff; }
     .weap-slot:not(.owned) { opacity: 0.4; }
+    /* Rounds left for each weapon, under its name (shots, not raw pool). */
+    .slot-ammo { display: block; font-size: 11px; color: #ffcc66; text-align: center; margin-top: 1px; }
+    .slot-ammo.empty { color: #ff3355; }
     .weap-slot.owned { color: #8fa6bd; }
     .weap-slot.active {
       color: #00ffff;
@@ -827,12 +837,13 @@
 
       <!-- Weapon Selector -->
       <div class="weapon-selector">
-        <div id="slot-1" class="weap-slot">1 SAW</div>
-        <div id="slot-2" class="weap-slot active owned">2 PISTOL</div>
-        <div id="slot-3" class="weap-slot">3 MACHINEGUN</div>
-        <div id="slot-4" class="weap-slot">4 SHOTGUN</div>
-        <div id="slot-5" class="weap-slot">5 RIFLE</div>
-        <div id="slot-6" class="weap-slot">6 REPEATER</div>
+        <div id="slot-1" class="weap-slot">1 SAW<span class="slot-ammo"></span></div>
+        <div id="slot-2" class="weap-slot active owned">2 PISTOL<span class="slot-ammo"></span></div>
+        <div id="slot-3" class="weap-slot">3 MACHINEGUN<span class="slot-ammo"></span></div>
+        <div id="slot-4" class="weap-slot">4 SHOTGUN<span class="slot-ammo"></span></div>
+        <div id="slot-5" class="weap-slot">5 RIFLE<span class="slot-ammo"></span></div>
+        <div id="slot-6" class="weap-slot">6 REPEATER<span class="slot-ammo"></span></div>
+        <div id="slot-7" class="weap-slot">7 HOOK<span class="slot-ammo"></span></div>
       </div>
     </div>
 
@@ -856,7 +867,7 @@
           <div><span class="key-badge">LEFT CLICK</span> Fire Weapon</div>
           <div><span class="key-badge">RIGHT CLICK / E</span> Open Doors & Switches</div>
           <div><span class="key-badge">SPACE</span> Jump / Mantle</div>
-          <div><span class="key-badge">1 - 6 / SCROLL</span> Select Weapon</div>
+          <div><span class="key-badge">1 - 7 / SCROLL</span> Select Weapon (7 = HOOK)</div>
           <div><span class="key-badge">TAB / M</span> Tactical Automap</div>
           <div><span class="key-badge">R</span> Restart Level</div>
         </div>
@@ -882,6 +893,22 @@
           <label title="Playtest aid: you take no damage and cannot die while this is ticked." style="color:#ffcc00; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(255,204,0,0.1); padding:6px 14px; border:1px solid #ffcc00; border-radius:4px;">
             <input type="checkbox" id="god-mode-chk" style="accent-color:#ffcc00; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> GOD MODE (PLAYTEST: NO DAMAGE)
           </label>
+        </div>
+
+        <!-- DIFFICULTY. Presets only set the two damage sliders; enemy counts
+             and AI are the same in every mode. Ultra-Violence is the tuning
+             the game shipped with (both 100%). God mode above is separate. -->
+        <div id="difficulty-panel">
+          <div class="dp-presets">
+            <span style="color:#ff3355; font-weight:bold;">DIFFICULTY:</span>
+            <button type="button" data-preset="easy">EASY</button>
+            <button type="button" data-preset="medium">MEDIUM</button>
+            <button type="button" data-preset="hard">HARD</button>
+            <button type="button" data-preset="uv">ULTRA-VIOLENCE</button>
+            <span id="dp-custom" style="color:#8fa6bd;"></span>
+          </div>
+          <label>DAMAGE YOU DEAL <input type="range" id="dmg-dealt" min="25" max="300" step="5" value="100" /> <span class="dp-val" id="dmg-dealt-val">100%</span></label>
+          <label>DAMAGE YOU TAKE <input type="range" id="dmg-taken" min="10" max="200" step="5" value="100" /> <span class="dp-val" id="dmg-taken-val">100%</span></label>
         </div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
@@ -1442,6 +1469,119 @@ class SoundEngine {
     gain.connect(this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
+  }
+
+  /* Output node for a positioned cue: a stereo panner when the browser has
+     one, else straight to the speakers. */
+  _out(pan) {
+    if (pan && this.ctx.createStereoPanner) {
+      const pn = this.ctx.createStereoPanner();
+      pn.pan.value = pan;
+      pn.connect(this.ctx.destination);
+      return pn;
+    }
+    return this.ctx.destination;
+  }
+
+  /* "Something is here": a short, quiet servo whine (machines) or a low
+     growl (flesh). vol 0..1 from distance; peak gain stays under 0.1. */
+  playPresence(mech, vol, pan, big) {
+    if (!this.ctx || vol <= 0.02) return;
+    const t = this.ctx.currentTime, out = this._out(pan);
+    const osc = this.ctx.createOscillator(), lfo = this.ctx.createOscillator();
+    const lfoG = this.ctx.createGain(), f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+    const base = (mech ? 150 : 62) * (big ? 0.6 : 1) * (0.9 + Math.random() * 0.2);
+    const len = mech ? 0.42 : 0.6;
+    osc.type = mech ? 'triangle' : 'sawtooth';
+    osc.frequency.setValueAtTime(base, t);
+    osc.frequency.linearRampToValueAtTime(base * (mech ? 1.5 : 0.8), t + len);
+    lfo.frequency.value = mech ? 24 : 9;
+    lfoG.gain.value = base * (mech ? 0.04 : 0.12);
+    lfo.connect(lfoG); lfoG.connect(osc.frequency);
+    f.type = mech ? 'bandpass' : 'lowpass';
+    f.frequency.value = mech ? 900 : 380;
+    f.Q.value = mech ? 3 : 1;
+    const peak = 0.09 * vol;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    osc.connect(f); f.connect(g); g.connect(out);
+    osc.start(t); lfo.start(t);
+    osc.stop(t + len + 0.02); lfo.stop(t + len + 0.02);
+  }
+
+  /* Kill confirm: a falling tone over a soft thud. Distinct from the hurt
+     buzz (sawtooth 200->50, 0.2 s), and well under the gunfire. */
+  playDeath(vol, pan, big) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, out = this._out(pan);
+    const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+    osc.type = 'sine';
+    const f0 = big ? 220 : 360;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 0.22, t + 0.5);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2 * vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    osc.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + 0.6);
+    const n = this.ctx.createBufferSource(), nf = this.ctx.createBiquadFilter(), ng = this.ctx.createGain();
+    n.buffer = this.createNoiseBuffer(0.25);
+    nf.type = 'lowpass'; nf.frequency.value = big ? 180 : 320;
+    ng.gain.setValueAtTime(0.18 * vol, t + 0.05);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    n.connect(nf); nf.connect(ng); ng.connect(out);
+    n.start(t + 0.05);
+  }
+
+  /* Chainsaw victim: the loud one. Two detuned saws through a vowel-ish
+     band, pitch shrieking up then breaking down, with a fast wobble. */
+  playScream(pitch, pan) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, out = this._out(pan), len = 0.75;
+    const g = this.ctx.createGain(), f = this.ctx.createBiquadFilter(), f2 = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 1100 * pitch; f.Q.value = 1.4;
+    f2.type = 'peaking'; f2.frequency.value = 2600 * pitch; f2.gain.value = 8; f2.Q.value = 2;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.75, t + 0.04);
+    g.gain.setValueAtTime(0.7, t + len * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    f.connect(f2); f2.connect(g); g.connect(out);
+    const lfo = this.ctx.createOscillator(), lfoG = this.ctx.createGain();
+    lfo.frequency.value = 17; lfoG.gain.value = 45 * pitch;
+    lfo.connect(lfoG);
+    for (const det of [0, 7]) {
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      const b = (430 + det * 6) * pitch;
+      o.frequency.setValueAtTime(b, t);
+      o.frequency.exponentialRampToValueAtTime(b * 2.1, t + 0.18);
+      o.frequency.exponentialRampToValueAtTime(b * 0.8, t + len);
+      lfoG.connect(o.frequency);
+      o.connect(f);
+      o.start(t); o.stop(t + len + 0.02);
+    }
+    lfo.start(t); lfo.stop(t + len + 0.02);
+    const n = this.ctx.createBufferSource(), ng = this.ctx.createGain();
+    n.buffer = this.createNoiseBuffer(len);
+    ng.gain.setValueAtTime(0.12, t); ng.gain.exponentialRampToValueAtTime(0.001, t + len);
+    n.connect(ng); ng.connect(f);
+    n.start(t);
+    this.screams = (this.screams || 0) + 1;
+  }
+
+  /* Hook out and hook home: a whip crack, then a metal clank. */
+  playGrapple(hit) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = hit ? 'square' : 'sawtooth';
+    o.frequency.setValueAtTime(hit ? 180 : 900, t);
+    o.frequency.exponentialRampToValueAtTime(hit ? 90 : 160, t + 0.14);
+    g.gain.setValueAtTime(0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + 0.18);
   }
 
   playPickup() {
@@ -2103,6 +2243,17 @@ function getGlowTexture() {
 // step that raises the floor more than this above the player's feet, and
 // allows any drop. tests/reachability.js and patch_exit_switches.py use the
 // same number, so exits are only ever placed where the engine can walk.
+/* Difficulty presets (Joel 2026-09-25). Two damage scalars and nothing else:
+   dealt multiplies every hit the player lands on an enemy, taken every hit
+   an enemy (or a barrel) lands on the player. Enemy counts, AI, ammo and
+   health pickups are identical in every mode. Ultra-Violence is the
+   original tuning. */
+const DIFFICULTY_PRESETS = {
+  easy:   { label: 'EASY',           dealt: 1.6, taken: 0.4 },
+  medium: { label: 'MEDIUM',         dealt: 1.3, taken: 0.65 },
+  hard:   { label: 'HARD',           dealt: 1.1, taken: 0.85 },
+  uv:     { label: 'ULTRA-VIOLENCE', dealt: 1.0, taken: 1.0 }
+};
 const EMPTY_WALLS = [];
 const EMPTY_SECTORS = [];
 const STEP_UP_MAX = 1.2;
@@ -2244,7 +2395,7 @@ class CyberDoomEngine {
       // Owned weapons keyed by the same names the level converter emits.
       // hasChainsaw / hasShotgun stay as accessors so any caller outside the
       // weapon code keeps working against the old two-boolean shape.
-      weapons: { chainsaw: false, pistol: true, machinegun: false, shotgun: false, energy_rifle: false, energy_repeater: false },
+      weapons: { chainsaw: false, pistol: true, machinegun: false, shotgun: false, energy_rifle: false, energy_repeater: false, grapple: true },
       get hasChainsaw() { return this.weapons.chainsaw; },
       set hasChainsaw(v) { this.weapons.chainsaw = !!v; },
       get hasShotgun() { return this.weapons.shotgun; },
@@ -3014,20 +3165,32 @@ class CyberDoomEngine {
     const spot = this.getFloorAt(ent.pos[0], ent.pos[2]);
     const baseY = spot.inside ? spot.floorY : ent.pos[1];
     const hoverY = baseY + (st0 && st0.fly ? ENEMY_HOVER : 0);
-    const radius = this.enemyRadius(ent.enemyType, group);
+    let radius = this.enemyRadius(ent.enemyType, group);
+    const foot = this._enemyFoot.get(ent.enemyType) || {};
+    let bodyH = foot.h || 2.3, bodyHalfW = foot.halfX || 0.8;
     // Some WAD things sit inside a wall. moveEnemy only refuses bad steps, it
     // never corrects a bad start, so un-stick here: push out, and if that lands
     // off the floor try a short ring of offsets before giving up.
     // A closet too tight for the rig's full radius still gets the old 0.6.
-    let sx = ent.pos[0], sz = ent.pos[2];
+    let sx = ent.pos[0], sz = ent.pos[2], fitR = 0.6;
     unstick: for (const rr of radius > 0.6 ? [radius, 0.6] : [0.6]) {
       for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
                               [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
         const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, rr, hoverY, 1.6);
         if (!this.getFloorAt(c.x, c.z).inside) continue;
-        sx = c.x; sz = c.z;
+        sx = c.x; sz = c.z; fitR = rr;
         break unstick;
       }
+    }
+    // A looming rig (scaled 1.5x+ in its builder) placed where its full
+    // footprint does not fit is drawn at stock size there instead, so it
+    // cannot stand half inside the wall its bigger body would need.
+    if (fitR < radius && group.scale.x >= 1.5) {
+      const k = 1 / group.scale.x;
+      group.scale.setScalar(1);
+      if (group.userData.anim) group.userData.anim.s0 = 1;
+      radius = Math.max(0.6, Math.min(1.0, radius * k));
+      bodyH *= k; bodyHalfW *= k;
     }
     // The un-stick above can move the body into a different sector, so the
     // floor has to be read at where it ENDED UP. Reading it at ent.pos left
@@ -3062,8 +3225,7 @@ class CyberDoomEngine {
       radius: radius,
       // Hurt volume for projectiles: the rig's own rest height and half-width
       // (see enemyRadius), so tall and fat bodies are hit where they are drawn.
-      bodyH: (this._enemyFoot.get(ent.enemyType) || {}).h || 2.3,
-      bodyHalfW: (this._enemyFoot.get(ent.enemyType) || {}).halfX || 0.8,
+      bodyH, bodyHalfW,
       floorY: floorY,
       bobT: Math.random() * Math.PI * 2
     };
@@ -3101,7 +3263,10 @@ class CyberDoomEngine {
           maxY = Math.max(maxY, v.y); halfX = Math.max(halfX, Math.abs(v.x));
         }
       });
-      const r = Math.min(1.0, Math.max(0.6, reach));
+      // Looming rigs (1.5x+) keep a footprint that grows with them, or their
+      // flanks would stand in the walls the stock cap lets them hug.
+      const cap = group.scale.x >= 1.5 ? group.scale.x : 1.0;
+      const r = Math.min(cap, Math.max(0.6, reach));
       foot = { r, h: maxY, halfX, shift: Math.max(0, Math.min((minZ + maxZ) / 2, maxZ - r)) };
       cache.set(type, foot);
     }
@@ -3363,7 +3528,50 @@ class CyberDoomEngine {
   /* ==========================================================================
      INPUT & CONTROLS (PointerLock, WASD, Jumping & Interaction)
      ========================================================================== */
+  /* Settings screen: preset buttons snap the sliders; the sliders are the
+     truth and are saved as they move. */
+  initDifficulty() {
+    const KEY = 'cyberhell.difficulty';
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (err) {}
+    this.difficulty = { dealt: 1, taken: 1 };
+    if (saved && isFinite(saved.dealt) && isFinite(saved.taken)) this.difficulty = { dealt: +saved.dealt, taken: +saved.taken };
+    const dealt = document.getElementById('dmg-dealt'), taken = document.getElementById('dmg-taken');
+    if (!dealt || !taken) return;
+    const show = () => {
+      document.getElementById('dmg-dealt-val').innerText = `${Math.round(this.difficulty.dealt * 100)}%`;
+      document.getElementById('dmg-taken-val').innerText = `${Math.round(this.difficulty.taken * 100)}%`;
+      dealt.value = Math.round(this.difficulty.dealt * 100);
+      taken.value = Math.round(this.difficulty.taken * 100);
+      let match = null;
+      for (const k in DIFFICULTY_PRESETS) {
+        const pr = DIFFICULTY_PRESETS[k];
+        if (Math.abs(pr.dealt - this.difficulty.dealt) < 0.001 && Math.abs(pr.taken - this.difficulty.taken) < 0.001) match = k;
+      }
+      document.querySelectorAll('#difficulty-panel button[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === match));
+      document.getElementById('dp-custom').innerText = match ? '' : 'CUSTOM';
+      try { localStorage.setItem(KEY, JSON.stringify(this.difficulty)); } catch (err) {}
+    };
+    this.setDifficulty = (preset) => {
+      const pr = DIFFICULTY_PRESETS[preset];
+      if (!pr) return;
+      this.difficulty = { dealt: pr.dealt, taken: pr.taken };
+      show();
+    };
+    document.querySelectorAll('#difficulty-panel button[data-preset]').forEach(b => {
+      b.addEventListener('click', (e) => { e.stopPropagation(); this.setDifficulty(b.dataset.preset); });
+    });
+    const onSlide = () => {
+      this.difficulty = { dealt: Number(dealt.value) / 100, taken: Number(taken.value) / 100 };
+      show();
+    };
+    dealt.addEventListener('input', onSlide);
+    taken.addEventListener('input', onSlide);
+    show();
+  }
+
   initControls() {
+    this.initDifficulty();
     this.keys = {};
     this.pitch = 0;
     this.yaw = 0;
@@ -3371,8 +3579,8 @@ class CyberDoomEngine {
     document.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
 
-      // Weapon Hotkeys 1-6, in WEAPON_ORDER.
-      const slot = /^Digit([1-6])$/.exec(e.code);
+      // Weapon Hotkeys 1-7, in WEAPON_ORDER.
+      const slot = /^Digit([1-7])$/.exec(e.code);
       if (slot) this.switchWeapon(WEAPON_ORDER[Number(slot[1]) - 1]);
 
       // Interaction
@@ -4309,9 +4517,149 @@ class CyberDoomEngine {
     this.sawBiteAccum += delta;
     if (this.sawBiteAccum >= 0.15) {
       this.sawBiteAccum = 0;
-      const hits = this.raycastMelee(2.6, rev ? 13.5 : 9, 0.35);
+      const hits = this.raycastMelee(2.6, rev ? 13.5 : 9, 0.35, (e) => this.sawGore(e, rev));
       if (hits > 0) this.viewmodels.triggerRecoil(rev ? 0.7 : 0.45);
     }
+  }
+
+  /* Chainsaw bite: a fountain, not a spatter -- several big sprays out of
+     the body at chest height -- and the victim screams. The scream is the
+     one loud cue in the game, rate-limited per body so a held saw does not
+     stack it into a drone. */
+  sawGore(e, rev) {
+    const p = e.group.position;
+    const h = Math.min(2.2, e.bodyH || 1.8);
+    const cam = this.camera.position;
+    for (let i = 0; i < (rev ? 5 : 3); i++) {
+      const at = new THREE.Vector3(p.x + (Math.random() - 0.5) * 0.4, p.y + h * (0.45 + Math.random() * 0.3), p.z + (Math.random() - 0.5) * 0.4);
+      const dir = at.clone().sub(cam).setY(0).normalize();
+      dir.x += (Math.random() - 0.5) * 1.2; dir.z += (Math.random() - 0.5) * 1.2;
+      dir.y = 0.4 + Math.random() * 0.9;
+      this.spawnBlood(at, { enemy: e, amount: 60, dir: dir.normalize() });
+    }
+    this.sawBloodCount = (this.sawBloodCount || 0) + (rev ? 5 : 3);
+    if (!(e._screamT > this.gameTime)) {
+      e._screamT = this.gameTime + 0.9 + Math.random() * 0.4;
+      this.sound.playScream(e.bodyH > 2.6 ? 0.6 : 1, this.panFor(p));
+    }
+  }
+
+  /* GRAPPLE. The hook takes whatever body is under the crosshair (or
+     nearest it, within a few degrees -- a hook that needs a pixel-perfect
+     shot is no fun) and the player's motion at that instant picks the ride:
+       standing still  -> PULL: reeled in to the body, lifted to it if it is
+                          big, and let go on arrival;
+       strafing across -> SWING: orbit it on a shortening line, the way you
+                          were already going round;
+       running at/away -> CARRY: keep going straight, faster, on the line.
+     The line is engine state, not weapon state: switch to any gun and shoot
+     the body while riding. It lets go when the body dies, after 5 s, past
+     50 m, on JUMP, or on a second hook shot. Enemies only -- not a level
+     traversal tool. */
+  fireGrapple() {
+    if (this.grapple) { this.releaseGrapple(); return; }
+    const cam = this.camera.position;
+    const dir = aimDir(this, 0);
+    const RANGE = 42;
+    const byGroup = new Map();
+    for (const e of this.enemies) {
+      if (e.state === 'DEAD' || e.group.position.distanceTo(cam) > RANGE + 4) continue;
+      byGroup.set(e.group, e);
+    }
+    let enemy = null, point = null;
+    const hits = new THREE.Raycaster(cam, dir, 0, RANGE).intersectObjects([...byGroup.keys()], true);
+    if (hits.length) {
+      let o = hits[0].object;
+      while (o && !byGroup.has(o)) o = o.parent;
+      if (o) { enemy = byGroup.get(o); point = hits[0].point.clone(); }
+    }
+    if (!enemy) {
+      let best = Math.cos(4.5 * Math.PI / 180);
+      for (const e of byGroup.values()) {
+        const c = e.group.position.clone(); c.y += (e.bodyH || 2) * 0.55;
+        const to = c.clone().sub(cam), d = to.length();
+        if (d > RANGE || d < 0.5) continue;
+        const cos = to.dot(dir) / d;
+        if (cos > best) { best = cos; enemy = e; point = c; }
+      }
+    }
+    if (enemy && this.wallBetween(cam.x, cam.z, point.x, point.z, (cam.y + point.y) / 2)) enemy = null;
+    if (!enemy) {
+      this.sound.playGrapple(false);
+      this.showHudMessage('HOOK MISSED');
+      return;
+    }
+    const v = this.player.velocity;
+    const sp = Math.hypot(v.x, v.z);
+    const rx = point.x - cam.x, rz = point.z - cam.z, rl = Math.hypot(rx, rz) || 1;
+    const along = (v.x * rx + v.z * rz) / rl;
+    const lateral = (v.x * rz - v.z * rx) / rl;       // sideways across the line, signed
+    const mode = sp < 2 ? 'pull' : (Math.abs(lateral) > Math.abs(along) ? 'swing' : 'carry');
+    enemy.group.updateMatrixWorld(true);
+    this.grapple = {
+      enemy, mode, t: 0,
+      anchor: enemy.group.worldToLocal(point.clone()),
+      len: rl,
+      spin: lateral >= 0 ? -1 : 1,
+      speed: Math.max(14, sp * 1.5),
+      dir: sp > 0.01 ? { x: v.x / sp, z: v.z / sp } : { x: rx / rl, z: rz / rl }
+    };
+    if (!this._rope) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      this._rope = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffaa33 }));
+      this._rope.frustumCulled = false;
+    }
+    this.scene.add(this._rope);
+    this.sound.playGrapple(true);
+    this.showHudMessage(`HOOKED ${enemy.type.toUpperCase()} -- ${mode.toUpperCase()}`);
+    this.updateHUD();
+  }
+
+  updateGrapple(delta) {
+    const g = this.grapple;
+    g.t += delta;
+    if (!g.enemy || g.enemy.state === 'DEAD' || g.t > 5 || !this.enemies.includes(g.enemy)) { this.releaseGrapple(); return; }
+    const a = g.enemy.group.localToWorld((this._grA || (this._grA = new THREE.Vector3())).copy(g.anchor));
+    const cam = this.camera.position, v = this.player.velocity;
+    const dx = a.x - cam.x, dz = a.z - cam.z, d = Math.hypot(dx, dz) || 1e-6;
+    if (d > 50 || (this.keys['Space'] && g.t > 0.2)) { this.releaseGrapple(); return; }
+    if (g.mode === 'pull') {
+      const stop = (g.enemy.radius || 0.6) + 1.3;
+      if (d <= stop) { v.x *= 0.3; v.z *= 0.3; this.releaseGrapple(); return; }
+      v.x = dx / d * 22; v.z = dz / d * 22;
+      // Reel up toward a hook point above you (a big body), never down hard.
+      v.y = Math.max(-6, Math.min(11, (a.y - 0.4 - cam.y) * 3));
+    } else if (g.mode === 'swing') {
+      g.len = Math.max((g.enemy.radius || 0.6) + 2.2, g.len - 1.5 * delta);
+      const tx = -dz / d * g.spin, tz = dx / d * g.spin;
+      const pullIn = (d - g.len) * 6;
+      v.x = tx * g.speed + dx / d * pullIn;
+      v.z = tz * g.speed + dz / d * pullIn;
+      v.y = Math.max(v.y, -3);
+    } else {
+      if (d > g.len + 14 || g.t > 2.5) { this.releaseGrapple(); return; }
+      v.x = g.dir.x * g.speed; v.z = g.dir.z * g.speed;
+    }
+    const pos = this._rope.geometry.attributes.position;
+    const from = this.camera.localToWorld((this._grB || (this._grB = new THREE.Vector3())).set(0.16, -0.18, -0.55));
+    pos.setXYZ(0, from.x, from.y, from.z);
+    pos.setXYZ(1, a.x, a.y, a.z);
+    pos.needsUpdate = true;
+  }
+
+  releaseGrapple() {
+    if (!this.grapple) return;
+    this.grapple = null;
+    if (this._rope) this.scene.remove(this._rope);
+    this.updateHUD();
+  }
+
+  /* Stereo position of a world point, -1 (left) .. 1 (right). */
+  panFor(pos) {
+    const cam = this.camera.position, yaw = this.camera.rotation.y;
+    const dx = pos.x - cam.x, dz = pos.z - cam.z, d = Math.hypot(dx, dz) || 1;
+    return Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / d));
   }
 
   raycastHitscan(damage, spread) {
@@ -4381,7 +4729,7 @@ class CyberDoomEngine {
   /* minDot: optional forward-cone filter (0 = 90 deg half-angle, 1 = dead
      ahead). Omitted, the old spherical behaviour is unchanged. Returns the
      number of enemies hit. */
-  raycastMelee(range, damage, minDot) {
+  raycastMelee(range, damage, minDot, onHit) {
     const pPos = this.camera.position;
     const facing = minDot != null
       ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0).normalize()
@@ -4401,6 +4749,7 @@ class CyberDoomEngine {
         if (to.lengthSq() > 1e-6 && to.normalize().dot(facing) < minDot) return;
       }
       hits++;
+      if (onHit) onHit(e);
       this.damageEnemy(e, damage, e.group.position);
     });
     return hits;
@@ -4408,6 +4757,9 @@ class CyberDoomEngine {
 
   killEnemy(enemy) {
     enemy.state = 'DEAD';
+    if (this.grapple && this.grapple.enemy === enemy) this.releaseGrapple();
+    const dd = enemy.group.position.distanceTo(this.camera.position);
+    this.sound.playDeath(Math.max(0.35, 1 - dd / 40), this.panFor(enemy.group.position), enemy.bodyH > 2.6);
     const deathPos = enemy.group.position.clone();
     this.flashAt(enemy.group.position, 0xff4422);
     if (window.CyberGore) window.CyberGore.death(deathPos, enemy);
@@ -4435,7 +4787,7 @@ class CyberDoomEngine {
       if (ex * ex + ez * ez > 49) return;
       const d = bPos.distanceTo(e.group.position);
       if (d < 7.0) {
-        e.hp -= (7.0 - d) * 18;
+        e.hp -= (7.0 - d) * 18 * (this.difficulty ? this.difficulty.dealt : 1);
         if (e.hp <= 0) this.killEnemy(e);
       }
     });
@@ -4608,6 +4960,8 @@ class CyberDoomEngine {
 
     // Gravity
     this.player.velocity.y -= 22.0 * delta;
+    // A hooked enemy drives the body instead of the stick (see fireGrapple).
+    if (this.grapple) this.updateGrapple(delta);
 
     // Proposed New Positions
     const newX = this.camera.position.x + this.player.velocity.x * delta;
@@ -5246,6 +5600,7 @@ class CyberDoomEngine {
   updateEnemies(delta) {
     // The brain, then the draw-cost gate. The AI decides who acts; the LOD
     // pass decides how much of each body is worth submitting to the GPU.
+    this.updatePresence(delta);
     if (window.CyberAI) { window.CyberAI.update(this, delta); this.updateEnemyLOD(); return; }
     // Fallback with the AI module missing: hold everyone on their floor so
     // nothing sinks through the world.
@@ -5258,6 +5613,32 @@ class CyberDoomEngine {
       }
       ePos.y = enemy.floorY + ((enemy.stats && enemy.stats.fly) ? ENEMY_HOVER : 0);
     }
+  }
+
+  /* Presence: a live body near the player makes a small noise now and then
+     -- servos for the machines, a growl for the flesh -- panned to where it
+     is and quieter with distance. One cue at a time, each body at most every
+     few seconds, so a room full of them is a murmur, not a wall of noise. */
+  updatePresence(delta) {
+    this._presT = (this._presT || 0) - delta;
+    if (this._presT > 0 || !this.sound.ctx) return;
+    this._presT = 0.45;
+    const cam = this.camera.position, R = 26;
+    let pick = null, pickD = 0, seen = 0;
+    for (const e of this.enemies) {
+      if (e.state === 'DEAD') continue;
+      const dx = e.group.position.x - cam.x, dz = e.group.position.z - cam.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > R * R || e._presAt > this.gameTime) continue;
+      // Reservoir pick: any eligible body, uniformly, in one pass.
+      if (Math.random() * ++seen < 1) { pick = e; pickD = Math.sqrt(d2); }
+    }
+    if (!pick) return;
+    pick._presAt = this.gameTime + 3.5 + Math.random() * 3;
+    const st = pick.stats || {};
+    const mech = st.attack === 'hitscan' || st.attack === 'laser' || [67, 68, 7, 16, 65].includes(+pick.enemyType);
+    this.presenceCount = (this.presenceCount || 0) + 1;
+    this.sound.playPresence(mech, Math.pow(1 - pickD / R, 1.4), this.panFor(pick.group.position), pick.bodyH > 2.6);
   }
 
   // Fires whatever the type's stat line says, not whatever the converter
@@ -5376,6 +5757,7 @@ class CyberDoomEngine {
   // projectiles. Mirrors what raycastHitscan does on a hit.
   damageEnemy(enemy, amount, hitPoint) {
     if (!enemy || enemy.state === 'DEAD') return;
+    amount *= (this.difficulty ? this.difficulty.dealt : 1);
     enemy.hp -= amount;
     this.showHitmarker();
     this.sound.playMonsterHurt();
@@ -5672,7 +6054,8 @@ class CyberDoomEngine {
     const god = document.getElementById('god-mode-chk');
     if (god && god.checked) return;
 
-    let dmg = amount;
+    // Difficulty: at least 1, so a scaled-down hit still registers.
+    let dmg = Math.max(1, Math.round(amount * (this.difficulty ? this.difficulty.taken : 1)));
     if (this.player.armor > 0) {
       const absorbed = Math.min(this.player.armor, Math.floor(dmg * 0.6));
       this.player.armor -= absorbed;
@@ -5726,14 +6109,22 @@ class CyberDoomEngine {
     // Ammo block follows the current weapon's pool (the saw runs on energy).
     const def = WEAPONS[this.player.currentWeapon] || WEAPONS.pistol;
     document.getElementById('hud-ammo-label').innerText = AMMO_LABEL[def.ammo];
-    document.getElementById('hud-ammo').innerText = this.player.ammo[def.ammo];
+    document.getElementById('hud-ammo').innerText = def.ammo in this.player.ammo ? this.player.ammo[def.ammo] : '--';
 
-    // Weapon selector: owned slots lit, current one highlighted.
+    // Weapon selector: owned slots lit, current one highlighted, and what is
+    // left for each one under its name -- in shots, so the rifle (4 energy a
+    // bolt) and the repeater (1) read differently off the one energy pool.
     WEAPON_ORDER.forEach((name, i) => {
       const el = document.getElementById(`slot-${i + 1}`);
       if (!el) return;
       el.classList.toggle('owned', !!this.player.weapons[name]);
       el.classList.toggle('active', this.player.currentWeapon === name);
+      const am = el.querySelector('.slot-ammo');
+      if (!am) return;
+      const w = WEAPONS[name], pool = this.player.ammo[w.ammo];
+      const n = pool === undefined ? null : (w.cost > 0 ? Math.floor(pool / w.cost) : pool);
+      am.textContent = n === null ? (this.grapple ? 'LOCK' : '--') : String(n);
+      am.classList.toggle('empty', n === 0);
     });
 
     // Touch layout hides that selector, so the edge arrows carry the name.

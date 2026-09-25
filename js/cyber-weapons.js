@@ -10,7 +10,7 @@ const AMMO_CAP = { bullets: 200, shells: 50, energy: 300 };
 const AMMO_START = { bullets: 50, shells: 0, energy: 0 };
 
 /* Canonical order: HUD slot order, key order and wheel-cycle order. */
-const WEAPON_ORDER = ['chainsaw', 'pistol', 'machinegun', 'shotgun', 'energy_rifle', 'energy_repeater'];
+const WEAPON_ORDER = ['chainsaw', 'pistol', 'machinegun', 'shotgun', 'energy_rifle', 'energy_repeater', 'grapple'];
 
 /* -------------------------------------------------------------------------
    Shared materials.  Three colour zones on every weapon: dark gunmetal body,
@@ -165,6 +165,7 @@ class WeaponViewmodels {
     this.weapons['shotgun'] = this.buildShotgun();
     this.weapons['energy_rifle'] = this.buildEnergyRifle();
     this.weapons['energy_repeater'] = this.buildEnergyRepeater();
+    this.weapons['grapple'] = this.buildGrapple();
 
     Object.keys(this.weapons).forEach(k => {
       const w = this.weapons[k];
@@ -637,6 +638,42 @@ class WeaponViewmodels {
              recoil: 0.35, sway: { amp: 0.95, freq: 1.05, roll: 0.008 } };
   }
 
+  /* 7. GRAPPLE -- a harpoon launcher on a cable drum. The claw leaves the
+     muzzle while the line is out (engine.grapple), so the empty barrel reads. */
+  buildGrapple() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.36), matGun(0x2a2f36));
+    body.position.set(0, -0.01, 0.08);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.19, 0.09), matDark());
+    grip.position.set(0, -0.16, 0.16);
+    grip.rotation.x = -0.22;
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.36, 10), matGun(0x4a5663));
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.02, -0.24);
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.07, 14), matAccent(0x7a4a00, 0xff8800));
+    drum.rotation.z = Math.PI / 2;
+    drum.position.set(0, -0.08, -0.02);
+    drum.material.emissiveIntensity = 0.25;
+    // Claw: a hub and three hooked tines, sitting in the muzzle.
+    const claw = new THREE.Group();
+    claw.add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.06, 8), matWorn()));
+    for (let i = 0; i < 3; i++) {
+      const tine = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.09, 4), matAccent(0xaa5500, 0xff7700));
+      const a = i / 3 * Math.PI * 2;
+      tine.position.set(Math.cos(a) * 0.03, Math.sin(a) * 0.03, -0.03);
+      tine.rotation.set(-Math.PI / 2 + Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5);
+      claw.add(tine);
+    }
+    claw.rotation.x = Math.PI / 2;
+    claw.position.set(0, 0.02, -0.45);
+    edge(g, 0.165, 0.014, 0.36, 0, 0.06, 0.08);
+    rivets(g, 3, 0.082, -0.02, -0.04, 0.07);
+    g.add(body, grip, barrel, drum, claw);
+    g.position.set(0.18, -0.24, -0.52);
+    g.scale.setScalar(0.9);
+    return { mesh: g, baseZ: -0.55, claw, drum, recoil: 0.6, sway: { amp: 1.0, freq: 1.0, roll: 0.008 } };
+  }
+
   /* Pickup mesh: the viewmodel again, scaled up so it reads across a room. */
   buildPickupMesh(key) {
     const src = this.weapons[key] || this.weapons['pistol'];
@@ -724,6 +761,12 @@ class WeaponViewmodels {
 
     const cur = this.weapons[this.currentKey];
     if (!cur) return;
+
+    if (cur.claw) {
+      const out = !!(this.engine && this.engine.grapple);
+      cur.claw.visible = !out;
+      if (out) cur.drum.rotation.x += delta * 14;
+    }
 
     // Muzzle flash lives for a few frames only.
     if (!this.flashT) {
@@ -934,10 +977,19 @@ const WEAPONS = {
       engine.viewmodels.triggerRecoil(0.35);
       energyShot(engine, { speed: 55, kind: 'energy_burst', damage: 6, radius: 0.2 }, 0.03);
     }
+  },
+  // Hook an enemy. Motion at the shot picks the ride (engine.fireGrapple);
+  // the line stays on while the player swaps to any gun and shoots it.
+  grapple: {
+    slot: 7, label: 'HOOK', ammo: 'none', cost: 0, cooldown: 0.35, auto: false,
+    fire(engine) {
+      engine.viewmodels.triggerRecoil(0.6);
+      engine.fireGrapple();
+    }
   }
 };
 
-const AMMO_LABEL = { bullets: 'BULLETS', shells: 'SHELLS', energy: 'ENERGY' };
+const AMMO_LABEL = { bullets: 'BULLETS', shells: 'SHELLS', energy: 'ENERGY', none: 'HOOK' };
 
 /* Floor pickups: display name, and the starter load a weapon comes with. */
 const WEAPON_PICKUP_NAME = {

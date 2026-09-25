@@ -903,6 +903,9 @@
     return p;
   };
 
+  // Looming scale for the big ones (Mancubus, Arachnotron, Spider Mastermind).
+  var LOOM = { 67: 1.6, 68: 1.75, 7: 1.7 };
+
   // --- 11. Mancubus (67): cyborg torso on a tank bottom ----------------
   BUILDERS[67] = function (root, A) {
     var fat = flesh(0x8f6144), hull = M(0x2e3a40, 0.4, 0.5), rim = metal(0x717c82);
@@ -983,6 +986,7 @@
     treads.forEach(function (o, i) { A.spin.push({ o: o, axis: 'y', rate: 3.0, tread: true, i: i }); });
     A.pulse.push({ m: org, base: 2.2, amp: 0.9, f: 2.4, ph: 0 });
     A.treads = treads;
+    root.scale.setScalar(LOOM[67]);
     return p;
   };
 
@@ -1054,6 +1058,7 @@
     };
     p.dome = dome;
     p.gun = gun;
+    root.scale.setScalar(LOOM[68]);
     return p;
   };
 
@@ -1296,6 +1301,7 @@
       brain.scale.setScalar(1 + w * 0.10 + s * 0.06);
       mag.emissiveIntensity += w * 1.2 + s * 2.4;
     };
+    root.scale.setScalar(LOOM[7]);
     return { base: base, jar: jarG, brain: brain, treads: treads, chin: chin, limbs: null };
   };
 
@@ -1326,11 +1332,11 @@
     69:   { hp: 300,  speed: 3.4, attack: 'fireball', range: 24, cooldown: 2.0, damage: 22, scale: 1.0 },
     3003: { hp: 500,  speed: 3.2, attack: 'fireball', range: 26, cooldown: 1.8, damage: 28, scale: 1.25 },
     66:   { hp: 220,  speed: 4.2, attack: 'fireball', range: 28, cooldown: 2.0, damage: 20, scale: 1.0, fly: true },
-    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.0 },
-    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.0 },
+    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.6 },
+    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.75 },
     64:   { hp: 450,  speed: 3.8, attack: 'fireball', range: 26, cooldown: 2.6, damage: 30, scale: 1.0 },
     16:   { hp: 1000, speed: 2.5, attack: 'fireball', range: 30, cooldown: 1.6, damage: 40, scale: 1.0 },
-    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.0 }
+    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.7 }
   };
   // fly: hovers above the floor, crosses ledges freely, still stopped by walls
   // (index.html: moveEnemy / ENEMY_HOVER). Cacodemon and Revenant only; the
