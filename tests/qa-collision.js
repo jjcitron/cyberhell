@@ -41,6 +41,18 @@
  *             how Joel still walked into walls on 2026-09-25.
  *   CH-COL-13 Enemy fireballs fired at the player from behind a solid wall or
  *             from below a tall ledge riser die at the wall and do no damage.
+ *   CH-COL-14 Living rigs stay out of walls as DRAWN. Walls are 0.4-thick
+ *             boxes, so the visible face stands 0.2 in front of the centreline
+ *             CH-COL-10 measures from, and a ledge riser too tall to climb is a
+ *             drawn box a walker stands against too. 14a: every stock type,
+ *             shoved by the engine's mover into a solid wall and into a
+ *             mid-height riser from its lower floor, at 16 headings while
+ *             walking and attacking, keeps every vertex within 0.05 of the
+ *             face. 14b: during the 10 s chase, no live rig within 22 of the
+ *             player reaches more than 0.05 past a face.
+ *             Joel 2026-09-25 13:58/14:06: robots embedded in the wall panel
+ *             and a cyborg bisected by a waist-high wall, with inWall=0 and
+ *             CH-COL-10 green.
  *
  * Runs its own static server on its own port and its own headless Chromium
  * via playwright-core -- never the shared bcl browser session.
@@ -294,7 +306,34 @@ const CHASE = function (seconds) {
   for (const en of e.enemies) if (en.state !== 'DEAD') en.state = 'CHASE';
   const frames = Math.round(seconds * 60);
   e.isRunning = true;
-  for (let n = 0; n < frames; n++) e.updateEnemies(1 / 60);
+  // CH-COL-14b: the drawn rigs the player can see, every 10 frames of the
+  // chase, through the real AI -> animate -> keepRigOffWalls path. Only rigs
+  // near enough for the AI to animate every frame are measured.
+  let faceClip = 0, faceMax = 0, faceSeen = 0;
+  const faceEg = [];
+  const cam = e.camera.position;
+  // What the camera can see, by the AI's own test (cyber-ai.js animate): a
+  // rig behind the camera is neither animated nor drawn.
+  const frustum = new THREE.Frustum(), sphere = new THREE.Sphere();
+  e.camera.updateMatrixWorld();
+  frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(e.camera.projectionMatrix, e.camera.matrixWorldInverse));
+  for (let n = 0; n < frames; n++) {
+    e.updateEnemies(1 / 60);
+    if (n % 10 !== 9) continue;
+    for (const en of e.enemies) {
+      if (en.state === 'DEAD' || !en.group.visible) continue;
+      if (Math.hypot(en.group.position.x - cam.x, en.group.position.z - cam.z) > 22) continue;
+      if (!frustum.intersectsSphere(sphere.set(en.group.position, 1.6))) continue;
+      faceSeen++;
+      const d = window.__rigFaceClip(en, 2.5);
+      faceMax = Math.max(faceMax, d);
+      if (d > 0.05) {
+        faceClip++;
+        if (faceEg.length < 3) faceEg.push({ type: en.enemyType, depth: +d.toFixed(2), frame: n,
+          x: +en.group.position.x.toFixed(2), z: +en.group.position.z.toFixed(2), at: window.__rigFaceWorst });
+      }
+    }
+  }
 
   const segDist = (px, pz, ax, az, bx, bz) => {
     const vx = bx - ax, vz = bz - az;
@@ -307,7 +346,8 @@ const CHASE = function (seconds) {
     return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
   };
 
-  const out = { total: 0, moved: 0, offFloor: 0, inWall: 0, flyers: 0, notHovering: 0, meshClip: 0, maxClip: 0 };
+  const out = { total: 0, moved: 0, offFloor: 0, inWall: 0, flyers: 0, notHovering: 0, meshClip: 0, maxClip: 0,
+                faceClip, faceMax, faceSeen, faceEg };
   const CLIP_TOL = 0.2;
   const examples = [];
   for (let ei = 0; ei < e.enemies.length; ei++) {
@@ -397,6 +437,108 @@ const RIG_CLIP = function () {
     });
     return depth;
   };
+  // CH-COL-14: how far past a DRAWN face (0.2 in front of the centreline) any
+  // vertex of a live rig reaches -- solid walls, plus ledge risers a walker
+  // cannot climb, measured from the side the body stands on.
+  window.__rigFaceClip = function (en, reach) {
+    const e = window.cyberEngine;
+    const p = en.group.position;
+    if (!en.group.visible) return 0;
+    en.group.updateMatrixWorld(true);
+    const fly = !!(en.stats && en.stats.fly);
+    const feet = en.floorY !== undefined && !fly ? en.floorY : p.y;
+    const near = e.wallsNear(p.x, p.z, reach).filter(w =>
+      w.solid || (!fly && w.riser && e.riserBlocks(w, p.x, p.z, feet, 1.2)));
+    let depth = 0;
+    en.group.traverse(o => {
+      if (!o.isMesh || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+      const pa = o.geometry.attributes.position;
+      for (let k = 0; k < pa.count; k++) {
+        v3.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld);
+        for (const w of near) {
+          if (w.topY !== undefined && v3.y >= w.topY) continue;
+          if (w.bottomY !== undefined && v3.y <= w.bottomY) continue;
+          const ax = w.p1.x, az = w.p1.z, dx = w.p2.x - ax, dz = w.p2.z - az;
+          const L = Math.hypot(dx, dz) || 1;
+          const t = ((v3.x - ax) * dx + (v3.z - az) * dz) / (L * L);
+          if (t < 0 || t > 1) continue;
+          const side = dx * (p.z - az) - dz * (p.x - ax) > 0 ? 1 : -1;
+          const sd = side * (dx * (v3.z - az) - dz * (v3.x - ax)) / L;   // + = the body's side
+          if (sd < -0.6) continue;               // a wall of the next room over
+          if (0.2 - sd > depth) {
+            depth = 0.2 - sd;
+            window.__rigFaceWorst = { v: [+v3.x.toFixed(2), +v3.y.toFixed(2), +v3.z.toFixed(2)], riser: !w.solid,
+              wall: [ax, az, w.p2.x, w.p2.z], bottomY: w.bottomY, topY: w.topY };
+          }
+        }
+      }
+    });
+    return depth;
+  };
+};
+
+/* CH-COL-14a: every stock type in front of a long solid wall, and on the
+   lower floor of a mid-height ledge riser (1.5..3.5 tall: the waist-high
+   panel of Joel's bisect shot), shoved into it by the engine's own mover at
+   16 headings, walking and attacking, animated through the same
+   keepRigOffWalls call the AI makes. */
+const TYPE_PRESS = function () {
+  const e = window.cyberEngine, CE = window.CyberEnemies;
+  const find = (riser) => {
+    for (const w of e.walls || []) {
+      if (riser ? (w.solid || !w.riser || w.isDoor || w.isSwitch || w.topY === undefined || w.bottomY === undefined ||
+                   w.topY - w.bottomY < 1.5 || w.topY - w.bottomY > 3.5) : !w.solid) continue;
+      const L = Math.hypot(w.p2.x - w.p1.x, w.p2.z - w.p1.z);
+      if (L < 6) continue;
+      const mx = (w.p1.x + w.p2.x) / 2, mz = (w.p1.z + w.p2.z) / 2;
+      const nx = -(w.p2.z - w.p1.z) / L, nz = (w.p2.x - w.p1.x) / L;
+      for (const s of [1, -1]) {
+        const cx = mx + nx * s * 3, cz = mz + nz * s * 3;
+        const f = e.getFloorAt(cx, cz);
+        if (!f.inside) continue;
+        if (riser ? Math.abs(f.floorY - w.bottomY) > 0.05
+                  : (!(w.bottomY === undefined || w.bottomY <= f.floorY + 0.05) || (w.topY !== undefined && w.topY < f.floorY + 3))) continue;
+        if (e.wallsNear(cx, cz, 2.6).filter(x => x.solid || x.riser).length > 1) continue;
+        return { cx, cz, nx: -nx * s, nz: -nz * s, floorY: f.floorY, h: riser ? +(w.topY - w.bottomY).toFixed(2) : null };
+      }
+    }
+    return null;
+  };
+  const out = {};
+  for (const kind of ['wall', 'riser']) {
+    const spot = find(kind === 'riser');
+    if (!spot) { out[kind] = null; continue; }
+    const types = {};
+    for (const t of CE.listTypes()) {
+      e.createEnemy({ type: 'monster', enemyType: t.id, pos: [spot.cx, spot.floorY, spot.cz], rot: 0 });
+      const en = e.enemies[e.enemies.length - 1];
+      const fly = !!(en.stats && en.stats.fly);
+      let worst = 0, at = null;
+      for (let h = 0; h < 16; h++) {
+        for (const st of ['CHASE', 'ATTACK']) {
+          en.group.position.x = spot.cx; en.group.position.z = spot.cz; en.floorY = spot.floorY;
+          en.state = st;
+          for (let n = 0; n < 90; n++) {
+            e.moveEnemy(en, spot.nx * 0.2, spot.nz * 0.2);
+            en.group.rotation.y = h / 16 * Math.PI * 2;
+            en.attackT = st === 'ATTACK' ? (n % 30) / 30 : 0;
+            window.CyberEnemies.animate(en, n / 60, 1 / 60);
+            if (e.keepRigOffWalls) e.keepRigOffWalls(en);   // absent before r2: the "before" run
+            if (n % 3) continue;
+            const d = window.__rigFaceClip(en, 3);
+            if (d > worst) { worst = d; at = Object.assign({ heading: h, state: st, frame: n }, window.__rigFaceWorst); }
+          }
+        }
+      }
+      // A flyer hovers over a riser (it has no step limit), so only walkers
+      // are held to the riser face.
+      if (!(kind === 'riser' && fly)) types[t.id] = { worst: +worst.toFixed(3), at };
+      e.scene.remove(en.group);
+      e.enemies.pop();
+    }
+    out[kind] = { spot, types };
+  }
+  return out;
 };
 
 /* CH-COL-11: kill everyone where the chase left them (pressed up against
@@ -668,6 +810,7 @@ function check(id, ok, detail) {
 
     await page.evaluate(fn => new Function('return ' + fn)()(), RIG_CLIP.toString());
 
+    let typePressDone = false;
     const targets = [{ name: 'MAP01 (built in)', file: null }].concat(MAPS.map(f => ({ name: f, file: f })));
     for (const t of targets) {
       if (t.file) {
@@ -738,6 +881,28 @@ function check(id, ok, detail) {
         `(deepest ${chase.out.maxClip.toFixed(2)})` +
         `${chase.out.meshClip ? '  eg ' + JSON.stringify(chase.examples.filter(x => x.kind === 'meshInWall')) : ''}`);
 
+      check(`CH-COL-14b ${t.name}`, chase.out.faceClip === 0,
+        `${chase.out.faceClip}/${chase.out.faceSeen} live rig samples in view within 22 of the player drawn > 0.05 past a wall/riser face ` +
+        `(deepest ${chase.out.faceMax.toFixed(2)})${chase.out.faceClip ? '  eg ' + JSON.stringify(chase.out.faceEg) : ''}`);
+
+      // 14a once, on the first map that has both a long wall and a
+      // mid-height riser to press against.
+      if (!typePressDone && t.file) {
+        const tp = await page.evaluate(fn => new Function('return ' + fn)()(), TYPE_PRESS.toString());
+        if (tp.wall && tp.riser) {
+          typePressDone = true;
+          for (const kind of ['wall', 'riser']) {
+            const rows = Object.entries(tp[kind].types);
+            const bad = rows.filter(([, r]) => r.worst > 0.05);
+            check(`CH-COL-14a ${kind} ${t.name}`, rows.length > 0 && bad.length === 0,
+              `${rows.length} stock types x 16 headings x walk/attack pressed into a ` +
+              `${kind === 'wall' ? 'solid wall' : tp[kind].spot.h + '-tall ledge riser from its lower floor'}: ` +
+              `deepest past the drawn face ${Math.max(0, ...rows.map(([, r]) => r.worst)).toFixed(3)}` +
+              `${bad.length ? '  FAIL ' + JSON.stringify(Object.fromEntries(bad)) : ''}`);
+          }
+        }
+      }
+
       const corpse = await page.evaluate(
         ([fn, s]) => new Function('return ' + fn)()(s), [CORPSE.toString(), 3]);
       check(`CH-COL-11 ${t.name}`, corpse.out.clip === 0 && corpse.out.chunkClip === 0,
@@ -747,6 +912,8 @@ function check(id, ok, detail) {
         `${corpse.out.clip ? '  eg ' + JSON.stringify(corpse.examples) : ''}`);
     }
 
+    check('CH-COL-14a ran', typePressDone, typePressDone ? 'wall + riser press sweep ran' :
+      'no map in the set had both a long solid wall and a 1.5..3.5 ledge riser to press against');
     check('CH-COL-6 page errors', pageErrors.length === 0,
       pageErrors.length ? pageErrors.slice(0, 4).join(' | ') : 'none');
   } finally {

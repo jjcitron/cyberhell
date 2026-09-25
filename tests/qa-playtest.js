@@ -15,6 +15,12 @@
  *   CH-PT-5  With it checked, damagePlayer(999) leaves health untouched and
  *            no game over; unchecked, the same call kills.
  *   CH-PT-6  Zero page errors.
+ *   CH-PT-7  A Hell Knight (the gray plate robot with the cyan visor in Joel's
+ *            13:58 shots) chasing the player into a solid wall is not drawn
+ *            into the wall panel: no vertex more than 0.05 past the box face.
+ *   CH-PT-8  A Mancubus (tall, fat) pressed against a mid-height ledge riser
+ *            from its lower floor is not bisected by it (Joel 14:06 shot C):
+ *            same 0.05 bound against the riser's drawn face.
  *
  * Writes POV screenshots of the riser walk and the fireball wall test to
  * QA_SHOTS (default: none) as <QA_PREFIX>riser-wall.png / fireball-wall.png.
@@ -168,6 +174,84 @@ const FIREBALL_FINISH = function () {
   return { health: e.player.health, alive: e.projectiles.includes(proj) };
 };
 
+// CH-PT-7/8: one live enemy shoved into a wall (or a mid-height riser from
+// its low side) by the engine's own mover while it swings its attack, then a
+// POV frame from an oblique angle where a sunk-in body would show.
+const ENEMY_PRESS = function (typeId, riser) {
+  const e = window.cyberEngine, H = window.__pt, CE = window.CyberEnemies;
+  let spot = null;
+  for (const w of e.walls) {
+    if (w.isDoor || w.isSwitch) continue;
+    if (riser ? (w.solid || !w.riser || w.topY === undefined || w.bottomY === undefined ||
+                 w.topY - w.bottomY < 1.5 || w.topY - w.bottomY > 3.5) : !w.solid) continue;
+    const L = Math.hypot(w.p2.x - w.p1.x, w.p2.z - w.p1.z);
+    if (L < 6) continue;
+    const mx = (w.p1.x + w.p2.x) / 2, mz = (w.p1.z + w.p2.z) / 2;
+    const nx = -(w.p2.z - w.p1.z) / L, nz = (w.p2.x - w.p1.x) / L, ux = (w.p2.x - w.p1.x) / L, uz = (w.p2.z - w.p1.z) / L;
+    for (const s of [1, -1]) {
+      const cx = mx + nx * s * 2, cz = mz + nz * s * 2;
+      const f = e.getFloorAt(cx, cz);
+      if (!f.inside) continue;
+      if (riser ? Math.abs(f.floorY - w.bottomY) > 0.05
+                : ((w.bottomY !== undefined && w.bottomY > f.floorY + 0.05) || (w.topY !== undefined && w.topY < f.floorY + 3))) continue;
+      // The camera stands out from the wall and along it, on the same floor.
+      const vx = mx + nx * s * 2.2 + ux * 4.2, vz = mz + nz * s * 2.2 + uz * 4.2;
+      const fv = e.getFloorAt(vx, vz);
+      if (!fv.inside || Math.abs(fv.floorY - f.floorY) > 0.05 || !H.clear(cx, cz, 1.6) || !H.clear(vx, vz, 1.0)) continue;
+      spot = { w, cx, cz, nx: -nx * s, nz: -nz * s, vx, vz, floorY: f.floorY };
+      break;
+    }
+    if (spot) break;
+  }
+  if (!spot) return null;
+  e.createEnemy({ type: 'monster', enemyType: typeId, pos: [spot.cx, spot.floorY, spot.cz], rot: 0 });
+  const en = e.enemies[e.enemies.length - 1];
+  H.place(spot.vx, spot.vz, spot.cx, spot.cz);
+  const cam = e.camera.position;
+  en.state = 'ATTACK';
+  for (let n = 0; n < 75; n++) {
+    e.moveEnemy(en, spot.nx * 0.2, spot.nz * 0.2);
+    en.group.rotation.y = Math.atan2(cam.x - en.group.position.x, cam.z - en.group.position.z);
+    en.attackT = (n % 45) / 45;
+    CE.animate(en, n / 60, 1 / 60);
+    if (e.keepRigOffWalls) e.keepRigOffWalls(en);   // absent before r2: the "before" frame
+  }
+  // Look at the body's middle, from standing eye height.
+  const p = en.group.position;
+  e.camera.rotation.set(Math.atan2(p.y + 1.1 - cam.y, Math.hypot(p.x - cam.x, p.z - cam.z)),
+                        Math.atan2(-(p.x - cam.x), -(p.z - cam.z)), 0, 'YXZ');
+  e.isRunning = false;
+  H.draw();
+  // Deepest vertex past the drawn face (0.2 in front of the centreline).
+  const w = spot.w, ax = w.p1.x, az = w.p1.z, dx = w.p2.x - ax, dz = w.p2.z - az, L = Math.hypot(dx, dz);
+  const side = dx * (p.z - az) - dz * (p.x - ax) > 0 ? 1 : -1;
+  const v = new THREE.Vector3();
+  let depth = 0;
+  en.group.updateMatrixWorld(true);
+  en.group.traverse(o => {
+    if (!o.isMesh || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+    const pa = o.geometry.attributes.position;
+    for (let k = 0; k < pa.count; k++) {
+      v.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld);
+      if (w.topY !== undefined && v.y >= w.topY) continue;
+      if (w.bottomY !== undefined && v.y <= w.bottomY) continue;
+      const t = ((v.x - ax) * dx + (v.z - az) * dz) / (L * L);
+      if (t < 0 || t > 1) continue;
+      depth = Math.max(depth, 0.2 - side * (dx * (v.z - az) - dz * (v.x - ax)) / L);
+    }
+  });
+  const out = { type: typeId, wall: [ax, az, w.p2.x, w.p2.z], y: [w.bottomY, w.topY], depth: +depth.toFixed(3),
+                centre: +getSegDist(p.x, p.z, ax, az, w.p2.x, w.p2.z).dist.toFixed(2) };   // eslint-disable-line no-undef
+  window.__press = en;
+  return out;
+};
+const ENEMY_PRESS_DONE = function () {
+  const e = window.cyberEngine, en = window.__press;
+  e.scene.remove(en.group);
+  e.enemies.splice(e.enemies.indexOf(en), 1);
+  e.isRunning = true;
+};
+
 const results = [];
 function check(id, ok, detail) {
   results.push({ id, ok, detail });
@@ -228,6 +312,15 @@ function check(id, ok, detail) {
     const fc = await run(FIREBALL, false);
     if (fc) Object.assign(fc, await run(FIREBALL_FINISH));
     check('CH-PT-3 control: same fireball with clear line of fire still hits', fc && fc.health < 100, `health after ${fc && fc.health}`);
+
+    const gz = await run(ENEMY_PRESS, 69, false);
+    if (gz) { await shot('enemy-wall-clip.png'); await run(ENEMY_PRESS_DONE); }
+    check('CH-PT-7 Hell Knight chasing into a solid wall stays out of the drawn wall panel', !!gz && gz.depth <= 0.05,
+      gz ? `wall ${JSON.stringify(gz.wall)}; body centre ${gz.centre} from the centreline; deepest vertex past the face ${gz.depth}` : 'no wall found');
+    const bs = await run(ENEMY_PRESS, 67, true);
+    if (bs) { await shot('enemy-riser-bisect.png'); await run(ENEMY_PRESS_DONE); }
+    check('CH-PT-8 Mancubus pressed into a mid-height ledge riser is not bisected by it', !!bs && bs.depth <= 0.05,
+      bs ? `riser ${JSON.stringify(bs.wall)} y ${bs.y[0]}..${bs.y[1]}; body centre ${bs.centre} from the centreline; deepest vertex past the face ${bs.depth}` : 'no mid-height riser found');
 
     const god = await page.evaluate(() => {
       const e = window.cyberEngine, c = document.getElementById('god-mode-chk');

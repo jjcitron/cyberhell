@@ -1015,7 +1015,12 @@
         continue;
       }
       shown++;
-      try { CE.animate(e, t, delta); } catch (err) { /* one bad rig must not stop the frame */ }
+      try {
+        CE.animate(e, t, delta);
+        // Arms, lunges and recoils swing past the collision circle; the engine
+        // slides the drawn body back off any wall face they reach through.
+        if (engine.keepRigOffWalls) engine.keepRigOffWalls(e);
+      } catch (err) { /* one bad rig must not stop the frame */ }
       // A rig bob on the root writes an absolute world y from a rest height
       // baked before the engine placed the body, so re-assert the height this
       // module owns. Corpses are left to the death animation. No getFloorAt

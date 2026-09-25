@@ -3106,6 +3106,91 @@ class CyberDoomEngine {
     return foot.r;
   }
 
+  /* The collision circle keeps the body's CENTRE off a wall's centreline, but
+     a wall is drawn as a 0.4-thick box, so its face stands WALL_FACE in front
+     of that line, and a rig swings its arms, lunges and recoils well past its
+     rest footprint (a Demon's lunge reaches 1.6, a Zombieman's arms 0.8 on a
+     0.6 circle). That is the residual "body embedded in the wall panel".
+     Growing the circle to cover all of it would shut routes Doom sized for
+     its own monsters, so the drawn body gives way instead: after the rig
+     animates, any part reaching past the face of a solid wall (or of a
+     ledge riser too tall for a walker to climb) slides the inner body back
+     out along the wall's normal. Collision, AI and hit rays are
+     untouched (shots raycast the meshes, which are where they are drawn).
+     The offset snaps out at once and eases back in, so a swinging arm does
+     not make the body shudder.
+     ponytail: part bounding-box corners, not vertices -- a curved part can
+     stop up to its box's corner short of the face. Walk vertices if that
+     ever shows. */
+  keepRigOffWalls(rec) {
+    const g = rec.group, body = g.children.length === 1 ? g.children[0] : null;
+    if (!body || rec.state === 'DEAD' || !g.visible) return;
+    const WALL_FACE = 0.2, REACH = 2.2, MAX_OFF = 1.4;
+    const off = rec.wallOff || (rec.wallOff = { x: 0, z: 0, lx: 0, lz: 0 });
+    // Take last frame's slide back out, so what is measured is the rig alone.
+    body.position.x -= off.lx; body.position.z -= off.lz;
+    const p = g.position;
+    const fly = !!(rec.stats && rec.stats.fly);
+    const feet = rec.floorY !== undefined && !fly ? rec.floorY : p.y;
+    // A ledge riser a walker cannot climb is a drawn box it stands against
+    // just like a wall (the waist-high panel that bisected Joel's cyborg).
+    const walls = this.wallsNear(p.x, p.z, REACH).filter(w =>
+      (w.solid || (!fly && w.riser && this.riserBlocks(w, p.x, p.z, feet, STEP_UP_MAX))) &&
+      !(w.topY !== undefined && w.topY <= feet + 0.05) &&
+      getSegDist(p.x, p.z, w.p1.x, w.p1.z, w.p2.x, w.p2.z).dist < REACH);
+    let tx = 0, tz = 0;
+    if (walls.length) {
+      if (!rec.rigParts) {
+        rec.rigParts = [];
+        g.traverse(o => {
+          if (!o.isMesh || !o.geometry) return;
+          if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+          rec.rigParts.push(o);
+        });
+      }
+      g.updateMatrixWorld(true);
+      const v = this._rigV || (this._rigV = new THREE.Vector3());
+      const push = walls.map(() => 0);
+      for (const o of rec.rigParts) {
+        if (!o.visible) continue;
+        const bb = o.geometry.boundingBox;
+        for (let c = 0; c < 8; c++) {
+          v.set(c & 1 ? bb.max.x : bb.min.x, c & 2 ? bb.max.y : bb.min.y, c & 4 ? bb.max.z : bb.min.z).applyMatrix4(o.matrixWorld);
+          for (let i = 0; i < walls.length; i++) {
+            const w = walls[i];
+            if (w.topY !== undefined && v.y >= w.topY) continue;
+            if (w.bottomY !== undefined && v.y <= w.bottomY) continue;
+            const ax = w.p1.x, az = w.p1.z, dx = w.p2.x - ax, dz = w.p2.z - az;
+            const L = Math.hypot(dx, dz) || 1;
+            const t = ((v.x - ax) * dx + (v.z - az) * dz) / (L * L);
+            if (t < -WALL_FACE / L || t > 1 + WALL_FACE / L) continue;
+            const side = dx * (p.z - az) - dz * (p.x - ax) > 0 ? 1 : -1;
+            const sd = side * (dx * (v.z - az) - dz * (v.x - ax)) / L;   // + = the body's side
+            if (sd < WALL_FACE - MAX_OFF - 0.4) continue;   // behind the wall entirely: another room's wall
+            push[i] = Math.max(push[i], WALL_FACE - sd);
+          }
+        }
+      }
+      for (let i = 0; i < walls.length; i++) {
+        if (push[i] <= 0) continue;
+        const w = walls[i], dx = w.p2.x - w.p1.x, dz = w.p2.z - w.p1.z, L = Math.hypot(dx, dz) || 1;
+        const side = dx * (p.z - w.p1.z) - dz * (p.x - w.p1.x) > 0 ? 1 : -1;
+        tx += -dz / L * side * push[i]; tz += dx / L * side * push[i];
+      }
+      const m = Math.hypot(tx, tz);
+      if (m > MAX_OFF) { tx *= MAX_OFF / m; tz *= MAX_OFF / m; }
+    }
+    // Out at once, back in gently: never less than this frame needs.
+    const ease = (cur, want) => want * cur >= 0 && Math.abs(want) < Math.abs(cur) ? cur + (want - cur) * 0.15 : want;
+    off.x = ease(off.x, tx); off.z = ease(off.z, tz);
+    if (Math.abs(off.x) < 1e-3 && Math.abs(off.z) < 1e-3) { off.x = off.z = off.lx = off.lz = 0; return; }
+    // World slide into the root's frame (it turns to face the target and may be scaled).
+    const s = g.scale.x || 1, ry = g.rotation.y, c = Math.cos(ry), sn = Math.sin(ry);
+    off.lx = (off.x * c - off.z * sn) / s;
+    off.lz = (off.x * sn + off.z * c) / s;
+    body.position.x += off.lx; body.position.z += off.lz;
+  }
+
   /* Where a body can fall without going through a wall. The death poses in
      cyber-enemies.js used to tip every corpse over toward world +Z and fling
      an exploding rig's parts up to ~2.5 out, blind to the map, so a kill next
@@ -5074,7 +5159,11 @@ class CyberDoomEngine {
     const fly = !!(enemy.stats && enemy.stats.fly);
     const feet = fly ? ePos.y : (enemy.floorY !== undefined ? enemy.floorY : ePos.y);
     const r = enemy.radius || 0.5;
-    const cand = this.resolveWallCollisions(ePos.x + dx, ePos.z + dz, r, feet, 1.6, ePos.x, ePos.z);
+    // Walkers get the player's riser rule: a ledge too tall to climb pushes the
+    // body off its face instead of only refusing the step once the centre is
+    // already on the line, which left half a Mancubus inside a waist-high wall.
+    const cand = this.resolveWallCollisions(ePos.x + dx, ePos.z + dz, r, feet, 1.6, ePos.x, ePos.z,
+                                            fly ? undefined : STEP_UP_MAX);
     const f = this.getFloorAt(cand.x, cand.z);
     if (!f.inside) return;                                   // would leave the level
     if (!fly && f.floorY - feet > STEP_UP_MAX + STEP_EPS) return;   // too tall to climb
