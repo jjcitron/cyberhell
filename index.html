@@ -879,6 +879,9 @@
           <label style="color:#00ffcc; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(0,255,204,0.1); padding:6px 14px; border:1px solid #00ffcc; border-radius:4px;">
             <input type="checkbox" id="all-weapons-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> START WITH ALL WEAPONS
           </label>
+          <label title="Playtest aid: you take no damage and cannot die while this is ticked." style="color:#ffcc00; font-weight:bold; font-size:14px; cursor:pointer; background:rgba(255,204,0,0.1); padding:6px 14px; border:1px solid #ffcc00; border-radius:4px;">
+            <input type="checkbox" id="god-mode-chk" style="accent-color:#ffcc00; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> GOD MODE (PLAYTEST: NO DAMAGE)
+          </label>
         </div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
@@ -2107,6 +2110,15 @@ const STEP_UP_MAX = 1.2;
 // is 1.2000000000000002 in binary floating point. Without this slack the
 // engine refuses the very steps the maps are built from.
 const STEP_EPS = 1e-3;
+// Footprint radius the player's support floor is sampled over. Inside the
+// 0.55 wall radius, so a sample never reaches across a wall that blocks.
+const FOOT_R = 0.45;
+// How far the camera is kept off a ledge riser too tall to climb. The riser
+// box face is 0.2 off its line, so this leaves the camera 0.15 clear of it.
+// It is not the full 0.55 body radius because that closes the squeezes
+// between a riser and a wall that two pack5 exit routes use (0.4 closes one).
+// Same number as RISER_R in js/cyber-traversal.js.
+const RISER_R = 0.35;
 // Flying enemies (stats.fly) ride this far above their sector floor.
 const ENEMY_HOVER = 2.2;
 
@@ -2804,6 +2816,10 @@ class CyberDoomEngine {
       bottomY: w.bottomY,
       topY: w.topY !== undefined ? w.topY : (w.bottomY !== undefined ? w.bottomY + wallH : undefined),
       solid: w.solid,
+      // Ledge/step risers are drawn as boxes but are not `solid`: the floor
+      // height gates them. resolveWallCollisions still keeps a body out of
+      // one too tall to climb, or the camera ends up inside the box.
+      riser: !!(w.ledge || w.stepUp),
       isDoor: w.isDoor || false,
       isSwitch: w.isSwitch || false,
       doorId: w.doorId,
@@ -3138,12 +3154,27 @@ class CyberDoomEngine {
     enemy.deathSpread = Math.max(0, Math.min(1, (tightest - (enemy.radius || 0.6)) / (1.1 * enemy.group.scale.x)));
   }
 
+  // Is the floor on the far side of riser w from (px, pz) too tall to climb
+  // from feetY? Read from the floor itself: a riser's stored top goes stale
+  // once a lift or raising floor beside it has moved.
+  riserBlocks(w, px, pz, feetY, climb) {
+    const ax = w.p1.x, az = w.p1.z, dx = w.p2.x - ax, dz = w.p2.z - az;
+    const L2 = dx * dx + dz * dz;
+    if (L2 < 1e-12) return false;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L2));
+    const L = Math.sqrt(L2), s = (dx * (pz - az) - dz * (px - ax)) > 0 ? -1 : 1;
+    const f = this.getFloorAt(ax + t * dx + s * (-dz / L) * 0.1, az + t * dz + s * (dx / L) * 0.1);
+    return f.inside && f.floorY > feetY + climb;
+  }
+
   // Does the step (x0, z0) -> (x1, z1) at height y cross a solid wall? Gore
   // debris asks once per chunk per frame, so it stays a plain plan-view test.
-  wallBetween(x0, z0, x1, z1, y) {
+  // risers: also count the face of a ledge riser between its two floors
+  // (projectiles hit those; gore does not ask).
+  wallBetween(x0, z0, x1, z1, y, risers) {
     const r = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.1;
     for (const w of this.wallsNear((x0 + x1) / 2, (z0 + z1) / 2, r)) {
-      if (!w.solid) continue;
+      if (!w.solid && !(risers && w.riser)) continue;
       if (w.topY !== undefined && y >= w.topY) continue;
       if (w.bottomY !== undefined && y <= w.bottomY) continue;
       const ax = w.p1.x, az = w.p1.z, bx = w.p2.x, bz = w.p2.z;
@@ -4368,6 +4399,10 @@ class CyberDoomEngine {
     const dx = d.x / dl, dz = d.z / dl;
     let best = null, bestT = reach;
     for (const w of this.wallsNear(cam.x + dx * reach / 2, cam.z + dz * reach / 2, reach)) {
+      // Use passes over a plain ledge riser, as Doom's does over any two-sided
+      // line without a special. The body is now kept off tall risers, and a
+      // switch on the platform above is only in view by looking over one.
+      if (!w.solid && w.riser && !w._trig && !w.act) continue;
       // Ray (cam + t*dir) against the wall segment, in plan view.
       const ax = w.p1.x, az = w.p1.z, bx = w.p2.x - ax, bz = w.p2.z - az;
       const den = dx * bz - dz * bx;
@@ -4497,14 +4532,19 @@ class CyberDoomEngine {
       const t = step / collisionSteps;
       const candidateX = THREE.MathUtils.lerp(this.camera.position.x, newX, t);
       const candidateZ = THREE.MathUtils.lerp(this.camera.position.z, newZ, t);
-      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius, feetY, this.player.height, resolved.x, resolved.z);
+      const candidate = this.resolveWallCollisions(candidateX, candidateZ, pRadius, feetY, this.player.height, resolved.x, resolved.z, STEP_UP_MAX + STEP_EPS);
       const cf = this.getFloorAt(candidate.x, candidate.z);
       // Refuse to leave floor geometry, and refuse a climb steeper than the
       // free auto-climb. Measuring against the feet (not the current floor)
       // means a jump buys extra reach, and drops are always allowed. This is
       // what stops the player teleporting up the face of a ledge -- risers
       // are not solid walls, the floor height is the gate.
-      if (!cf.inside || cf.floorY - feetY > STEP_UP_MAX + STEP_EPS) {
+      // Nor into a sector too low to stand in (Doom's "doesn't fit" check):
+      // a sliver at the foot of a ledge held the camera inside the riser.
+      // ceil <= floor is a closed door sector, which its door wall gates.
+      const lowCeil = cf.inside && cf.ceilY !== undefined && cf.ceilY !== null && cf.ceilY > cf.floorY &&
+        cf.ceilY - cf.floorY < this.player.height;
+      if (!cf.inside || cf.floorY - feetY > STEP_UP_MAX + STEP_EPS || lowCeil) {
         leftKnownFloor = true;
         break;
       }
@@ -4545,7 +4585,21 @@ class CyberDoomEngine {
       this.player.onGround = true;
       return;
     }
-    const floorY = floor.floorY;
+    // Stand on the highest floor under the body, as Doom does, not just the
+    // one under its centre. Walking off a ledge you hang over the lip until
+    // you are clear of it, then drop -- so you never fall with the camera
+    // inside the riser box, or into a sliver sector at its foot. Only floors
+    // you could step onto count; the riser gate above keeps the body off the
+    // taller ones, so this never lifts you up a ledge. Nor does it hold you
+    // up over a room whose ceiling would then be below your eye.
+    let floorY = floor.floorY;
+    const ceilHere = floor.ceilY !== undefined && floor.ceilY !== null ? floor.ceilY : Infinity;
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4;
+      const f = this.getFloorAt(this.camera.position.x + Math.cos(a) * FOOT_R, this.camera.position.z + Math.sin(a) * FOOT_R);
+      if (f.inside && f.floorY > floorY && f.floorY <= feetY + STEP_UP_MAX + STEP_EPS &&
+          f.floorY + this.player.height <= ceilHere) floorY = f.floorY;
+    }
     const targetY = floorY + this.player.height;
     if (newY <= targetY) {
       // A small rise onto an adjacent step (<=STEP_UP_MAX, i.e. Doom's 24-unit
@@ -4570,8 +4624,17 @@ class CyberDoomEngine {
         }
       }
       if (newY >= maxCamY) {
+        const dropped = this.camera.position.y - Math.max(targetY, maxCamY);
         this.camera.position.y = Math.max(targetY, maxCamY);
         this.player.velocity.y = 0;
+        // A ceiling that snaps you down (off a ledge into a room whose
+        // ceiling is flush with it) can put a tall riser beside you in one
+        // frame; push off it now, not next frame with the camera inside it.
+        if (dropped > 0.05) {
+          const cp = this.camera.position;
+          const c = this.resolveWallCollisions(cp.x, cp.z, pRadius, cp.y - this.player.height, this.player.height, cp.x, cp.z, STEP_UP_MAX + STEP_EPS);
+          if (this.getFloorAt(c.x, c.z).inside) { cp.x = c.x; cp.z = c.z; }
+        }
       } else {
         this.camera.position.y = newY;
       }
@@ -4643,13 +4706,17 @@ class CyberDoomEngine {
   // (the pre-existing behaviour, still used by callers with no height).
   // fromX/fromZ are where the mover started this step; pass them and the
   // result is guaranteed not to be on the far side of a wall.
-  resolveWallCollisions(x, z, radius, feetY, height, fromX, fromZ) {
+  // climb: pass the mover's max step and a ledge riser whose top is more
+  // than that above the feet blocks like a wall. Without it the floor check
+  // alone let the body centre (the camera) walk right into the riser box.
+  resolveWallCollisions(x, z, radius, feetY, height, fromX, fromZ, climb) {
     const gated = feetY !== undefined;
     // Eye/head margin (+0.25): overhead walls and lintels whose bottom is within
     // 25 cm of eye height block horizontally, preventing camera eye-clipping.
     const headY = gated ? feetY + (height !== undefined ? height : 1.5) + 0.25 : 0;
     const blocks = (w) => {
-      if (!w.solid) return false;
+      // A riser is only a candidate here; riserBlocks decides once it is close.
+      if (!w.solid) return gated && climb !== undefined && !!w.riser;
       if (!gated) return true;
       if (w.topY !== undefined && w.topY <= feetY + 0.05) return false;
       if (w.bottomY !== undefined && w.bottomY >= headY) return false;
@@ -4694,7 +4761,8 @@ class CyberDoomEngine {
         const p2z = w.p2.z !== undefined ? w.p2.z : w.p2[1];
 
         const res = getSegDist(resX, resZ, p1x, p1z, p2x, p2z);
-        if (res.dist < radius) {
+        const r = w.solid ? radius : Math.min(radius, RISER_R);
+        if (res.dist < r && (w.solid || this.riserBlocks(w, fromX !== undefined ? fromX : resX, fromX !== undefined ? fromZ : resZ, feetY, climb))) {
           const dx = p2x - p1x;
           const dz = p2z - p1z;
           const segLen = Math.hypot(dx, dz);
@@ -4711,13 +4779,13 @@ class CyberDoomEngine {
             if (curSide < 0) { nx = -nx; nz = -nz; }
           }
 
-          let pushDist = radius - res.dist;
+          let pushDist = r - res.dist;
           if (fromX !== undefined) {
             const fromSide = dx * (fromZ - p1z) - dz * (fromX - p1x);
             const resSide = dx * (resZ - p1z) - dz * (resX - p1x);
             if (fromSide !== 0 && (fromSide > 0) !== (resSide >= 0)) {
               // Crossed the wall! Push back to radius on fromSide
-              pushDist = radius + res.dist;
+              pushDist = r + res.dist;
             }
           }
 
@@ -4751,6 +4819,7 @@ class CyberDoomEngine {
         const d3 = side(fromX, fromZ, resX, resZ, p1x, p1z);
         const d4 = side(fromX, fromZ, resX, resZ, p2x, p2z);
         if (d3 * d4 > 0) continue;
+        if (!w.solid && !this.riserBlocks(w, fromX, fromZ, feetY, climb)) continue;
 
         return { x: fromX, z: fromZ };
       }
@@ -5304,22 +5373,33 @@ class CyberDoomEngine {
           const dx = p.group.position.x - ePos.x;
           const dz = p.group.position.z - ePos.z;
           const dy = p.group.position.y - (ePos.y + 1.0);
-          if (Math.hypot(dx, dz) < (p.radius + 0.8) && Math.abs(dy) < 1.3) {
+          if (Math.hypot(dx, dz) < (p.radius + 0.8) && Math.abs(dy) < 1.3 &&
+              !this.wallBetween(p.group.position.x, p.group.position.z, ePos.x, ePos.z, p.group.position.y, true)) {
             hitPoint = p.group.position.clone();
             this.damageEnemy(enemy, p.damage, hitPoint);
             hit = true;
             break;
           }
         }
-      } else if (p.group.position.distanceTo(this.camera.position) < 0.9 + p.radius) {
+      } else if (p.group.position.distanceTo(this.camera.position) < 0.9 + p.radius &&
+                 !this.wallBetween(p.group.position.x, p.group.position.z, this.camera.position.x, this.camera.position.z, p.group.position.y, true)) {
         hitPoint = p.group.position.clone();
         this.damagePlayer(p.damage);
         hit = true;
       }
 
+      // Walls stop shots. Only leaving the floor plan used to, so a fireball
+      // crossed any wall with floor on both sides and hit the player behind it.
+      const pp = p.group.position, prev = hist[0];
+      if (!hit && this.wallBetween(prev.x, prev.z, pp.x, pp.z, pp.y, true)) {
+        hitPoint = pp.clone();
+        hit = true;
+      }
+
       if (!hit) {
         const floor = this.getFloorAt(p.group.position.x, p.group.position.z);
-        if (!floor.inside || p.life <= 0) {
+        if (!floor.inside || p.life <= 0 || pp.y < floor.floorY ||
+            (floor.ceilY !== undefined && floor.ceilY !== null && pp.y > floor.ceilY)) {
           hitPoint = p.group.position.clone();
           hit = true;
         }
@@ -5478,6 +5558,9 @@ class CyberDoomEngine {
      ========================================================================== */
   damagePlayer(amount) {
     if (this.isGameOver || this.isVictory) return;
+    // Playtest aid: the start page's GOD MODE box (default off) eats all damage.
+    const god = document.getElementById('god-mode-chk');
+    if (god && god.checked) return;
 
     let dmg = amount;
     if (this.player.armor > 0) {

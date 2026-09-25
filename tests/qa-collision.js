@@ -36,6 +36,11 @@
  *             what made converted levels unfinishable before.
  *   CH-COL-12 Player cannot walk or camera/eye-clip into solid walls or overhead
  *             ceilings (min camera wall distance >= 0.28, zero wall/ceiling penetrations).
+ *             Ledge risers too tall to climb from the player's feet count as
+ *             walls too: they are drawn as boxes but are not `solid`, which is
+ *             how Joel still walked into walls on 2026-09-25.
+ *   CH-COL-13 Enemy fireballs fired at the player from behind a solid wall or
+ *             from below a tall ledge riser die at the wall and do no damage.
  *
  * Runs its own static server on its own port and its own headless Chromium
  * via playwright-core -- never the shared bcl browser session.
@@ -129,9 +134,12 @@ const PROBE = function (samples, steps) {
   };
   // Reuse the engine's own wall grid: the megamaps carry 20k walls and these
   // loops run per sample and per frame.
+  // Tall ledge risers count: the body is kept off them like any wall, so a
+  // spot hugging one (or down a pit narrower than the body) is unreachable.
   const clearOfWalls = (x, z) => {
+    const fy = e.getFloorAt(x, z).floorY;
     for (const w of e.wallsNear(x, z, 0.62)) {
-      if (!w.solid) continue;
+      if (!w.solid && !(w.riser && w.topY > fy + STEP_UP_MAX + 0.05)) continue;
       if (segD(x, z, w.p1.x, w.p1.z, w.p2.x, w.p2.z) < 0.62) return false;
     }
     return true;
@@ -234,14 +242,15 @@ const PROBE = function (samples, steps) {
       // from the wall segment centerline (>= 0.05 from mesh surface).
       const camEye = p.y;
       for (const w of e.wallsNear(p.x, p.z, 1.0)) {
-        if (!w.solid) continue;
+        if (!w.solid && !(w.riser && w.topY > feet + STEP_UP_MAX + 0.05)) continue;
         if (w.topY !== undefined && w.topY < camEye - 0.05) continue;
         if (w.bottomY !== undefined && w.bottomY > camEye + 0.05) continue;
         const d = segD(p.x, p.z, w.p1.x, w.p1.z, w.p2.x, w.p2.z);
         if (d < v.minCamDist) v.minCamDist = d;
         if (d < 0.25) {
           v.camWallClip++;
-          if (examples.length < 3) examples.push({ kind: 'camWallClip', d: +d.toFixed(3), x: +p.x.toFixed(2), z: +p.z.toFixed(2), wall: [w.p1.x, w.p1.z, w.p2.x, w.p2.z] });
+          if (examples.length < 3) examples.push({ kind: 'camWallClip', d: +d.toFixed(3), x: +p.x.toFixed(2), z: +p.z.toFixed(2), wall: [w.p1.x, w.p1.z, w.p2.x, w.p2.z],
+            riser: !w.solid, wallY: [w.bottomY, w.topY], feet: +feet.toFixed(2), frame: n, start: [+sx.toFixed(2), +sz.toFixed(2)], floorY: f.floorY });
         }
       }
       if (f.ceilY !== undefined && f.ceilY !== null && f.ceilY >= f.floorY + 1.5 && p.y > f.ceilY) {
@@ -486,6 +495,80 @@ const CORPSE = function (seconds) {
 /* The page boots MAP01 and then auto-loads the first pack level over it, so
    the built-in map has to be swapped back in explicitly -- the same teardown
    loadLevelFromFile does. MAP01_DATA is a top-level const in the page. */
+/* CH-COL-13: for up to n walls that have floor on both sides, stand the
+   player 1.5 in front of it and fire a fireball at them from 3 behind it. */
+const PROJ_WALL = function (n) {
+  const e = window.cyberEngine;
+  const segD = (px, pz, ax, az, bx, bz) => {
+    const vx = bx - ax, vz = bz - az, wx = px - ax, wz = pz - az;
+    const t = Math.max(0, Math.min(1, (wx * vx + wz * vz) / (vx * vx + vz * vz || 1)));
+    return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
+  };
+  const clear = (x, z) => {
+    for (const w of e.wallsNear(x, z, 1.0)) if ((w.solid || w.riser) && segD(x, z, w.p1.x, w.p1.z, w.p2.x, w.p2.z) < 1.0) return false;
+    return true;
+  };
+  const out = { tested: 0, solid: 0, risers: 0, leaked: 0 };
+  const examples = [];
+  const savedEnemies = e.enemies;
+  e.enemies = [];
+  e.isGameOver = false;
+  for (const w of e.walls) {
+    if (out.tested >= n) break;
+    if (w.isDoor || w.isSwitch) continue;
+    const riser = !w.solid && w.riser && w.topY - w.bottomY >= 2.4;
+    if (!w.solid && !riser) continue;
+    const L = Math.hypot(w.p2.x - w.p1.x, w.p2.z - w.p1.z);
+    if (L < 2) continue;
+    const mx = (w.p1.x + w.p2.x) / 2, mz = (w.p1.z + w.p2.z) / 2;
+    const nx = -(w.p2.z - w.p1.z) / L, nz = (w.p2.x - w.p1.x) / L;
+    for (const sgn of [1, -1]) {
+      const ax = mx + nx * sgn * 1.5, az = mz + nz * sgn * 1.5, bx = mx - nx * sgn * 3, bz = mz - nz * sgn * 3;
+      const fa = e.getFloorAt(ax, az), fb = e.getFloorAt(bx, bz);
+      if (!fa.inside || !fb.inside || !clear(ax, az) || !clear(bx, bz)) continue;
+      let shooterY;
+      if (riser) {
+        // Player on the high floor, shooter on the low floor well below it.
+        if (Math.abs(fa.floorY - w.topY) > 0.05 || Math.abs(fb.floorY - w.bottomY) > 0.05) continue;
+        shooterY = fb.floorY + 1.0;
+        if (shooterY > w.topY - 0.5) continue;
+      } else {
+        if (Math.abs(fa.floorY - fb.floorY) > 0.3) continue;
+        if ((w.bottomY !== undefined && w.bottomY > fa.floorY + 0.1) || (w.topY !== undefined && w.topY < fa.floorY + e.player.height + 0.5)) continue;
+        shooterY = fb.floorY + 1.0;
+      }
+      e.camera.position.set(ax, fa.floorY + e.player.height, az);
+      // Aim flat at the riser face: an honest shot the ledge must stop,
+      // not one lobbed over the lip.
+      const aim = riser ? new THREE.Vector3(ax, shooterY, az) : e.camera.position.clone();
+      e.player.health = 100; e.player.armor = 0;
+      const from = new THREE.Vector3(bx, shooterY, bz);
+      const dir = aim.sub(from).normalize();
+      const proj = e.spawnProjectile({ from, dir, kind: 'fireball', owner: 'enemy', damage: 14 });
+      let crossed = false;
+      const side0 = (w.p2.x - w.p1.x) * (az - w.p1.z) - (w.p2.z - w.p1.z) * (ax - w.p1.x);
+      for (let i = 0; i < 120 && e.projectiles.includes(proj); i++) {
+        e.updateProjectiles(1 / 60);
+        const pp = proj.group.position;
+        const sd = (w.p2.x - w.p1.x) * (pp.z - w.p1.z) - (w.p2.z - w.p1.z) * (pp.x - w.p1.x);
+        if (e.projectiles.includes(proj) && (sd > 0) === (side0 > 0)) crossed = true;
+      }
+      if (e.projectiles.includes(proj)) { e._releaseProjectile(proj); e.projectiles.splice(e.projectiles.indexOf(proj), 1); }
+      out.tested++;
+      if (riser) out.risers++; else out.solid++;
+      if (crossed || e.player.health < 100) {
+        out.leaked++;
+        if (examples.length < 3) examples.push({ riser, wall: [w.p1.x, w.p1.z, w.p2.x, w.p2.z], crossed, health: e.player.health });
+      }
+      break;
+    }
+  }
+  e.enemies = savedEnemies;
+  e.player.health = 100;
+  e.isGameOver = false;
+  return { out, examples };
+};
+
 const LOAD_BUILTIN_MAP01 = function () {
   const e = window.cyberEngine;
   while (e.scene.children.length > 0) e.scene.remove(e.scene.children[0]);
@@ -525,11 +608,32 @@ const WALK = function (route) {
     const t = Math.max(0, Math.min(1, ((e.camera.position.x - w.p1.x) * vx + (e.camera.position.z - w.p1.z) * vz) / (vx * vx + vz * vz || 1)));
     toExit = Math.min(toExit, Math.hypot(e.camera.position.x - (w.p1.x + t * vx), e.camera.position.z - (w.p1.z + t * vz)));
   }
-  if (toExit > 4.5) {   // USE_RANGE 4.0 + the offline grid's 0.25 cells
+  // The engine keeps the body off tall ledge risers, which the offline model
+  // lets it touch, so a route ending at a riser foot can stop a little short
+  // of the model's reach. What matters is whether the exit can be pressed:
+  // aim at it and use it, through the engine's own interact().
+  let pressed = false;
+  if (toExit > 4.5) {
+    const realWin = e.triggerVictory;
+    e.triggerVictory = () => { pressed = true; };
+    const cp = e.camera.position;
+    for (const w of (e.exitWalls || [])) {
+      const vx = w.p2.x - w.p1.x, vz = w.p2.z - w.p1.z;
+      const t = Math.max(0.05, Math.min(0.95, ((cp.x - w.p1.x) * vx + (cp.z - w.p1.z) * vz) / (vx * vx + vz * vz || 1)));
+      const tx = w.p1.x + t * vx, tz = w.p1.z + t * vz;
+      const ty = (w.bottomY !== undefined && w.topY !== undefined) ? (w.bottomY + w.topY) / 2 : cp.y;
+      e.camera.rotation.set(Math.atan2(ty - cp.y, Math.hypot(tx - cp.x, tz - cp.z)), Math.atan2(-(tx - cp.x), -(tz - cp.z)), 0, 'YXZ');
+      e.camera.updateMatrixWorld();
+      e.interact();
+      if (pressed) break;
+    }
+    e.triggerVictory = realWin;
+  }
+  if (toExit > 4.5 && !pressed) {   // USE_RANGE 4.0 + the offline grid's 0.25 cells
     stall = { toExit: +toExit.toFixed(2), floor: e.getFloorAt(e.camera.position.x, e.camera.position.z),
               y: +e.camera.position.y.toFixed(2) };
   }
-  return { reached, total: route.length, stall, atExit: !stall,
+  return { reached, total: route.length, stall, atExit: !stall, pressed, toExit: +toExit.toFixed(2),
            at: [+e.camera.position.x.toFixed(2), +e.camera.position.z.toFixed(2)] };
 };
 
@@ -592,6 +696,12 @@ function check(id, ok, detail) {
         `player camera vs walls/ceiling: camWallClip=${v.camWallClip} ceilClip=${v.ceilClip} (closest wall ${v.minCamDist === Infinity ? 'none' : v.minCamDist.toFixed(3)})` +
         `${camBad ? '  eg ' + JSON.stringify(examples.filter(x => x.kind === 'camWallClip' || x.kind === 'ceilClip')) : ''}`);
 
+      const pw = await page.evaluate(
+        ([fn, n]) => new Function('return ' + fn)()(n), [PROJ_WALL.toString(), 60]);
+      check(`CH-COL-13 ${t.name}`, pw.out.leaked === 0 && pw.out.tested > 0,
+        `${pw.out.tested} fireballs fired at the player through walls (${pw.out.solid} solid, ${pw.out.risers} tall ledge risers): ` +
+        `leaked=${pw.out.leaked}${pw.out.leaked ? '  eg ' + JSON.stringify(pw.examples) : ''}`);
+
       const level = t.file
         ? JSON.parse(fs.readFileSync(path.join(ROOT, t.file), 'utf8'))
         : loadMap01();
@@ -612,6 +722,7 @@ function check(id, ok, detail) {
           ([fn, r]) => new Function('return ' + fn)()(r), [WALK.toString(), route]);
         check(`CH-COL-9 ${t.name}`, walk.atExit,
           `reached the exit switch, ${walk.reached}/${walk.total} route waypoints hit` +
+          `${walk.pressed ? ` (stopped ${walk.toExit} from it at a riser foot; pressed it in-engine)` : ''}` +
           `${walk.atExit ? '' : ' -- STOPPED at ' + JSON.stringify(walk.at) + ' ' + JSON.stringify(walk.stall)}`);
       }
 
