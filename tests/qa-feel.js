@@ -8,10 +8,16 @@
  *            a kill plays the death cue.
  *   CH-FW-3  A chainsaw bite sprays several big blood jets and screams;
  *            the scream is the loud one (peak gain vs presence / death).
- *   CH-FW-4  Grapple: standing still reels in (PULL), strafing orbits
- *            (SWING), running carries straight (CARRY); while hooked the
- *            player switches to a gun, shoots the hooked body, and the
- *            hook lets go when it dies.
+ *   CH-FW-4  Grapple (Joel 2026-09-28): attach lifts you UP while it reels
+ *            you in; strafe or view-turn steers the arc (right and left go
+ *            opposite ways); a second hook shot YANKS you in, much faster,
+ *            and lets go at arm's length; while swinging you switch to a gun
+ *            and shoot (no yank); the line lets go by itself after
+ *            GRAPPLE_HOLD s, and when the body dies.
+ *   CH-FW-8  Melee (middle click / V / touch pad): a hard hit (60), the usual
+ *            short flinch; swung off a yank it STAGGERS (105, 1.6 s stun,
+ *            still stunned a second later under the AI); a late swing is
+ *            plain again; cooldown; a whiff hits nothing.
  *   CH-FW-5  Mancubus / Arachnotron / Spider Mastermind loom (scaled >= 1.5x,
  *            a metre+ over the player's eye) and their
  *            collision radius grew with them.
@@ -102,7 +108,7 @@ const SETUP = function () {
   U.aimAt = (en) => { const c = new THREE.Vector3(); U.box(en).getCenter(c); U.aim(c.x, c.y, c.z); };
   // Count sound calls without needing the speakers.
   U.calls = {};
-  for (const k of ['playPresence', 'playDeath', 'playScream', 'playGrapple', 'playMonsterHurt']) {
+  for (const k of ['playPresence', 'playDeath', 'playScream', 'playGrapple', 'playMonsterHurt', 'playMelee']) {
     const f = e.sound[k].bind(e.sound);
     e.sound[k] = (...a) => { (U.calls[k] = U.calls[k] || []).push(a); return f(...a); };
   }
@@ -159,57 +165,147 @@ const SAW = function () {
 const GRAPPLE = function () {
   const e = window.cyberEngine, U = window.__fw, s = U.spot;
   const out = {};
-  const run = (secs, each) => { const dt = 1 / 60; for (let t = 0; t < secs && e.grapple; t += dt) { if (each) each(t); e.updatePhysics(dt); } };
+  const dt = 1 / 60;
+  const run = (secs, each) => { let t = 0; for (; t < secs && e.grapple; t += dt) { if (each) each(t); e.updatePhysics(dt); } return t; };
+  const flat = (en) => Math.hypot(en.group.position.x - e.camera.position.x, en.group.position.z - e.camera.position.z);
+  const ang = (en) => Math.atan2(e.camera.position.z - en.group.position.z, e.camera.position.x - en.group.position.x);
+  const hook = (type, dist) => {
+    const en = U.spawn(type, dist); en.hp = 1e6; en.state = 'IDLE';
+    e.keys = {}; e.moveAxis = null;
+    e.switchWeapon('grapple'); U.aimAt(en); e.player.velocity.set(0, 0, 0);
+    e.nextFireTime = 0; e.fireWeapon();
+    return en;
+  };
+  // Swept angle round the body (signed, radians) while `each` runs.
+  const sweep = (en, secs, each) => {
+    let prev = ang(en), swept = 0;
+    run(secs, (t) => { if (each) each(t); const a = ang(en); let da = a - prev; da = Math.atan2(Math.sin(da), Math.cos(da)); swept += da; prev = a; });
+    return swept;
+  };
   e.isRunning = true;
-  // PULL: standing still.
-  let en = U.spawn(67, 10); en.hp = 1e6; en.state = 'IDLE';
-  e.switchWeapon('grapple'); U.aimAt(en); e.player.velocity.set(0, 0, 0);
-  let d0 = Math.hypot(en.group.position.x - e.camera.position.x, en.group.position.z - e.camera.position.z);
+
+  // a) Attach standing still: lifted up while reeled in.
+  let en = hook(69, 11);
+  const y0 = e.camera.position.y, d0 = flat(en);
+  let peak = 0;
+  out.attach = { hooked: !!e.grapple, mode: e.grapple && e.grapple.mode, d0: +d0.toFixed(2) };
+  run(1.0, () => { peak = Math.max(peak, e.camera.position.y - y0); });
+  out.attach.lift = +peak.toFixed(2);
+  out.attach.d1s = +flat(en).toFixed(2);
+  e.releaseGrapple();
+
+  // b) Steer: hold D, then A, then turn the view right -- the arc goes
+  // the way you steer (strafe right and turn right agree).
+  const steer = {};
+  for (const [name, each] of [
+    ['right', () => { e.keys.KeyD = true; }],
+    ['left', () => { e.keys.KeyA = true; }],
+    ['lookRight', () => { e.yaw -= 2.2 * dt; e.applyLook(0, 0, 0); }]
+  ]) {
+    en = hook(69, 9);
+    steer[name] = +(sweep(en, 1.4, each) * 180 / Math.PI).toFixed(1);
+    e.keys = {}; e.releaseGrapple();
+  }
+  out.steer = steer;
+
+  // c) Second hook shot = YANK: much faster in, lets go at arm's length.
+  en = hook(69, 11);
+  run(0.25);
+  const dy0 = flat(en);
   e.nextFireTime = 0; e.fireWeapon();
-  out.pull = { hooked: !!e.grapple, mode: e.grapple && e.grapple.mode, d0: +d0.toFixed(2) };
-  run(3);
-  out.pull.d1 = +Math.hypot(en.group.position.x - e.camera.position.x, en.group.position.z - e.camera.position.z).toFixed(2);
-  out.pull.released = !e.grapple;
-  // SWING: strafing across the line.
-  en = U.spawn(67, 9); en.hp = 1e6;
-  e.switchWeapon('grapple'); U.aimAt(en);
-  const ax = -s.dz, az = s.dx;               // across the run
-  e.player.velocity.set(ax * 10, 0, az * 10);
-  e.nextFireTime = 0; e.fireWeapon();
-  out.swing = { hooked: !!e.grapple, mode: e.grapple && e.grapple.mode };
-  const ang = () => Math.atan2(e.camera.position.z - en.group.position.z, e.camera.position.x - en.group.position.x);
-  const a0 = ang(); let swept = 0, prev = a0, dmin = 1e9, dmax = 0;
-  // While swinging: switch to the machinegun and shoot the hooked body.
-  let hpBefore = en.hp, switched = false, stillHooked = false;
-  run(2.5, (t) => {
-    const a = ang(); let da = a - prev; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI; swept += da; prev = a;
-    const d = Math.hypot(e.camera.position.x - en.group.position.x, e.camera.position.z - en.group.position.z); dmin = Math.min(dmin, d); dmax = Math.max(dmax, d);
-    if (t > 0.5 && !switched) { e.switchWeapon('machinegun'); switched = true; }
-    if (switched) { U.aimAt(en); e.player.ammo.bullets = 200; e.nextFireTime = 0; e.fireWeapon(); stillHooked = stillHooked || !!e.grapple; }
+  out.yank = { mode: e.grapple && e.grapple.mode };
+  const ty = run(1.5);
+  out.yank.secs = +ty.toFixed(2);
+  out.yank.released = !e.grapple;
+  out.yank.dEnd = +flat(en).toFixed(2);
+  out.yank.reach = +((en.radius || 0.6) + 1.3).toFixed(2);
+  out.yank.speed = +((dy0 - flat(en)) / Math.max(ty, dt)).toFixed(1);
+  out.yank.rushOpen = e.gameTime <= e.hookRushUntil;
+  // Reel speed on a plain swing, over the same stretch, for comparison.
+  en = hook(69, 11);
+  run(0.25);
+  const ds0 = flat(en); run(0.3);
+  out.yank.swingReelSpeed = +((ds0 - flat(en)) / 0.3).toFixed(1);
+  e.releaseGrapple();
+
+  // d) While swinging: switch to the machinegun and shoot the hooked body;
+  // the gun shoots (it does not yank) and the line stays on.
+  en = hook(67, 9);
+  let hpBefore = en.hp, switched = false, stillHooked = true, modes = new Set();
+  run(1.5, (t) => {
+    if (t > 0.3 && !switched) { e.switchWeapon('machinegun'); switched = true; }
+    if (switched) { U.aimAt(en); e.player.ammo.bullets = 200; e.nextFireTime = 0; e.fireWeapon(); stillHooked = stillHooked && !!e.grapple; if (e.grapple) modes.add(e.grapple.mode); }
   });
-  out.swing.sweptDeg = Math.round(Math.abs(swept) * 180 / Math.PI);
-  out.swing.dRange = [+dmin.toFixed(2), +dmax.toFixed(2)];
-  out.swing.shotWhileHooked = +(hpBefore - en.hp).toFixed(1);
-  out.swing.gunWhileHooked = e.player.currentWeapon;
-  out.swing.stillHooked = stillHooked;
+  out.shoot = { dmg: +(hpBefore - en.hp).toFixed(1), gun: e.player.currentWeapon, stillHooked, modes: [...modes] };
+  e.releaseGrapple();
+
+  // e) The line holds a fixed time, then lets go by itself.
+  en = hook(69, 9);
+  const held = run(10);
+  out.hold = { secs: +held.toFixed(2), want: typeof GRAPPLE_HOLD !== 'undefined' ? GRAPPLE_HOLD : null, released: !e.grapple };
+
   // Kill it while hooked: the line drops.
-  if (!e.grapple) { e.switchWeapon('grapple'); U.aimAt(en); e.nextFireTime = 0; e.player.velocity.set(0, 0, 0); e.fireWeapon(); }
+  en = hook(69, 9);
   const hookedBeforeKill = !!e.grapple;
   en.hp = 1; e.switchWeapon('pistol'); U.aimAt(en); e.nextFireTime = 0;
   for (let i = 0; i < 20 && en.state !== 'DEAD'; i++) { e.nextFireTime = 0; en.hp = 1; e.fireWeapon(); }
   out.killRelease = { hookedBeforeKill, dead: en.state === 'DEAD', released: !e.grapple };
-  // CARRY: running at it.
-  en = U.spawn(67, 11); en.hp = 1e6;
-  e.switchWeapon('grapple'); U.aimAt(en);
-  e.player.velocity.set(s.dx * 9, 0, s.dz * 9);
-  e.nextFireTime = 0; e.fireWeapon();
-  out.carry = { hooked: !!e.grapple, mode: e.grapple && e.grapple.mode };
-  const c0 = e.camera.position.clone(); let n = 0;
-  run(0.5, () => n++);
-  const mv = e.camera.position.clone().sub(c0);
-  out.carry.moved = +Math.hypot(mv.x, mv.z).toFixed(2);
-  out.carry.straightness = +((mv.x * s.dx + mv.z * s.dz) / (Math.hypot(mv.x, mv.z) || 1)).toFixed(2);
   e.releaseGrapple();
+  e.isRunning = false;
+  return out;
+};
+
+const MELEE = function () {
+  const e = window.cyberEngine, U = window.__fw;
+  const dt = 1 / 60;
+  const out = {};
+  e.isRunning = true;
+  const fresh = (dist) => {
+    const en = U.spawn(69, dist); en.hp = 300; en.state = 'IDLE'; en.flinchT = 0;
+    e.keys = {}; e.moveAxis = null; e.hookRushUntil = -1; e.nextMeleeTime = 0;
+    U.aimAt(en);
+    return en;
+  };
+  // Plain melee, no hook: a hard hit, the normal short flinch at most.
+  e.switchWeapon('shotgun');
+  let en = fresh(2.4);
+  let hits = e.melee();
+  out.plain = { hits, dmg: 300 - en.hp, flinchT: +(en.flinchT || 0).toFixed(2), staggered: en.staggeredAt !== undefined };
+  out.cooldownBlocks = e.melee() === 0;
+  // Whiff: nothing in reach.
+  en = fresh(9);
+  out.whiff = e.melee();
+  // Off a yank: swing on arrival -> STAGGER (more damage, 1.6 s stun).
+  en = fresh(11);
+  e.switchWeapon('grapple'); U.aimAt(en); e.nextFireTime = 0; e.fireWeapon();
+  for (let t = 0; t < 0.2; t += dt) e.updatePhysics(dt);
+  e.nextFireTime = 0; e.fireWeapon();                       // yank
+  let t = 0; for (; t < 1.5 && e.grapple; t += dt) e.updatePhysics(dt);
+  e.switchWeapon('pistol'); U.aimAt(en);
+  hits = e.melee();
+  out.stagger = { hits, dmg: 300 - en.hp, flinchT: +(en.flinchT || 0).toFixed(2), staggered: en.staggeredAt !== undefined };
+  // A staggered body stays stunned: a second later its AI is still frozen.
+  const p0 = en.group.position.clone(); en.state = 'CHASE';
+  for (let k = 0; k < 60; k++) window.CyberAI.update(e, dt);
+  out.stagger.stillStunnedAfter1s = en.flinchT > 0;
+  // Late swing (rush window gone) is a plain hit again.
+  en = fresh(2.4);
+  e.gameTime += 1;
+  e.melee();
+  out.late = { staggered: en.staggeredAt !== undefined, dmg: 300 - en.hp };
+  // Inputs: a real middle-button mousedown, the V key and the touch pad.
+  const via = {};
+  for (const [name, fire] of [
+    ['middleClick', () => document.dispatchEvent(new MouseEvent('mousedown', { button: 1, bubbles: true, cancelable: true }))],
+    ['keyV', () => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV', bubbles: true }))],
+    ['touchPad', () => e.touchAction(document.getElementById('tc-melee').dataset.act)]
+  ]) {
+    en = fresh(2.4); e.gameTime += 1;
+    fire();
+    e.keys = {};
+    via[name] = 300 - en.hp;
+  }
+  out.via = via;
   e.isRunning = false;
   return out;
 };
@@ -312,12 +408,25 @@ function check(id, ok, detail) {
     await shot('chainsaw-blood');
 
     const gr = await run(GRAPPLE);
-    const okPull = gr.pull.hooked && gr.pull.mode === 'pull' && gr.pull.d1 < gr.pull.d0 - 4 && gr.pull.released;
-    const okSwing = gr.swing.hooked && gr.swing.mode === 'swing' && gr.swing.sweptDeg >= 60 && gr.swing.shotWhileHooked > 0 && gr.swing.gunWhileHooked === 'machinegun' && gr.swing.stillHooked;
-    const okCarry = gr.carry.hooked && gr.carry.mode === 'carry' && gr.carry.moved > 4 && gr.carry.straightness > 0.95;
+    const okAttach = gr.attach.hooked && gr.attach.mode === 'swing' && gr.attach.lift >= 1.5 && gr.attach.d1s < gr.attach.d0 - 3;
+    const okSteer = gr.steer.right * gr.steer.left < 0 && Math.abs(gr.steer.right) >= 25 && Math.abs(gr.steer.left) >= 25 &&
+      gr.steer.lookRight * gr.steer.right > 0 && Math.abs(gr.steer.lookRight) >= 15;
+    const okYank = gr.yank.mode === 'yank' && gr.yank.released && gr.yank.dEnd <= gr.yank.reach + 0.6 &&
+      gr.yank.speed >= 20 && gr.yank.speed > gr.yank.swingReelSpeed * 1.5 && gr.yank.rushOpen;
+    const okShoot = gr.shoot.dmg > 0 && gr.shoot.gun === 'machinegun' && gr.shoot.stillHooked && gr.shoot.modes.join() === 'swing';
+    const okHold = gr.hold.released && gr.hold.want === 3.5 && Math.abs(gr.hold.secs - gr.hold.want) < 0.1;
     const okKill = gr.killRelease.hookedBeforeKill && gr.killRelease.dead && gr.killRelease.released;
-    check('CH-FW-4 grapple: pull / swing / carry by motion; switch gun and shoot while hooked; lets go on death',
-      okPull && okSwing && okCarry && okKill, JSON.stringify(gr));
+    check('CH-FW-4 grapple: attach lifts + reels in; strafe/look steer the arc; 2nd shot yanks; shoot while swinging; fixed hold; lets go on death',
+      okAttach && okSteer && okYank && okShoot && okHold && okKill,
+      JSON.stringify({ okAttach, okSteer, okYank, okShoot, okHold, okKill, ...gr }));
+
+    const ml = await run(MELEE);
+    const okPlain = ml.plain.hits === 1 && ml.plain.dmg === 60 && !ml.plain.staggered && ml.plain.flinchT <= 0.35 && ml.cooldownBlocks && ml.whiff === 0;
+    const okStag = ml.stagger.hits === 1 && ml.stagger.dmg === 105 && ml.stagger.staggered && ml.stagger.flinchT >= 1.5 && ml.stagger.stillStunnedAfter1s;
+    const okLate = !ml.late.staggered && ml.late.dmg === 60;
+    const okVia = ml.via.middleClick === 60 && ml.via.keyV === 60 && ml.via.touchPad === 60;
+    check('CH-FW-8 melee: middle click / V / touch pad hit hard; off a yank it staggers (1.6 s stun); late swing plain; cooldown',
+      okPlain && okStag && okLate && okVia, JSON.stringify({ okPlain, okStag, okLate, okVia, ...ml }));
 
     const sc = await run(SCALE);
     const big = sc.filter(r => r.type !== 3004);

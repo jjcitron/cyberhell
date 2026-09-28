@@ -703,6 +703,9 @@ class WeaponViewmodels {
     });
   }
 
+  // Melee: whatever is in hand swings across and forward (see update).
+  triggerMelee() { this.meleeT = 1; }
+
   triggerRecoil(intensity = 1.0) {
     this.recoilOffset = 0.15 * intensity;
     this.muzzleLight.intensity = 5 * intensity;
@@ -792,6 +795,14 @@ class WeaponViewmodels {
     cur.mesh.position.z = (cur.baseZ ?? -0.55) + sx + this.recoilOffset;
     cur.mesh.rotation.z = Math.sin(this.bobTimer * sway.freq * 0.5) * sway.roll;
     cur.mesh.rotation.x = -this.recoilOffset * 0.9 + Math.sin(this.bobTimer * sway.freq * 0.33) * sway.roll * 0.5;
+    if (this.meleeT > 0) {
+      this.meleeT = Math.max(0, this.meleeT - delta * 3.2);
+      const k = Math.sin(Math.PI * (1 - this.meleeT));
+      cur.mesh.position.x -= 0.2 * k;
+      cur.mesh.position.z -= 0.22 * k;
+      cur.mesh.rotation.y = 0.9 * k;
+      cur.mesh.rotation.z -= 0.55 * k;
+    }
 
     // Ejected case flies out on an arc and disappears.
     if (cur.shell && cur.ejectFrom) {
@@ -978,8 +989,9 @@ const WEAPONS = {
       energyShot(engine, { speed: 55, kind: 'energy_burst', damage: 6, radius: 0.2 }, 0.03);
     }
   },
-  // Hook an enemy. Motion at the shot picks the ride (engine.fireGrapple);
-  // the line stays on while the player swaps to any gun and shoots it.
+  // Hook an enemy and swing on it; fire again while hooked to yank in
+  // (engine.fireGrapple). The line stays on while the player swaps to any
+  // gun and shoots.
   grapple: {
     slot: 7, label: 'HOOK', ammo: 'none', cost: 0, cooldown: 0.35, auto: false,
     fire(engine) {

@@ -610,6 +610,8 @@
 
     #tc-use  { right: 14px; bottom: 100px; width: 70px; height: 70px; font-size: 14px; }
     #tc-jump { right: 14px; bottom: 22px;  width: 70px; height: 70px; font-size: 13px; }
+    /* Over the fire pad, clear of the weapon arrows' column. */
+    #tc-melee { right: 122px; bottom: 150px; width: 64px; height: 64px; font-size: 12px; }
 
     /* Weapon prev/next on the right edge: the left third is the stick zone. */
     .tc-arrow {
@@ -679,6 +681,7 @@
     #mobile-controls.lefty #tc-fire { right: auto; left: 96px; }
     #mobile-controls.lefty #tc-use  { right: auto; left: 14px; }
     #mobile-controls.lefty #tc-jump { right: auto; left: 14px; }
+    #mobile-controls.lefty #tc-melee { right: auto; left: 122px; }
     #mobile-controls.lefty .tc-arrow { right: auto; left: 10px; }
     #mobile-controls.lefty #tc-wname { right: auto; left: 4px; }
     #mobile-controls.lefty #tc-lock { left: auto; right: -6px; }
@@ -974,6 +977,7 @@
         <div id="tc-lock" data-tc="btn" data-act="autofire" aria-label="Autofire lock">&#8734;</div>
       </div>
       <div id="tc-use" class="tc-pad" data-tc="btn" data-act="use">USE</div>
+      <div id="tc-melee" class="tc-pad" data-tc="btn" data-act="melee">MELEE</div>
       <div id="tc-jump" class="tc-pad" data-tc="btn" data-act="jump">JUMP</div>
 
       <div id="tc-wprev" class="tc-arrow" data-tc="btn" data-act="wprev">&#9650;</div>
@@ -1568,6 +1572,32 @@ class SoundEngine {
     n.connect(ng); ng.connect(f);
     n.start(t);
     this.screams = (this.screams || 0) + 1;
+  }
+
+  /* Melee: a band-passed noise whoosh; a hit adds a low body thud, and a
+     stagger a second, heavier one. */
+  playMelee(hit, heavy) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const n = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), ng = this.ctx.createGain();
+    n.buffer = this.createNoiseBuffer(0.2);
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(600, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.14);
+    ng.gain.setValueAtTime(0.16, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    n.connect(f); f.connect(ng); ng.connect(this.ctx.destination);
+    n.start(t);
+    if (!hit) return;
+    for (let i = 0; i < (heavy ? 2 : 1); i++) {
+      const at = t + 0.06 + i * 0.07;
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(heavy ? 120 : 150, at);
+      o.frequency.exponentialRampToValueAtTime(40, at + 0.2);
+      g.gain.setValueAtTime(heavy ? 0.4 : 0.3, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.24);
+      o.connect(g); g.connect(this.ctx.destination);
+      o.start(at); o.stop(at + 0.26);
+    }
   }
 
   /* Hook out and hook home: a whip crack, then a metal clank. */
@@ -2257,6 +2287,8 @@ const DIFFICULTY_PRESETS = {
 const EMPTY_WALLS = [];
 const EMPTY_SECTORS = [];
 const STEP_UP_MAX = 1.2;
+// Seconds the grapple line holds before it lets go on its own.
+const GRAPPLE_HOLD = 3.5;
 // A step of exactly 24 map units is the commonest stair in Doom, and 2.0-0.8
 // is 1.2000000000000002 in binary floating point. Without this slack the
 // engine refuses the very steps the maps are built from.
@@ -3590,6 +3622,8 @@ class CyberDoomEngine {
 
       // Interaction
       if (e.code === 'KeyE') this.interact();
+      // Melee: V is the keyboard stand-in for a middle click.
+      if (e.code === 'KeyV' && this.isRunning && !e.repeat) this.melee();
 
       // Automap
       if (e.code === 'Tab' || e.code === 'KeyM') {
@@ -3907,6 +3941,9 @@ class CyberDoomEngine {
       if (e.button === 0) {
         this.isFiring = true;
         this.fireWeapon();
+      } else if (e.button === 1) {
+        e.preventDefault();          // no autoscroll puck
+        this.melee();
       } else if (e.button === 2) {
         e.preventDefault();
         this.interact();
@@ -4114,6 +4151,7 @@ class CyberDoomEngine {
     if (!this.isRunning) return;
     if (act === 'jump') this.jump();
     else if (act === 'use') this.interact();
+    else if (act === 'melee') this.melee();
     else if (act === 'map') this.toggleAutomap();
     else if (act === 'pause') this.pauseRun();
     else if (act === 'wprev') this.cycleTouchWeapon(-1);
@@ -4551,18 +4589,19 @@ class CyberDoomEngine {
 
   /* GRAPPLE. The hook takes whatever body is under the crosshair (or
      nearest it, within a few degrees -- a hook that needs a pixel-perfect
-     shot is no fun) and the player's motion at that instant picks the ride:
-       standing still  -> PULL: reeled in to the body, lifted to it if it is
-                          big, and let go on arrival;
-       strafing across -> SWING: orbit it on a shortening line, the way you
-                          were already going round;
-       running at/away -> CARRY: keep going straight, faster, on the line.
-     The line is engine state, not weapon state: switch to any gun and shoot
-     the body while riding. It lets go when the body dies, after 5 s, past
-     50 m, on JUMP, or on a second hook shot. Enemies only -- not a level
-     traversal tool. */
+     shot is no fun). Then:
+       SWING (on attach): the line kicks you UP and reels you in toward the
+         body on an arc. Strafe (A/D, or the touch stick) or turn the view
+         left/right to throw the arc that way; once reeled in, the line
+         holds you circling the body until it lets go.
+       YANK (fire the HOOK again): a hard, straight pull in to arm's length,
+         then the line drops. Melee on the way in (or just after) staggers.
+     The line is engine state, not weapon state: switch to any gun and
+     shoot while swinging. It holds GRAPPLE_HOLD seconds (the rope reddens
+     for the last one), and lets go sooner on the body's death, past 50 m,
+     or on JUMP. Enemies only -- not a level traversal tool. */
   fireGrapple() {
-    if (this.grapple) { this.releaseGrapple(); return; }
+    if (this.grapple) { this.yankGrapple(); return; }
     const cam = this.camera.position;
     const dir = aimDir(this, 0);
     const RANGE = 42;
@@ -4595,57 +4634,87 @@ class CyberDoomEngine {
       return;
     }
     const v = this.player.velocity;
-    const sp = Math.hypot(v.x, v.z);
     const rx = point.x - cam.x, rz = point.z - cam.z, rl = Math.hypot(rx, rz) || 1;
-    const along = (v.x * rx + v.z * rz) / rl;
-    const lateral = (v.x * rz - v.z * rx) / rl;       // sideways across the line, signed
-    const mode = sp < 2 ? 'pull' : (Math.abs(lateral) > Math.abs(along) ? 'swing' : 'carry');
     enemy.group.updateMatrixWorld(true);
     this.grapple = {
-      enemy, mode, t: 0,
+      enemy, mode: 'swing', t: 0, hold: GRAPPLE_HOLD,
       anchor: enemy.group.worldToLocal(point.clone()),
       len: rl,
-      spin: lateral >= 0 ? -1 : 1,
-      speed: Math.max(14, sp * 1.5),
-      dir: sp > 0.01 ? { x: v.x / sp, z: v.z / sp } : { x: rx / rl, z: rz / rl }
+      // Sideways speed across the line at the shot carries into the swing.
+      swingV: (v.z * rx - v.x * rz) / rl,
+      yaw: this.camera.rotation.y
     };
+    // The lift: up off the floor as the reel starts.
+    v.y = Math.max(v.y, 9);
+    this.player.onGround = false;
     if (!this._rope) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
       this._rope = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffaa33 }));
       this._rope.frustumCulled = false;
     }
+    this._rope.material.color.setHex(0xffaa33);
     this.scene.add(this._rope);
     this.sound.playGrapple(true);
-    this.showHudMessage(`HOOKED ${enemy.type.toUpperCase()} -- ${mode.toUpperCase()}`);
+    this.showHudMessage(`HOOKED ${enemy.type.toUpperCase()} -- FIRE AGAIN TO YANK`);
     this.updateHUD();
+  }
+
+  yankGrapple() {
+    const g = this.grapple;
+    if (!g || g.mode === 'yank') return;
+    g.mode = 'yank';
+    this.sound.playGrapple(true);
+    this.showHudMessage('YANK!');
   }
 
   updateGrapple(delta) {
     const g = this.grapple;
     g.t += delta;
-    if (!g.enemy || g.enemy.state === 'DEAD' || g.t > 5 || !this.enemies.includes(g.enemy)) { this.releaseGrapple(); return; }
+    if (!g.enemy || g.enemy.state === 'DEAD' || !this.enemies.includes(g.enemy)) { this.releaseGrapple(); return; }
+    if (g.t > g.hold) { this.releaseGrapple(); this.showHudMessage('HOOK LET GO'); return; }
     const a = g.enemy.group.localToWorld((this._grA || (this._grA = new THREE.Vector3())).copy(g.anchor));
     const cam = this.camera.position, v = this.player.velocity;
     const dx = a.x - cam.x, dz = a.z - cam.z, d = Math.hypot(dx, dz) || 1e-6;
+    const ux = dx / d, uz = dz / d;
     if (d > 50 || (this.keys['Space'] && g.t > 0.2)) { this.releaseGrapple(); return; }
-    if (g.mode === 'pull') {
-      const stop = (g.enemy.radius || 0.6) + 1.3;
-      if (d <= stop) { v.x *= 0.3; v.z *= 0.3; this.releaseGrapple(); return; }
-      v.x = dx / d * 22; v.z = dz / d * 22;
-      // Reel up toward a hook point above you (a big body), never down hard.
-      v.y = Math.max(-6, Math.min(11, (a.y - 0.4 - cam.y) * 3));
-    } else if (g.mode === 'swing') {
-      g.len = Math.max((g.enemy.radius || 0.6) + 2.2, g.len - 1.5 * delta);
-      const tx = -dz / d * g.spin, tz = dx / d * g.spin;
-      const pullIn = (d - g.len) * 6;
-      v.x = tx * g.speed + dx / d * pullIn;
-      v.z = tz * g.speed + dz / d * pullIn;
-      v.y = Math.max(v.y, -3);
+    const reach = g.enemy.radius || 0.6;
+    if (g.mode === 'yank') {
+      if (d <= reach + 1.3) {
+        v.x *= 0.25; v.z *= 0.25;
+        this.hookRushUntil = this.gameTime + 0.6;   // the melee stagger beat
+        this.releaseGrapple();
+        return;
+      }
+      v.x = ux * 30; v.z = uz * 30;
+      v.y = Math.max(-6, Math.min(10, (a.y - 0.3 - cam.y) * 4));
+      this.hookRushUntil = this.gameTime + 0.45;
     } else {
-      if (d > g.len + 14 || g.t > 2.5) { this.releaseGrapple(); return; }
-      v.x = g.dir.x * g.speed; v.z = g.dir.z * g.speed;
+      // Steer: strafe and view turn both throw the arc. Strafe pushes along
+      // your own right; turning the view right (yaw falling) swings you to
+      // the right as seen facing the body -- the tangent below -- so a long
+      // turn that looks away from it does not flip the swing.
+      let dyaw = this.camera.rotation.y - g.yaw;
+      dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+      g.yaw = this.camera.rotation.y;
+      const strafe = this.moveAxis ? this.moveAxis.x : (this.keys['KeyD'] ? 1 : 0) - (this.keys['KeyA'] ? 1 : 0);
+      const look = Math.max(-1, Math.min(1, -dyaw / Math.max(delta, 1e-3) * 0.5));
+      const yaw = this.camera.rotation.y;
+      const tx = -uz, tz = ux;                                   // tangent: your right, facing the body
+      const rightOnT = Math.cos(yaw) * tx - Math.sin(yaw) * tz;  // your view's right, along it
+      const push = Math.max(-1, Math.min(1, strafe * rightOnT + look));
+      g.swingV = Math.max(-15, Math.min(15, (g.swingV + push * 34 * delta) * Math.exp(-0.4 * delta)));
+      // Reel the line in to a hang length, then hold it there.
+      g.len = Math.max(reach + 2.4, g.len - 12 * delta);
+      const radial = Math.max(0, Math.min(24, (d - g.len) * 8));
+      v.x = tx * g.swingV + ux * radial;
+      v.z = tz * g.swingV + uz * radial;
+      // Half gravity on the line, and it never drops you hard: the arc
+      // off the attach kick rises ~3 m and settles.
+      v.y = Math.max(-5, v.y + 22 * delta * 0.45);
+      if (radial > 7) this.hookRushUntil = this.gameTime + 0.3;
     }
+    this._rope.material.color.setHex(g.t > g.hold - 1 ? 0xff3322 : 0xffaa33);
     const pos = this._rope.geometry.attributes.position;
     const from = this.camera.localToWorld((this._grB || (this._grB = new THREE.Vector3())).set(0.16, -0.18, -0.55));
     pos.setXYZ(0, from.x, from.y, from.z);
@@ -4658,6 +4727,31 @@ class CyberDoomEngine {
     this.grapple = null;
     if (this._rope) this.scene.remove(this._rope);
     this.updateHUD();
+  }
+
+  /* MELEE (middle click, V, or the touch MELEE pad). The weapon in hand is
+     the club: a short forward swing that hits hard, 60 -- a big hit flinches
+     most bodies anyway. Swung while the hook is dragging you in, or in the
+     beat after a yank lands, it is a STAGGER: 105, a longer reach, and the
+     body is stunned 1.6 s (it cannot move or fire), bosses included. */
+  melee() {
+    if (!this.isRunning || this.gameTime < (this.nextMeleeTime || 0)) return 0;
+    this.nextMeleeTime = this.gameTime + 0.6;
+    const rush = this.gameTime <= (this.hookRushUntil || 0);
+    this.viewmodels.triggerMelee();
+    const struck = [];
+    const hits = this.raycastMelee(rush ? 3.4 : 2.8, rush ? 105 : 60, 0.5, (e) => struck.push(e));
+    this.sound.playMelee(hits > 0, rush);
+    if (rush && hits) {
+      for (const e of struck) {
+        if (e.state === 'DEAD') continue;
+        e.flinchT = 1.6;
+        e.staggeredAt = this.gameTime;
+        if (e.ai) { e.ai.burst = 0; e.ai.cool = Math.max(e.ai.cool || 0, 1.6); }
+      }
+      this.showHudMessage('STAGGER!');
+    }
+    return hits;
   }
 
   /* Stereo position of a world point, -1 (left) .. 1 (right). */
