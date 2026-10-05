@@ -16,6 +16,7 @@
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
   <script src="js/cyber-traversal.js"></script>
+  <script src="js/cyber-telemetry.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -3389,6 +3390,7 @@ class CyberDoomEngine {
       if (document.pointerLockElement === this.canvas) {
         overlay.style.display = 'none';
         this.isRunning = true;
+        this.trackMissionStart();
         this.missionStarted = true;
         this.resumeAllAudio();
       } else {
@@ -3481,6 +3483,7 @@ class CyberDoomEngine {
   startRun() {
     if (this.isTouch || typeof this.canvas.requestPointerLock !== 'function') {
       if (this.isGameOver || this.isVictory) return;
+      this.trackMissionStart();
       this.missionStarted = true;
       this.resumeRun();
       return;
@@ -3489,6 +3492,19 @@ class CyberDoomEngine {
       const p = this.canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => {});
     } catch (err) { /* lock refused: the overlay stays up, click again */ }
+  }
+
+  // Anonymous `play` beacon, only on the first false->true flip of
+  // missionStarted (never on resume, pause, combat or frames). Soft-fail.
+  trackMissionStart() {
+    try {
+      if (this.missionStarted) return;
+      const t = window.cyberTelemetry && window.cyberTelemetry.instance;
+      if (t) t.once('play', {
+        mode: /(^|[?&])draft=1(&|$)/.test(location.search) ? 'draft' : 'campaign',
+        touch: !!this.isTouch
+      });
+    } catch (err) { /* analytics never touch the game */ }
   }
 
   unlockPointer() {
@@ -5871,6 +5887,10 @@ window.onload = function() {
   const engine = new CyberDoomEngine();
   // Exposed so QA can assert pause/audio state without reaching into closures.
   window.cyberEngine = engine;
+  try {
+    const t = window.cyberTelemetry && window.cyberTelemetry.instance;
+    if (t) t.once('session', { touch: !!engine.isTouch });
+  } catch (err) { /* analytics never touch the game */ }
   engine.animate();
   if (location.search.indexOf('selftest=1') !== -1) runStickSelfTest();
 };
