@@ -73,7 +73,12 @@ const TYPES = [3004, 9, 65, 3001, 3002, 58, 3005, 69, 3003, 66, 67, 68, 64, 16, 
           en.group.updateMatrixWorld(true);
           const c = new THREE.Vector3(), v = new THREE.Vector3();
           marks.forEach(m => { new THREE.Box3().setFromObject(m).getCenter(v); c.add(v); }); c.divideScalar(marks.length);
-          const fx = c.x - gp.x, fz = c.z - gp.z, tx = e.camera.position.x - gp.x, tz = e.camera.position.z - gp.z;
+          // Measured from the part the face is mounted on (head, else torso), not the root axis:
+          // an Imp's eyes sit only ~0.1 ahead of the axis, so gait sway alone would flip that sign.
+          const P = en.group.userData.parts || {}, ref = new THREE.Vector3();
+          (A.grinder || !P.head ? (P.torso || en.group) : P.head).getWorldPosition(ref);
+          const fx = c.x - ref.x, fz = c.z - ref.z, tx = e.camera.position.x - gp.x, tz = e.camera.position.z - gp.z;
+          if (Math.hypot(fx, fz) < 0.04) continue;
           const tl = Math.hypot(tx, tz); if (tl < 0.8) continue;
           worst = Math.min(worst, (fx * tx + fz * tz) / ((Math.hypot(fx, fz) || 1) * tl)); n++;
         }
