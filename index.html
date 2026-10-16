@@ -14,6 +14,7 @@
   <script src="js/head3.js"></script>
   <script src="js/cyber-enemies.js"></script>
   <script src="js/cyber-ai.js"></script>
+  <script src="js/cyber-difficulty.js"></script>
   <script src="js/cyber-weapons.js"></script>
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
@@ -332,6 +333,14 @@
     #overlay-screen:not(.mode-pause) #pause-music { display: none; }
     #overlay-screen.mode-pause .title-tip { display: none; }
     #overlay-screen.mode-end #pause-music { display: none; }
+    #overlay-screen.mode-end #difficulty-slider { display: none; }
+    #difficulty-slider { background: rgba(0,0,0,0.6); border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px;
+      width: min(440px, 92vw); box-sizing: border-box; color: #00ffcc; font-family: monospace; text-align: center; }
+    #difficulty-slider label { display: block; font-weight: bold; font-size: 14px; }
+    #difficulty-slider label b { color: #fff; margin-left: 6px; }
+    #difficulty-slider label small { display: block; font-weight: normal; color: #a0aec0; font-size: 11px; margin-top: 2px; }
+    #difficulty-slider input { width: 100%; accent-color: #00ffcc; height: 28px; margin: 6px 0 2px; touch-action: pan-x; cursor: pointer; }
+    #difficulty-slider .dl { display: flex; justify-content: space-between; font-size: 10px; color: #7fd; }
 
     #pause-music {
       display: flex;
@@ -881,6 +890,10 @@
             <input type="checkbox" id="all-weapons-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> START WITH ALL WEAPONS
           </label>
         </div>
+
+        <!-- DIFFICULTY (js/cyber-difficulty.js). Same overlay = title screen AND pause menu, so it
+             shows on both; hidden only on the end-of-mission card. -->
+        <div id="difficulty-slider" data-diff-slider></div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
              title screen and on the end-of-mission card by #overlay-screen's
@@ -3576,13 +3589,15 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
     this.clearTouchInput();
-    this.sound.pause();
-    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // SoundEngine has no pause(): the old call threw here, so the touch pause button never
+    // raised the overlay. Same audio path as every other pause.
+    this.pauseAllAudio();
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
     this.unlockPointer();
     document.getElementById('overlay-screen').style.display = 'flex';
     document.getElementById('overlay-title').innerText = title || "PAUSED";
+    this.setOverlayMode('pause');
     document.getElementById('overlay-subtitle').innerText = subtitle || "TAP RESUME TO CONTINUE INFILTRATION";
     document.getElementById('start-btn').innerText = "RESUME";
   }
@@ -4221,7 +4236,7 @@ class CyberDoomEngine {
       if (ex * ex + ez * ez > 49) return;
       const d = bPos.distanceTo(e.group.position);
       if (d < 7.0) {
-        e.hp -= (7.0 - d) * 18;
+        e.hp -= (7.0 - d) * 18 * (window.CyberDifficulty ? window.CyberDifficulty.dealt() : 1);
         if (e.hp <= 0) this.killEnemy(e);
       }
     });
@@ -5111,6 +5126,8 @@ class CyberDoomEngine {
   // projectiles. Mirrors what raycastHitscan does on a hit.
   damageEnemy(enemy, amount, hitPoint) {
     if (!enemy || enemy.state === 'DEAD') return;
+    // Difficulty: damage dealt x dealt (NORMAL = 1, unchanged).
+    if (window.CyberDifficulty) amount *= window.CyberDifficulty.dealt();
     enemy.hp -= amount;
     this.showHitmarker();
     this.sound.playMonsterHurt();
@@ -5380,7 +5397,9 @@ class CyberDoomEngine {
   damagePlayer(amount) {
     if (this.isGameOver || this.isVictory) return;
 
-    let dmg = amount;
+    // Difficulty: damage taken x taken (NORMAL = 1, unchanged).
+    const taken = window.CyberDifficulty ? window.CyberDifficulty.taken() : 1;
+    let dmg = (taken === 1 || !(amount > 0)) ? amount : Math.max(1, Math.round(amount * taken));
     if (this.player.armor > 0) {
       const absorbed = Math.min(this.player.armor, Math.floor(dmg * 0.6));
       this.player.armor -= absorbed;
