@@ -6,7 +6,7 @@
  *   CH-DIFF-2  The slider is visible on the title screen.
  *   CH-DIFF-3  The slider is visible on the pause menu (pauseRun, the touch pause path).
  *   CH-DIFF-4  Moving it to HARD retunes CyberAI live, scales damage taken, survives a reload.
- *   CH-DIFF-5  Mobile (touch, portrait 390x844 and landscape 844x390): the slider is on screen and
+ *   CH-DIFF-5  Mobile (touch, landscape 844x390 and 740x360; portrait is the rotate gate): the slider is on screen and
  *              a tap on it changes the level without starting the game.
  *   CH-DIFF-6  Zero page errors.
  * Usage: node tests/qa-difficulty.js   (QA_SHOTS=dir writes screenshots)
@@ -69,7 +69,7 @@ const visible = (page) => page.evaluate(() => { const el = document.getElementBy
       JSON.stringify({ d4, after }));
     await ctx.close();
 
-    for (const vp of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+    for (const vp of [{ width: 844, height: 390 }, { width: 740, height: 360 }]) {   // the game gates portrait behind ROTATE TO LANDSCAPE
       const m = await browser.newContext({ viewport: vp, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
       const mp = await m.newPage();
       mp.on('pageerror', e => errs.push(String(e)));
@@ -83,7 +83,17 @@ const visible = (page) => page.evaluate(() => { const el = document.getElementBy
       await mp.waitForTimeout(300);
       const r = await mp.evaluate(() => ({ id: window.CyberDifficulty.get().id, overlay: getComputedStyle(document.getElementById('overlay-screen')).display, running: !!window.cyberEngine.isRunning }));
       check(`CH-DIFF-5 mobile ${vp.width}x${vp.height}`, vis && r.id === 'story' && r.overlay !== 'none' && !r.running, JSON.stringify({ vis, ...r }));
-      if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, `mobile-${vp.width}x${vp.height}-slider.png`) });
+      if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, `mobile-${vp.width}x${vp.height}-title-slider.png`) });
+      // Touch pause (the HUD pause button's pauseRun path), then tap the far right = NIGHTMARE.
+      await mp.evaluate(() => { const e = window.cyberEngine; document.getElementById('overlay-screen').style.display = 'none'; e.isRunning = true; e.missionStarted = true; e.pauseRun(); document.getElementById('difficulty-slider').scrollIntoView({ block: 'center' }); });
+      await mp.waitForTimeout(300);
+      const pvis = await visible(mp);
+      const pb = await (await mp.$('#difficulty-slider input')).boundingBox();
+      await mp.touchscreen.tap(pb.x + pb.width * 0.98, pb.y + pb.height / 2);
+      await mp.waitForTimeout(300);
+      const pr = await mp.evaluate(() => ({ id: window.CyberDifficulty.get().id, overlay: getComputedStyle(document.getElementById('overlay-screen')).display, running: !!window.cyberEngine.isRunning }));
+      check(`CH-DIFF-5 mobile pause ${vp.width}x${vp.height}`, pvis && pr.id === 'nightmare' && pr.overlay !== 'none' && !pr.running, JSON.stringify({ pvis, ...pr }));
+      if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, `mobile-${vp.width}x${vp.height}-pause-slider.png`) });
       await m.close();
     }
   } catch (e) { fails++; console.log('FAIL  harness ' + (e.stack || e)); }
