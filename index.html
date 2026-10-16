@@ -12,6 +12,8 @@
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
+  <script src="js/cyber-refine.js"></script>
+  <script src="js/head3.js"></script>
   <script src="js/cyber-enemies.js"></script>
   <script src="js/cyber-ai.js"></script>
   <script src="js/cyber-weapons.js"></script>
@@ -4998,6 +5000,19 @@ class CyberDoomEngine {
       aim.z += this.player.velocity.z * ai.lead;
     }
     const dir = new THREE.Vector3().subVectors(aim, from).normalize();
+    // Imp (3001): the refined rig has a burning hole in its chest, so the fireball leaves from
+    // there (~0.6 of rig height, 0.35 forward) instead of the generic +1.0 point. Same speed/damage.
+    if (parseInt(enemy.enemyType, 10) === 3001 && !st.fly && enemy.group) {
+      if (enemy._chestY === undefined) {
+        const bb = new THREE.Box3().setFromObject(enemy.group);
+        const h = bb.isEmpty() ? 0 : bb.max.y - enemy.group.position.y;
+        enemy._chestY = (h > 0.4 && h < 6) ? h * 0.6 : 1.0;
+      }
+      const fl = Math.hypot(dir.x, dir.z) || 1;
+      from.copy(enemy.group.position);
+      from.x += dir.x / fl * 0.35; from.z += dir.z / fl * 0.35; from.y += enemy._chestY;
+      dir.subVectors(aim, from).normalize();
+    }
     this.spawnProjectile({ from, dir, kind, owner: 'enemy', damage: dmg });
   }
 
