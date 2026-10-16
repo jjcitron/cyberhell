@@ -16,6 +16,8 @@
  *             geometry and is not standing inside a solid wall.
  *   CH-COL-5  Flying enemies (stats.fly) hover more than 1.5 above their floor.
  *   CH-COL-6  Zero page errors.
+ *   CH-COL-10 After the same chase, no enemy's drawn rig reaches more than
+ *             0.2 through a solid wall (guns and arms, not just the centre).
  *   CH-COL-7  The RENDERED floor under the player matches the floor
  *             getFloorAt returns. This is the one that is not self-consistent
  *             with the collision model: bounding-box sectors draw a floor mesh
@@ -265,7 +267,9 @@ const CHASE = function (seconds) {
     return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
   };
 
-  const out = { total: 0, moved: 0, offFloor: 0, inWall: 0, flyers: 0, notHovering: 0 };
+  const out = { total: 0, moved: 0, offFloor: 0, inWall: 0, flyers: 0, notHovering: 0, meshClip: 0, maxClip: 0 };
+  const CLIP_TOL = 0.2;
+  const v3 = new THREE.Vector3();
   const examples = [];
   for (let ei = 0; ei < e.enemies.length; ei++) {
     const en = e.enemies[ei];
@@ -293,6 +297,37 @@ const CHASE = function (seconds) {
         if (examples.length < 3) examples.push({ kind: 'enemyInWall', type: en.enemyType, x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
         break;
       }
+    }
+    // CH-COL-10: the drawn body, not just its centre. A rig vertex that sits
+    // on the far side of a solid wall (from the body's own centre) and more
+    // than CLIP_TOL past it is a visible clip -- a gun barrel or an arm
+    // through the wall.
+    en.group.updateMatrixWorld(true);
+    let depth = 0;
+    const near = e.wallsNear(p.x, p.z, 2.5).filter(w => w.solid);
+    en.group.traverse(o => {
+      if (!o.isMesh || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+      const pa = o.geometry.attributes.position;
+      for (let k = 0; k < pa.count; k++) {
+        v3.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld);
+        for (const w of near) {
+          if (w.topY !== undefined && v3.y >= w.topY) continue;
+          if (w.bottomY !== undefined && v3.y <= w.bottomY) continue;
+          const ax = w.p1.x, az = w.p1.z, bx = w.p2.x, bz = w.p2.z;
+          const s1 = (bx - ax) * (p.z - az) - (bz - az) * (p.x - ax);
+          const s2 = (bx - ax) * (v3.z - az) - (bz - az) * (v3.x - ax);
+          if ((s1 > 0) === (s2 > 0)) continue;
+          const t1 = (v3.x - p.x) * (az - p.z) - (v3.z - p.z) * (ax - p.x);
+          const t2 = (v3.x - p.x) * (bz - p.z) - (v3.z - p.z) * (bx - p.x);
+          if ((t1 > 0) === (t2 > 0)) continue;
+          depth = Math.max(depth, Math.abs(s2) / (Math.hypot(bx - ax, bz - az) || 1));
+        }
+      }
+    });
+    out.maxClip = Math.max(out.maxClip, depth);
+    if (depth > CLIP_TOL) {
+      out.meshClip++;
+      if (examples.length < 3) examples.push({ kind: 'meshInWall', type: en.enemyType, depth: +depth.toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
     }
     if (fly) {
       out.flyers++;
@@ -437,6 +472,10 @@ function check(id, ok, detail) {
         `${chase.out.total} enemies after 10s chase (${chase.out.moved} moved): offFloor=${chase.out.offFloor} ` +
         `inWall=${chase.out.inWall} flyers=${chase.out.flyers} notHovering=${chase.out.notHovering}` +
         `${eBad ? '  eg ' + JSON.stringify(chase.examples) : ''}`);
+      check(`CH-COL-10 ${t.name}`, chase.out.meshClip === 0,
+        `${chase.out.meshClip}/${chase.out.total} enemies with rig mesh > 0.2 through a wall ` +
+        `(deepest ${chase.out.maxClip.toFixed(2)})` +
+        `${chase.out.meshClip ? '  eg ' + JSON.stringify(chase.examples.filter(x => x.kind === 'meshInWall')) : ''}`);
     }
 
     check('CH-COL-6 page errors', pageErrors.length === 0,
