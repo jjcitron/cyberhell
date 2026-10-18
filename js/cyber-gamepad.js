@@ -15,16 +15,20 @@
 
   function lookCurve(v) { return v * Math.abs(v); }   // fine aim near centre
 
+  // opts: { pad (an existing createGamepadInput to share; the caller polls it),
+  //         onPause, onBack (in-run Start / B overrides), onExtra(pad, engine),
+  //         AcidGamepad, nav, win, doc, toast, isVisible (tests) }
   function attach(engine, opts) {
     opts = opts || {};
     var G = opts.AcidGamepad || root.AcidGamepad;
     if (!G) return null;
+    var ownsPad = !opts.pad;
     var doc = opts.doc || (typeof document !== 'undefined' ? document : null);
     var byId = function (id) { return doc ? doc.getElementById(id) : null; };
     var toast = opts.toast || function (t) { G.showPadToast(t); };
 
     var st = { padKeys: {}, padMoving: false, padFiring: false };
-    var pad = G.createGamepadInput({
+    var pad = opts.pad || G.createGamepadInput({
       nav: opts.nav, win: opts.win,
       onConnect: function (i) { toast(i.label + ' connected'); },
       onDisconnect: function (i) {
@@ -58,7 +62,11 @@
     });
     if (doc) G.injectPadFocusStyle(doc);
     engine.gamepad = pad;
-    return { pad: pad, menu: menu, state: st, update: function (dt) { update(engine, pad, menu, st, dt, clickStart); } };
+    return {
+      pad: pad, menu: menu, state: st,
+      release: function () { release(engine, st); },
+      update: function (dt) { update(engine, pad, menu, st, dt, ownsPad, opts); }
+    };
   }
 
   function release(engine, st) {
@@ -75,8 +83,8 @@
     else if (st.padKeys[code]) { engine.keys[code] = false; delete st.padKeys[code]; }
   }
 
-  function update(engine, pad, menu, st, dt, clickStart) {
-    pad.poll();
+  function update(engine, pad, menu, st, dt, ownsPad, opts) {
+    if (ownsPad) pad.poll();
     if (!pad.connected) { if (st.padMoving || st.padFiring) release(engine, st); return; }
 
     if (!engine.isRunning) {
@@ -88,7 +96,9 @@
     }
 
     var s = pad.state;
-    if (pad.pressed('start')) { release(engine, st); engine.pauseRun(); return; }
+    if (pad.pressed('start')) { release(engine, st); if (opts.onPause) opts.onPause(); else engine.pauseRun(); return; }
+    var mapOpen = engine.isAutomapOpen && engine.isAutomapOpen();
+    if (pad.pressed('b') && !mapOpen && opts.onBack) { release(engine, st); opts.onBack(); return; }
 
     // Movement: analog, mirrored into the key map exactly like the touch stick.
     var m = s.move;
@@ -118,7 +128,8 @@
     if (pad.pressed('x') || pad.pressed('lt')) engine.interact();
     if (pad.pressed('y')) cycle(engine, 1);
     if (pad.pressed('lb')) cycle(engine, -1);
-    if (pad.pressed('select') || (pad.pressed('b') && engine.isAutomapOpen && engine.isAutomapOpen())) engine.toggleAutomap();
+    if (pad.pressed('select') || (pad.pressed('b') && mapOpen)) engine.toggleAutomap();
+    if (opts.onExtra) opts.onExtra(pad, engine);
   }
 
   function cycle(engine, step) {

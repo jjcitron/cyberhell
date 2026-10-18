@@ -116,6 +116,29 @@
     return { index: -1, id: '', family: 'generic', standard: true, buttons: b, values: v, leftStick: z, rightStick: z, move: z, lt: 0, rt: 0 };
   }
 
+  /** Rumble one specific Gamepad: vibrationActuator first, hapticActuators fallback. */
+  function rumblePad(pad, strong, weak, durationMs) {
+    if (!pad) return false;
+    strong = clamp(num(strong), 0, 1);
+    weak = clamp(weak == null ? strong : num(weak), 0, 1);
+    durationMs = Math.max(0, Math.round(num(durationMs) || 120));
+    try {
+      var act = pad.vibrationActuator;
+      if (act && typeof act.playEffect === 'function') {
+        var p = act.playEffect(act.type || 'dual-rumble', { startDelay: 0, duration: durationMs, strongMagnitude: strong, weakMagnitude: weak });
+        if (p && p.catch) p.catch(function () {});
+        return true;
+      }
+      var h = pad.hapticActuators && pad.hapticActuators[0];
+      if (h && typeof h.pulse === 'function') {
+        var q = h.pulse(Math.max(strong, weak), durationMs);
+        if (q && q.catch) q.catch(function () {});
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   /**
    * Gamepad input source. Call poll() once per frame from the game loop, then
    * read state / pressed(name) / released(name). Hot-plug safe: a pad that is
@@ -207,29 +230,10 @@
       return cur;
     }
 
-    /** Feature-detected rumble; resolves silently where unsupported. */
+    /** Feature-detected rumble on the active pad; silently skipped where unsupported. */
     function rumble(strong, weak, durationMs) {
       if (!self.rumbleEnabled) return false;
-      var pad = activePad();
-      if (!pad) return false;
-      strong = clamp(num(strong), 0, 1);
-      weak = clamp(weak == null ? strong : num(weak), 0, 1);
-      durationMs = Math.max(0, Math.round(num(durationMs) || 120));
-      try {
-        var act = pad.vibrationActuator;
-        if (act && typeof act.playEffect === 'function') {
-          var p = act.playEffect(act.type || 'dual-rumble', { startDelay: 0, duration: durationMs, strongMagnitude: strong, weakMagnitude: weak });
-          if (p && p.catch) p.catch(function () {});
-          return true;
-        }
-        var h = pad.hapticActuators && pad.hapticActuators[0];
-        if (h && typeof h.pulse === 'function') {
-          var q = h.pulse(Math.max(strong, weak), durationMs);
-          if (q && q.catch) q.catch(function () {});
-          return true;
-        }
-      } catch (e) {}
-      return false;
+      return rumblePad(activePad(), strong, weak, durationMs);
     }
 
     function dispose() {
@@ -424,7 +428,7 @@
   var AcidGamepad = {
     STD_BUTTONS: STD_BUTTONS, FAMILY_LABEL: FAMILY_LABEL, DEFAULT_DEADZONE: DEFAULT_DEADZONE,
     applyDeadzone: applyDeadzone, readPad: readPad, padFamily: padFamily,
-    createGamepadInput: createGamepadInput, createMenuNavigator: createMenuNavigator,
+    createGamepadInput: createGamepadInput, rumblePad: rumblePad, createMenuNavigator: createMenuNavigator,
     pickInDirection: pickInDirection, showPadToast: showPadToast, injectPadFocusStyle: injectPadFocusStyle
   };
   root.AcidGamepad = AcidGamepad;
