@@ -342,7 +342,8 @@
       var list = candidates(root);
       if (!list.length) return null;
       var at = focused(list);
-      if (!at) { var d0 = preferred(list); mark(d0); return d0; }
+      // First input after a menu opens only shows the focus ring.
+      if (!at || !current) { var d0 = (opts.getDefault && preferred(list)) || at || list[0]; mark(d0); return d0; }
       if ((dir === 'left' || dir === 'right') && stepValue(at, dir === 'left' ? -1 : 1)) return at;
       var rects = [], els = [];
       for (var i = 0; i < list.length; i++) if (list[i] !== at) { rects.push(list[i].getBoundingClientRect()); els.push(list[i]); }
@@ -360,7 +361,7 @@
       var root = getRoot();
       if (!root) return false;
       var list = candidates(root);
-      var at = focused(list) || preferred(list);
+      var at = (current && focused(list)) || preferred(list);
       if (!at) return false;
       mark(at);
       if (at.tagName === 'INPUT' && at.type === 'checkbox') { at.checked = !at.checked; fire(at, 'change'); return true; }

@@ -3539,8 +3539,10 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
     this.clearTouchInput();
-    this.sound.pause();
-    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // SoundEngine has no pause(); this threw and left a BOOT ERROR overlay on
+    // every touch / lost-focus / controller pause. Same gate Escape uses.
+    this.pauseAllAudio();
+    this.setOverlayMode('pause');
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
     this.unlockPointer();
