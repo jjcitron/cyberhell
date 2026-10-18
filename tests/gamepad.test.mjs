@@ -279,6 +279,24 @@ test('controller names match Crossfire', () => {
   assert.equal(G.padLabel('Logitech Dual Action (Vendor: 046d)'), 'Logitech Dual Action');
 });
 
+test('splash: pad buttons pressed while the Acidlemon splash owns input never reach the game', () => {
+  const env = makeEnv();
+  const pad = makePad();
+  const gp = awake(env, pad);
+  let blocking = true;
+  globalThis.AcidSplash = { blocking: () => blocking };
+  try {
+    pad.buttons[0] = btn(1); gp.poll();
+    assert.equal(gp.pressed('a'), false);
+    blocking = false;                         // splash gone, A still held from the skip
+    gp.poll();
+    assert.equal(gp.held('a'), false, 'the skip press stays blocked until released');
+    pad.buttons[0] = btn(0); gp.poll();
+    pad.buttons[0] = btn(1); gp.poll();
+    assert.equal(gp.pressed('a'), true);
+  } finally { delete globalThis.AcidSplash; }
+});
+
 /* ---- Cyberhell glue against a fake engine (Crossfire layout) ---- */
 function fakeEngine() {
   const log = [];

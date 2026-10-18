@@ -145,6 +145,13 @@
     };
   }
 
+  /** True while the Acidlemon startup splash (acid-splash.js) owns input. */
+  function splashBlocking() {
+    var g = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : null);
+    var sp = g && g.AcidSplash;
+    try { return !!(sp && typeof sp.blocking === 'function' && sp.blocking()); } catch (e) { return false; }
+  }
+
   function anyActivity(snap) {
     if (!snap) return false;
     if (snap.leftStick.mag > 0 || snap.rightStick.mag > 0) return true;
@@ -317,6 +324,9 @@
       }
       if (!s2) { activeIndex = null; self.awake = false; s2 = emptySnapshot(); }
       else if (self.awake) bodyClass(true);
+      // Acidlemon splash up (or its skip press still held): that press is the
+      // splash's, so every held button stays blocked until released.
+      if (splashBlocking()) for (n in s2.buttons) if (s2.buttons[n]) block[n] = true;
       for (n in block) {
         if (s2.buttons[n]) { s2.buttons[n] = false; if (n === 'lt' || n === 'rt') s2[n] = 0; }
         else delete block[n];
