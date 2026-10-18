@@ -24,8 +24,12 @@
   // Touch devices get a third of the dressing: the props are instanced so
   // they are cheap to draw, but each one is still a matrix and a shadow
   // caster, and a phone has neither the fill rate nor the memory to spare.
-  var MOBILE = (typeof window !== 'undefined' && window.matchMedia)
-    ? window.matchMedia('(pointer: coarse)').matches : false;
+  // Same decision as the engine (js/cyber-input-mode.js), so a stylus tablet
+  // that reports pointer: fine still gets the touch-sized prop budget.
+  var MOBILE = (typeof window !== 'undefined')
+    ? (typeof window.CYBER_TOUCH === 'boolean' ? window.CYBER_TOUCH
+      : (window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false))
+    : false;
   var TOTAL_BUDGET = MOBILE ? 100 : 300;
   var TYPE_BUDGET = MOBILE
     ? { ceilLight: 20, pipe: 26, crate: 20, rack: 10, cable: 14, sign: 10 }
