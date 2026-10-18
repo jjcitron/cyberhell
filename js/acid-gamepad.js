@@ -394,7 +394,9 @@
 
   /* Small on-screen "controller connected" toast. */
   function showPadToast(text, opts) {
-    opts = opts || {};
+    try { return toastImpl(text, opts || {}); } catch (e) { return null; }   // cosmetic: never break input
+  }
+  function toastImpl(text, opts) {
     var doc = opts.doc || (typeof document !== 'undefined' ? document : null);
     if (!doc || !doc.body) return null;
     var el = doc.getElementById('acid-pad-toast');
