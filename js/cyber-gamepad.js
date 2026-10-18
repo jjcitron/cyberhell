@@ -2,11 +2,17 @@
 // input layer (keys / moveAxis / applyLook / isFiring), the same seams the
 // touch layer already uses. Polled once per frame from CyberDoomEngine.animate.
 //
+// Aligned with Acidlemon Crossfire (beatemup src/gamepad.js): A jump, X light,
+// Y heavy, B special/back, RB bomb, LB item, LT/RT weapon cycle, Start pause.
+//
 //   Left stick / D-pad  move (analog)        Right stick  look
-//   RT / RB             fire (hold)          A / Cross    jump (menus: confirm)
-//   X / Square, LT      use / open           B / Circle   back (close map / resume)
-//   Y / LB              next / prev weapon   View/Share   automap
-//   Start / Options     pause / resume
+//   X / Square          fire (hold)          A / Cross    jump (menus: confirm)
+//   RB                  fire (hold) - no grenade in the engine, so "bomb" fires
+//   Y / LB              use / open (heavy / item: the engine's only other action)
+//   RT / LT             next / prev weapon   B / Circle   back (close map / resume)
+//   View / Share        automap              Start        pause / resume
+// Rumble: the engine calls gamepad.feel('hit' | 'kill' | 'boss').
+
 (function (root) {
   'use strict';
   var LOOK_SPEED_X = 3.0;   // rad/s at full tilt
@@ -29,10 +35,10 @@
 
     var st = { padKeys: {}, padMoving: false, padFiring: false };
     var pad = opts.pad || G.createGamepadInput({
-      nav: opts.nav, win: opts.win,
-      onConnect: function (i) { toast(i.label + ' connected'); },
+      nav: opts.nav, win: opts.win, timer: opts.timer,
+      onConnect: function (i) { toast(i.text); },
       onDisconnect: function (i) {
-        toast(i.label + ' disconnected');
+        toast(i.text);
         release(engine, st);
         // Losing the pad mid-mission parks the run behind PAUSED, like losing focus.
         if (engine.isRunning && typeof engine.pauseRun === 'function') engine.pauseRun('PAUSED', 'CONTROLLER DISCONNECTED - RECONNECT AND PRESS START');
@@ -120,14 +126,14 @@
 
     setKey(engine, st, 'Space', pad.held('a'));
 
-    var fireHeld = pad.held('rt') || pad.held('rb');
+    var fireHeld = pad.held('x') || pad.held('rb');
     if (fireHeld) {
       if (!st.padFiring) { st.padFiring = true; engine.isFiring = true; engine.fireWeapon(); }
     } else if (st.padFiring) { st.padFiring = false; engine.isFiring = false; }
 
-    if (pad.pressed('x') || pad.pressed('lt')) engine.interact();
-    if (pad.pressed('y')) cycle(engine, 1);
-    if (pad.pressed('lb')) cycle(engine, -1);
+    if (pad.pressed('y') || pad.pressed('lb')) engine.interact();
+    if (pad.pressed('rt')) cycle(engine, 1);
+    if (pad.pressed('lt')) cycle(engine, -1);
     if (pad.pressed('select') || (pad.pressed('b') && mapOpen)) engine.toggleAutomap();
     if (opts.onExtra) opts.onExtra(pad, engine);
   }
