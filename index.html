@@ -8,10 +8,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="site.webmanifest">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
+  <!-- First script: sets html.touch / window.CYBER_TOUCH before any CSS rule or engine code reads it. -->
+  <script src="js/cyber-input-mode.js"></script>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
+  <script src="js/cyber-refine.js"></script>
+  <script src="js/head3.js"></script>
   <script src="js/cyber-enemies.js"></script>
   <script src="js/cyber-ai.js"></script>
+  <script src="js/cyber-difficulty.js"></script>
   <script src="js/cyber-weapons.js"></script>
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
@@ -330,6 +335,14 @@
     #overlay-screen:not(.mode-pause) #pause-music { display: none; }
     #overlay-screen.mode-pause .title-tip { display: none; }
     #overlay-screen.mode-end #pause-music { display: none; }
+    #overlay-screen.mode-end #difficulty-slider { display: none; }
+    #difficulty-slider { background: rgba(0,0,0,0.6); border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px;
+      width: min(440px, 92vw); box-sizing: border-box; color: #00ffcc; font-family: monospace; text-align: center; }
+    #difficulty-slider label { display: block; font-weight: bold; font-size: 14px; }
+    #difficulty-slider label b { color: #fff; margin-left: 6px; }
+    #difficulty-slider label small { display: block; font-weight: normal; color: #a0aec0; font-size: 11px; margin-top: 2px; }
+    #difficulty-slider input { width: 100%; accent-color: #00ffcc; height: 28px; margin: 6px 0 2px; touch-action: pan-x; cursor: pointer; }
+    #difficulty-slider .dl { display: flex; justify-content: space-between; font-size: 10px; color: #7fd; }
 
     #pause-music {
       display: flex;
@@ -446,10 +459,10 @@
       border-radius: 6px; font-size: 20px; z-index: 16; touch-action: manipulation;
     }
     .touch-only { display: none; }
-    @media (pointer: coarse) {
-      .touch-only { display: inline-block; }
-      #fs-hud-btn { display: flex; }
-    }
+    /* html.touch, not (pointer: coarse): a stylus tablet reports a fine primary
+       pointer (see js/cyber-input-mode.js). */
+    html.touch .touch-only { display: inline-block; }
+    html.touch #fs-hud-btn { display: flex; }
     .start-btn {
       padding: 16px 44px;
       font-size: 22px;
@@ -725,19 +738,19 @@
       text-align: center;
       padding: 24px;
     }
-    @media (pointer: coarse) and (orientation: portrait) {
-      #rotate-nudge { display: flex; }
+    @media (orientation: portrait) {
+      html.touch #rotate-nudge { display: flex; }
     }
 
     /* ---- Landscape touch layout (landscape only, no portrait reflow) ---- */
-    @media (pointer: coarse) and (orientation: landscape) {
+    @media (orientation: landscape) {
       /* Controls become a transparent full-screen layer instead of stealing a
          140px band off the bottom of the play view. */
-      #mobile-controls { display: block; }
+      html.touch #mobile-controls { display: block; }
 
       /* HUD off the play view: no opaque 90px bar, thin translucent top strip
          that reads over the world instead of hiding it. */
-      #hud-bar {
+      html.touch #hud-bar {
         top: 0;
         bottom: auto;
         height: auto;
@@ -748,36 +761,36 @@
         pointer-events: none;
         align-items: flex-start;
       }
-      .hud-block {
+      html.touch .hud-block {
         min-width: 0;
         padding: 2px 8px;
         border: none;
         background: rgba(6, 10, 14, 0.42);
         box-shadow: none;
       }
-      .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
-      .hud-val { font-size: 18px; line-height: 19px; }
-      #face-container { display: none; }
+      html.touch .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
+      html.touch .hud-val { font-size: 18px; line-height: 19px; }
+      html.touch #face-container { display: none; }
       /* The six-slot selector wrapped to two rows and ate the whole top-right,
          which is where the touch layer's icons and fullscreen button live. The
          touch build switches weapons with the edge arrows, and those carry the
          current weapon's name, so the slot list is redundant here. */
-      .weapon-selector { display: none; }
+      html.touch .weapon-selector { display: none; }
       /* space-between would fling ARMOR to the far right with the selector
          gone; keep the readouts clustered in the top-left corner. */
-      #hud-bar { justify-content: flex-start; gap: 6px; }
+      html.touch #hud-bar { justify-content: flex-start; gap: 6px; }
 
       /* Banner sat at top:24px, straight under the new HUD strip. */
-      #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+      html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
 
       /* Start/pause overlay has to fit a ~360px-tall viewport and stay
          scrollable, or the ENTER/RESUME button is unreachable. */
-      #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
-      .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
-      .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
-      .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
-      .instructions-grid { display: none; }
-      .start-btn { padding: 12px 30px; font-size: 17px; }
+      html.touch #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
+      html.touch .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
+      html.touch .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+      html.touch .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
+      html.touch .instructions-grid { display: none; }
+      html.touch .start-btn { padding: 12px 30px; font-size: 17px; }
     }
   </style>
   <!-- Three.js 3D Engine -->
@@ -879,6 +892,10 @@
             <input type="checkbox" id="all-weapons-chk" style="accent-color:#00ffcc; transform:scale(1.2); margin-right:8px; cursor:pointer;" /> START WITH ALL WEAPONS
           </label>
         </div>
+
+        <!-- DIFFICULTY (js/cyber-difficulty.js). Same overlay = title screen AND pause menu, so it
+             shows on both; hidden only on the end-of-mission card. -->
+        <div id="difficulty-slider" data-diff-slider></div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
              title screen and on the end-of-mission card by #overlay-screen's
@@ -2256,10 +2273,13 @@ class CyberDoomEngine {
 
     // Touch build: pointer lock does not exist on mobile Chrome, so the whole
     // start/pause path has to run off taps instead.
-    // Same predicate the CSS uses, deliberately: maxTouchPoints would also be
-    // true on a touchscreen laptop and would rob desktop play of pointer-lock
-    // mouse look, and it would disagree with the media query that shows the pad.
-    this.isTouch = window.matchMedia('(pointer: coarse)').matches;
+    // Same flag the CSS uses (html.touch), deliberately: one decision, made in
+    // js/cyber-input-mode.js, so the pad and the start path cannot disagree.
+    // It is not (pointer: coarse) alone: Android tablets with a stylus report a
+    // fine primary pointer. A touchscreen Windows/Mac laptop still stays on
+    // pointer-lock mouse look unless a finger actually taps.
+    this.isTouch = (typeof window.CYBER_TOUCH === 'boolean')
+      ? window.CYBER_TOUCH : window.matchMedia('(pointer: coarse)').matches;
     this.pausedByBlur = false;
 
     // Setup Components
@@ -2291,11 +2311,22 @@ class CyberDoomEngine {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    // Weak mobile GPUs (Mali on MediaTek tablets) can refuse the MSAA context;
+    // a plain context still plays.
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    } catch (err) {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'low-power' });
+    }
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    // Phones ship 3x panels; rendering a Doom map at native density is three
-    // times the fragment work for detail nobody can see at arm's length.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? 1.5 : 2));
+    this.applyPixelRatio();
+    // A lost context (driver reset, memory pressure on a tablet) used to leave
+    // a frozen frame. preventDefault lets the browser restore it; the run parks
+    // behind the pause overlay meanwhile.
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (this.isRunning) this.pauseRun('GRAPHICS RESET', 'TAP RESUME TO CONTINUE');
+    }, false);
     // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
     // where the extra shadow-map pass isn't worth the frame cost.
     this.renderer.shadowMap.enabled = !this.isTouch;
@@ -2305,7 +2336,37 @@ class CyberDoomEngine {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.applyPixelRatio();
     });
+  }
+
+  // Phones ship 3x panels; rendering a Doom map at native density is three
+  // times the fragment work for detail nobody can see at arm's length. Touch
+  // also gets a total pixel budget: a 10-11" tablet at its native 1.5x is ~2-3
+  // megapixels, which a phone-class Mali GPU cannot fill at frame rate.
+  applyPixelRatio() {
+    const dpr = window.devicePixelRatio || 1;
+    let pr = Math.min(dpr, this.isTouch ? 1.5 : 2);
+    if (this.isTouch) {
+      const BUDGET = 1.6e6; // drawing-buffer pixels
+      const css = Math.max(1, window.innerWidth * window.innerHeight);
+      pr = Math.max(0.75, Math.min(pr, Math.sqrt(BUDGET / css)));
+    }
+    if (this.renderer && Math.abs(this.renderer.getPixelRatio() - pr) > 0.01) {
+      this.renderer.setPixelRatio(pr);
+    }
+  }
+
+  // Upgrade a desktop-detected session to the touch build. Used when a finger
+  // or pen presses before the mission starts (a stylus tablet that reported
+  // pointer: fine) and when pointer lock is refused on a touchscreen device.
+  enterTouchMode(reason) {
+    if (this.isTouch) return;
+    this.isTouch = true;
+    if (window.CyberInputMode) window.CyberInputMode.setTouchMode(true);
+    else { window.CYBER_TOUCH = true; document.documentElement.classList.add('touch'); }
+    this.touchModeReason = reason || 'runtime';
+    this.applyPixelRatio();
   }
 
   loadLevel(data) {
@@ -2997,16 +3058,20 @@ class CyberDoomEngine {
     const spot = this.getFloorAt(ent.pos[0], ent.pos[2]);
     const baseY = spot.inside ? spot.floorY : ent.pos[1];
     const hoverY = baseY + (st0 && st0.fly ? ENEMY_HOVER : 0);
+    const radius = this.enemyRadius(ent.enemyType, group);
     // Some WAD things sit inside a wall. moveEnemy only refuses bad steps, it
     // never corrects a bad start, so un-stick here: push out, and if that lands
     // off the floor try a short ring of offsets before giving up.
+    // A closet too tight for the rig's full radius still gets the old 0.6.
     let sx = ent.pos[0], sz = ent.pos[2];
-    for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
-                            [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
-      const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, 0.6, hoverY, 1.6);
-      if (!this.getFloorAt(c.x, c.z).inside) continue;
-      sx = c.x; sz = c.z;
-      break;
+    unstick: for (const rr of radius > 0.6 ? [radius, 0.6] : [0.6]) {
+      for (const [ox, oz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6],
+                              [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) {
+        const c = this.resolveWallCollisions(ent.pos[0] + ox, ent.pos[2] + oz, rr, hoverY, 1.6);
+        if (!this.getFloorAt(c.x, c.z).inside) continue;
+        sx = c.x; sz = c.z;
+        break unstick;
+      }
     }
     // The un-stick above can move the body into a different sector, so the
     // floor has to be read at where it ENDED UP. Reading it at ent.pos left
@@ -3038,12 +3103,50 @@ class CyberDoomEngine {
       speed: (st && st.speed) || (isBoss ? 2.5 : 3.5),
       limbs: group.userData.limbs || null,
       stats: st,
-      radius: 0.6,
+      radius: radius,
       floorY: floorY,
       bobT: Math.random() * Math.PI * 2
     };
     this.classifyEnemyDetail(rec);
     this.enemies.push(rec);
+  }
+
+  /* Collision radius from the rig's own footprint. The rigs face the player,
+     so their guns and arms lead into whatever wall they chase along; a flat
+     0.6 let a Chaingunner's barrel reach 0.8 through it. Radius is the
+     furthest vertex from the body's axis at rest, floored at 0.6 (the old
+     value, so small bodies behave as before) and capped at 1.0: Doom's
+     smallest monster radius (20 units at the converter's 0.05 scale), so
+     every map route that fits a Doom monster still fits every rig.
+     A rig whose front (+Z, the way it faces) still reaches past that cap --
+     the Chaingunner's barrel, the Mancubus's arm cannons -- has its inner
+     body slid back toward its footprint centre, just far enough to bring the
+     front inside the circle.
+     ponytail: rest pose only, cached per type for the page; a custom look
+     edited mid-session keeps its first footprint until reload. */
+  enemyRadius(type, group) {
+    const cache = this._enemyFoot || (this._enemyFoot = new Map());
+    let foot = cache.get(type);
+    if (!foot) {
+      const v = new THREE.Vector3();
+      let reach = 0, minZ = 0, maxZ = 0;
+      group.updateMatrixWorld(true);
+      group.traverse(o => {
+        const pa = o.isMesh && o.geometry && o.geometry.attributes.position;
+        if (!pa) return;
+        for (let i = 0; i < pa.count; i++) {
+          v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+          reach = Math.max(reach, Math.hypot(v.x, v.z));
+          minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+        }
+      });
+      const r = Math.min(1.0, Math.max(0.6, reach));
+      foot = { r, shift: Math.max(0, Math.min((minZ + maxZ) / 2, maxZ - r)) };
+      cache.set(type, foot);
+    }
+    // Every rig is one inner body group under the root (cyber-enemies.js).
+    if (foot.shift && group.children.length === 1) group.children[0].position.z -= foot.shift;
+    return foot.r;
   }
 
   /* Rig detail level of detail.
@@ -3156,6 +3259,13 @@ class CyberDoomEngine {
     // through the pause gate's own path so there is exactly one thing starting
     // playback - pointerlockchange calls resumeAllAudio() for the same click,
     // and resumeForGame() is idempotent, so the two cannot race each other.
+    // A finger or pen on the title/pause screen means this is a touchscreen
+    // being used as one, whatever (pointer: coarse) said. Capture phase, so it
+    // lands before the START click reaches startRun().
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isTouch || this.isRunning) return;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.enterTouchMode('pointer:' + e.pointerType);
+    }, true);
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
       this.sound.resume();
@@ -3384,6 +3494,7 @@ class CyberDoomEngine {
       startBtn.innerText = "RESUME";
     };
 
+    document.addEventListener('pointerlockerror', () => this.onPointerLockRefused());
     document.addEventListener('pointerlockchange', () => {
       if (this.isTouch) return;
       if (document.pointerLockElement === this.canvas) {
@@ -3485,10 +3596,22 @@ class CyberDoomEngine {
       this.resumeRun();
       return;
     }
+    // Lock refused on a touchscreen device (Android refuses it for touch): the
+    // START tap would otherwise be a dead button, so drop into the touch build.
+    const refused = () => this.onPointerLockRefused();
     try {
       const p = this.canvas.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
-    } catch (err) { /* lock refused: the overlay stays up, click again */ }
+      if (p && p.catch) p.catch(refused);
+    } catch (err) { refused(); }
+  }
+
+  // Older Chrome reports refusal only through 'pointerlockerror', newer through
+  // the promise; both land here, so this has to be idempotent.
+  onPointerLockRefused() {
+    if (this.isRunning || document.pointerLockElement) return;
+    if (!(navigator.maxTouchPoints > 0)) return; // a real desktop: overlay stays, click again
+    this.enterTouchMode('pointerlock-refused');
+    this.startRun();
   }
 
   unlockPointer() {
@@ -3532,13 +3655,15 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
     this.clearTouchInput();
-    this.sound.pause();
-    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // SoundEngine has no pause(): the old call threw here, so the touch pause button never
+    // raised the overlay. Same audio path as every other pause.
+    this.pauseAllAudio();
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
     this.unlockPointer();
     document.getElementById('overlay-screen').style.display = 'flex';
     document.getElementById('overlay-title').innerText = title || "PAUSED";
+    this.setOverlayMode('pause');
     document.getElementById('overlay-subtitle').innerText = subtitle || "TAP RESUME TO CONTINUE INFILTRATION";
     document.getElementById('start-btn').innerText = "RESUME";
   }
@@ -4177,7 +4302,7 @@ class CyberDoomEngine {
       if (ex * ex + ez * ez > 49) return;
       const d = bPos.distanceTo(e.group.position);
       if (d < 7.0) {
-        e.hp -= (7.0 - d) * 18;
+        e.hp -= (7.0 - d) * 18 * (window.CyberDifficulty ? window.CyberDifficulty.dealt() : 1);
         if (e.hp <= 0) this.killEnemy(e);
       }
     });
@@ -4985,6 +5110,19 @@ class CyberDoomEngine {
       aim.z += this.player.velocity.z * ai.lead;
     }
     const dir = new THREE.Vector3().subVectors(aim, from).normalize();
+    // Imp (3001): the refined rig has a burning hole in its chest, so the fireball leaves from
+    // there (~0.6 of rig height, 0.35 forward) instead of the generic +1.0 point. Same speed/damage.
+    if (parseInt(enemy.enemyType, 10) === 3001 && !st.fly && enemy.group) {
+      if (enemy._chestY === undefined) {
+        const bb = new THREE.Box3().setFromObject(enemy.group);
+        const h = bb.isEmpty() ? 0 : bb.max.y - enemy.group.position.y;
+        enemy._chestY = (h > 0.4 && h < 6) ? h * 0.6 : 1.0;
+      }
+      const fl = Math.hypot(dir.x, dir.z) || 1;
+      from.copy(enemy.group.position);
+      from.x += dir.x / fl * 0.35; from.z += dir.z / fl * 0.35; from.y += enemy._chestY;
+      dir.subVectors(aim, from).normalize();
+    }
     this.spawnProjectile({ from, dir, kind, owner: 'enemy', damage: dmg });
   }
 
@@ -5054,6 +5192,8 @@ class CyberDoomEngine {
   // projectiles. Mirrors what raycastHitscan does on a hit.
   damageEnemy(enemy, amount, hitPoint) {
     if (!enemy || enemy.state === 'DEAD') return;
+    // Difficulty: damage dealt x dealt (NORMAL = 1, unchanged).
+    if (window.CyberDifficulty) amount *= window.CyberDifficulty.dealt();
     enemy.hp -= amount;
     this.showHitmarker();
     this.sound.playMonsterHurt();
@@ -5323,7 +5463,9 @@ class CyberDoomEngine {
   damagePlayer(amount) {
     if (this.isGameOver || this.isVictory) return;
 
-    let dmg = amount;
+    // Difficulty: damage taken x taken (NORMAL = 1, unchanged).
+    const taken = window.CyberDifficulty ? window.CyberDifficulty.taken() : 1;
+    let dmg = (taken === 1 || !(amount > 0)) ? amount : Math.max(1, Math.round(amount * taken));
     if (this.player.armor > 0) {
       const absorbed = Math.min(this.player.armor, Math.floor(dmg * 0.6));
       this.player.armor -= absorbed;
