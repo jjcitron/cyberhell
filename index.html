@@ -16,6 +16,8 @@
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
   <script src="js/cyber-traversal.js"></script>
+  <script src="js/acid-gamepad.js"></script>
+  <script src="js/cyber-gamepad.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -859,6 +861,7 @@
           <div><span class="key-badge">TAB / M</span> Tactical Automap</div>
           <div><span class="key-badge">R</span> Restart Level</div>
         </div>
+        <p class="gamepad-hint" style="margin-top:8px; font-size:12px; opacity:0.85;"><span class="key-badge">GAMEPAD</span> L-stick move &middot; R-stick look &middot; RT fire &middot; A jump &middot; X use &middot; Y/LB weapon &middot; View map &middot; Start pause &middot; D-pad + A in menus</p>
       </div>
 
       <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:14px;">
@@ -3469,6 +3472,8 @@ class CyberDoomEngine {
 
     this.initTouchControls();
     this.initFocusPause();
+    // Gamepad (Xbox / PlayStation / generic, hot-plug): js/cyber-gamepad.js.
+    this.padCtl = window.CyberGamepad ? window.CyberGamepad.attach(this) : null;
   }
 
   /* ==========================================================================
@@ -3479,7 +3484,9 @@ class CyberDoomEngine {
   // rejects it for touch, so a touch build starts the run directly, the way
   // the pointerlockchange 'locked' branch does for a mouse.
   startRun() {
-    if (this.isTouch || typeof this.canvas.requestPointerLock !== 'function') {
+    // A pad press is not a user gesture, so pointer lock would be refused:
+    // a run started from the controller goes the touch way (no lock).
+    if (this.isTouch || this.padGesture || typeof this.canvas.requestPointerLock !== 'function') {
       if (this.isGameOver || this.isVictory) return;
       this.missionStarted = true;
       this.resumeRun();
@@ -4164,6 +4171,7 @@ class CyberDoomEngine {
 
   explodeBarrel(barrel) {
     this.sound.playExplosion();
+    if (this.gamepad) this.gamepad.rumble(1, 0.8, 320);
     this.scene.remove(barrel.mesh);
     this.barrels = this.barrels.filter(b => b !== barrel);
 
@@ -5332,6 +5340,7 @@ class CyberDoomEngine {
 
     this.player.health -= dmg;
     this.sound.playMonsterHurt();
+    if (this.gamepad) this.gamepad.rumble(Math.min(1, 0.35 + amount / 60), 0.5, 140);
 
     const df = document.getElementById('damage-flash');
     df.style.opacity = '1';
@@ -5851,6 +5860,8 @@ class CyberDoomEngine {
     requestAnimationFrame(() => this.animate());
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
+
+    if (this.padCtl) this.padCtl.update(delta);
 
     if (this.isRunning) {
       this.updatePhysics(delta);
