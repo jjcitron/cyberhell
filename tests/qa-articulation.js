@@ -27,6 +27,9 @@ const PW = process.env.PLAYWRIGHT_PATH ||
 const { chromium } = require(PW);
 const SHOTS = process.env.QA_SHOTS || path.join(ROOT, 'prototype_artifacts');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
+// Locked Cyberhell still/catalog background (art spec, 2026-10-12). QA stills only;
+// live gameplay sky/fog/clear colour are owned by js/cyber-env.js and the level data.
+const STILL_BG = '#080a0f';
 
 function serve() {
   return new Promise((resolve, reject) => {
@@ -34,7 +37,7 @@ function serve() {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
       if (!rel) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        return res.end('<body style="margin:0;background:#1a1d22"><script src="js/three.min.js"></script>' +
+        return res.end(`<body style="margin:0;background:${STILL_BG}"><script src="js/three.min.js"></script>` +
           '<script src="js/cyber-enemies.js"></script></body>');
       }
       const file = path.join(ROOT, rel);
@@ -80,14 +83,15 @@ const RUN = function ([typeId, speed, frames, fire]) {
 };
 
 /* In-page: render the rig from the side mid-stride. */
-const SHOT = function ([typeId, speed, frames, fire]) {
+const SHOT = function ([typeId, speed, frames, fire, bg]) {
   const CE = window.CyberEnemies;
   const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   r.setSize(480, 480);
   document.body.innerHTML = '';
   document.body.appendChild(r.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1d22);
+  scene.background = new THREE.Color(bg);
+  r.setClearColor(scene.background, 1);
   scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x202020, 1.4));
   const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(4, 6, 3); scene.add(key);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshStandardMaterial({ color: 0x2c3036 }));
@@ -143,10 +147,10 @@ const SHOT = function ([typeId, speed, frames, fire]) {
     ['enemy-imp-walk', 3001, 3.6, 200, false],
     ['enemy-demon-sprint', 3002, 6.5, 200, false]
   ];
-  await page.evaluate(SHOT, [3004, 0, 2, false]);   // warm the GL context up
+  await page.evaluate(SHOT, [3004, 0, 2, false, STILL_BG]);   // warm the GL context up
   await page.waitForTimeout(500);
   for (const [name, id, sp, fr, fire] of shots) {
-    await page.evaluate(SHOT, [id, sp, fr, fire]);
+    await page.evaluate(SHOT, [id, sp, fr, fire, STILL_BG]);
     await page.waitForTimeout(300);
     const file = path.join(SHOTS, `articulation-${name}.png`);
     await page.screenshot({ path: file });
