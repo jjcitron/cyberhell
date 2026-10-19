@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Acidlemon Games startup splash: first script, so it sees input before the game -->
+  <script src="js/acid-splash.js" data-logo="brand/acidlemon-lockup.svg"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,6 +18,8 @@
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
   <script src="js/cyber-traversal.js"></script>
+  <script src="js/acid-gamepad.js"></script>
+  <script src="js/cyber-gamepad.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -859,6 +863,7 @@
           <div><span class="key-badge">TAB / M</span> Tactical Automap</div>
           <div><span class="key-badge">R</span> Restart Level</div>
         </div>
+        <p class="gamepad-hint" style="margin-top:8px; font-size:12px; opacity:0.85;"><span class="key-badge">GAMEPAD</span> L-stick move &middot; R-stick look &middot; X/RB fire &middot; A jump &middot; Y/LB use &middot; LT/RT weapon &middot; View map &middot; Start pause &middot; menus: D-pad + A, B back</p>
       </div>
 
       <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:14px;">
@@ -3469,6 +3474,8 @@ class CyberDoomEngine {
 
     this.initTouchControls();
     this.initFocusPause();
+    // Gamepad (Xbox / PlayStation / generic, hot-plug): js/cyber-gamepad.js.
+    this.padCtl = window.CyberGamepad ? window.CyberGamepad.attach(this) : null;
   }
 
   /* ==========================================================================
@@ -3479,7 +3486,9 @@ class CyberDoomEngine {
   // rejects it for touch, so a touch build starts the run directly, the way
   // the pointerlockchange 'locked' branch does for a mouse.
   startRun() {
-    if (this.isTouch || typeof this.canvas.requestPointerLock !== 'function') {
+    // A pad press is not a user gesture, so pointer lock would be refused:
+    // a run started from the controller goes the touch way (no lock).
+    if (this.isTouch || this.padGesture || typeof this.canvas.requestPointerLock !== 'function') {
       if (this.isGameOver || this.isVictory) return;
       this.missionStarted = true;
       this.resumeRun();
@@ -3532,8 +3541,10 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
     this.clearTouchInput();
-    this.sound.pause();
-    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // SoundEngine has no pause(); this threw and left a BOOT ERROR overlay on
+    // every touch / lost-focus / controller pause. Same gate Escape uses.
+    this.pauseAllAudio();
+    this.setOverlayMode('pause');
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
     this.unlockPointer();
@@ -4160,6 +4171,8 @@ class CyberDoomEngine {
     // dropped every corpse killed on a raised floor through it.
     this.showHudMessage(`ELIMINATED ${enemy.type.toUpperCase()}`);
     this.hudFace.triggerGrin();
+    // Crossfire rumble: kill, or boss kill for the Cyberdemon (16) / Spider Mastermind (7).
+    if (this.gamepad) this.gamepad.feel([16, 7].includes(parseInt(enemy.enemyType)) ? 'boss' : 'kill');
   }
 
   explodeBarrel(barrel) {
@@ -5332,6 +5345,7 @@ class CyberDoomEngine {
 
     this.player.health -= dmg;
     this.sound.playMonsterHurt();
+    if (this.gamepad) this.gamepad.feel('hit');   // Crossfire rumble: hit
 
     const df = document.getElementById('damage-flash');
     df.style.opacity = '1';
@@ -5851,6 +5865,8 @@ class CyberDoomEngine {
     requestAnimationFrame(() => this.animate());
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
+
+    if (this.padCtl) this.padCtl.update(delta);
 
     if (this.isRunning) {
       this.updatePhysics(delta);
