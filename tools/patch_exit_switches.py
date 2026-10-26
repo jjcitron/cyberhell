@@ -28,7 +28,7 @@ Reachability uses the same rules as the engine (see tests/reachability.js):
 floor rectangles are the collision authority, solid walls push the player out
 to a radius of 0.55, and doors auto-open on approach so they never block.
 
-Run:  python patch_exit_switches.py [--dry-run]
+Run from the repo root:  python tools/patch_exit_switches.py [--dry-run]
 """
 
 import json

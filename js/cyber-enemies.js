@@ -449,7 +449,7 @@
     zflash.visible = false;
     A.extraPivots = [gun];
     A.attackFn = function (w, s) {
-      addRot(gun, -0.55 * w + 0.40 * s, 0, 0);
+      addRot(gun, -0.55 * w + 0.40 * s - (w || s ? A.aimKink || 0 : 0), 0, 0);
       zflash.visible = s > 0.5;
       zflash.scale.set(0.7 + s * 0.7, 0.6 + s * 0.8, 0.7 + s * 0.7);
       zflash.rotation.z = s * 9.1;
@@ -1004,6 +1004,9 @@
     return p;
   };
 
+  // Looming scale for the big ones (Mancubus, Arachnotron, Spider Mastermind).
+  var LOOM = { 67: 1.6, 68: 1.75, 7: 1.7 };
+
   // --- 11. Mancubus (67): cyborg torso on a tank bottom ----------------
   BUILDERS[67] = function (root, A) {
     var fat = flesh(0x8f6144), hull = M(0x2e3a40, 0.4, 0.5), rim = metal(0x717c82);
@@ -1084,6 +1087,7 @@
     treads.forEach(function (o, i) { A.spin.push({ o: o, axis: 'y', rate: 3.0, tread: true, i: i }); });
     A.pulse.push({ m: org, base: 2.2, amp: 0.9, f: 2.4, ph: 0 });
     A.treads = treads;
+    root.scale.setScalar(LOOM[67]);
     return p;
   };
 
@@ -1155,6 +1159,7 @@
     };
     p.dome = dome;
     p.gun = gun;
+    root.scale.setScalar(LOOM[68]);
     return p;
   };
 
@@ -1397,6 +1402,7 @@
       brain.scale.setScalar(1 + w * 0.10 + s * 0.06);
       mag.emissiveIntensity += w * 1.2 + s * 2.4;
     };
+    root.scale.setScalar(LOOM[7]);
     return { base: base, jar: jarG, brain: brain, treads: treads, chin: chin, limbs: null };
   };
 
@@ -1427,11 +1433,11 @@
     69:   { hp: 300,  speed: 3.4, attack: 'fireball', range: 24, cooldown: 2.0, damage: 22, scale: 1.0 },
     3003: { hp: 500,  speed: 3.2, attack: 'fireball', range: 26, cooldown: 1.8, damage: 28, scale: 1.25 },
     66:   { hp: 220,  speed: 4.2, attack: 'fireball', range: 28, cooldown: 2.0, damage: 20, scale: 1.0, fly: true },
-    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.0 },
-    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.0 },
+    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.6 },
+    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.75 },
     64:   { hp: 450,  speed: 3.8, attack: 'fireball', range: 26, cooldown: 2.6, damage: 30, scale: 1.0 },
     16:   { hp: 1000, speed: 2.5, attack: 'fireball', range: 30, cooldown: 1.6, damage: 40, scale: 1.0 },
-    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.0 }
+    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.7 }
   };
   // fly: hovers above the floor, crosses ledges freely, still stopped by walls
   // (index.html: moveEnemy / ENEMY_HOVER). Cacodemon and Revenant only; the
@@ -1622,7 +1628,7 @@
       bob: [], sway: [], spin: [], pulse: [], blink: [], flame: [], slide: [],
       jaw: null, legs: null, eyeMeshes: [], t: 0, flashT: 0,
       // pose-layer state
-      pose: null, pivots: [], walk: 0, gait: 0, prevCd: 0,
+      pose: null, pivots: [], walk: 0, gait: 0, run: 0, vel: 0, prevCd: 0,
       ownAtk: 0, ownPain: 0, deadT: 0, frag: null, attackFn: null
     };
     var accents = [];
@@ -1635,24 +1641,20 @@
       buildAccents = null;
     }
 
-    // A bob on the ROOT group would write an absolute world y over whatever
-    // the engine placed the body at this frame — the baked rest height is 0,
-    // so flyers got dragged to the floor and through walls. Wrap the body in
-    // an inner group and bob that: the root stays owned by whoever places it,
-    // and the bob is a local offset that needs no ordering with the AI.
-    if (A.bob.some(function (b) { return b.o === root; })) {
-      var body = new T.Group();
-      while (root.children.length) body.add(root.children[0]);
-      root.add(body);
-      A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
-      A.bobRoot = body;
-    }
-    // Facing fix (beat 'em up, Oct 13): every rig is modelled face-forward along -Z (eyes, maws, head3 fwd:'-z'), but
-    // CyberAI.face() / the lunge aim the root's +Z at the target - so monsters chased the player back-first (most visible
-    // on the Pinky's charge). Turn the modelled body 180 deg inside the root so the face leads; the root's own convention
-    // (+Z = forward), which the AI places, is unchanged. Death 'explode' already fragments A.bobRoot's children.
-    if (!A.bobRoot) { var inner = new T.Group(); while (root.children.length) inner.add(root.children[0]); root.add(inner); A.bobRoot = inner; }
-    A.bobRoot.rotation.y += Math.PI;
+    // Every rig lives in an inner body group, for two reasons:
+    //  - the rigs are modelled facing -Z (eyes, toes, muzzles), but the AI's
+    //    face() and vision cone point the ROOT's +Z at the target, so the body
+    //    turns half a revolution inside the root and monsters stop walking at
+    //    the player backwards;
+    //  - a bob on the ROOT would write an absolute world y over wherever the
+    //    engine placed the body this frame, so flyers bob the inner group and
+    //    the root stays owned by whoever places it.
+    var body = new T.Group();
+    body.rotation.y = Math.PI;
+    while (root.children.length) body.add(root.children[0]);
+    root.add(body);
+    A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
+    A.bobRoot = body;
 
     // bake rest positions so animate() never accumulates drift
     A.bob.forEach(function (b) { b.y0 = b.o.position.y; });
@@ -1795,8 +1797,12 @@
       // hip-carried sidearm needs it; a gunner already holding the weapon
       // level does not.
       var aim = (A.pose.aim || 0) * Math.min(1, w * 2 + s);
-      addRot(AR, aim - 0.22 * w - 0.14 * s * big, 0, 0);
-      addRot(lower(AR), -aim * 0.35, 0, 0);
+      // The upper arm only comes part way up; the elbow kinks to bring the
+      // forearm level, so the gun arm reads as braced, not a straight stick.
+      // A.aimKink lets the builder's attackFn counter-pitch the weapon.
+      A.aimKink = aim * 0.55;
+      addRot(AR, aim * 0.75 - 0.22 * w - 0.14 * s * big, 0, 0);
+      addRot(lower(AR), aim * 0.45, 0, 0);
       addRot(AL, aim * 0.45 - 0.18 * w - 0.12 * s * big, 0, 0);
       addRot(P.torso, -0.06 * w + 0.10 * s * big, 0, 0);
       addRot(P.head, -0.05 * w, 0, 0);
@@ -1834,6 +1840,9 @@
     var kind = A.pose.death, s0 = A.s0 || 1;
 
     if (kind === 'explode') {
+      // deathSpread (engine, 0..1): how far the parts may fly (and spin)
+      // before the nearest wall; unset keeps the full burst.
+      var sp = enemy.deathSpread === undefined ? 1 : num(enemy.deathSpread);
       if (!A.frag) {
         A.frag = [];
         var host = A.bobRoot || g;
@@ -1847,8 +1856,11 @@
       var fall = e * e * 2.4;
       for (var j = 0; j < A.frag.length; j++) {
         var f = A.frag[j], p0 = f.o.userData.p0, r0 = f.o.userData.r0;
-        f.o.position.set(p0.x + f.dx * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * e * 1.9);
-        f.o.rotation.set(r0.x + f.sx * e, r0.y + f.sy * e, r0.z + f.sx * e * 0.6);
+        f.o.position.set(p0.x + f.dx * sp * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * sp * e * 1.9);
+        // A cornered rig spins its parts less too: a long arm spun about its
+        // shoulder reaches through the wall the burst was held back from.
+        var spin = e * (0.25 + 0.75 * sp);
+        f.o.rotation.set(r0.x + f.sx * spin, r0.y + f.sy * spin, r0.z + f.sx * spin * 0.6);
       }
       g.position.y = A.deathY;
       g.scale.setScalar(Math.max(0.001, s0 * (1 - e * 0.6)));
@@ -1863,22 +1875,36 @@
       return;
     }
     // crumple (soft, folds) / topple (stiff, falls in one piece with a bounce)
-    // ponytail: the fall is around the world X axis like the engine's old
-    // snap, not around the enemy's facing — reordering the euler is the
-    // upgrade if corpses ever need to fall away from the shot.
+    // The engine picks the fall (planDeath): fallYaw turns the body so it
+    // tips onto its back along a heading with room, fallMax caps the tip
+    // where no heading has room for the whole body. Without them the body
+    // falls around world X as it always did.
     var over = Math.sin(e * Math.PI) * (kind === 'topple' ? 0.20 : 0.05);
-    g.rotation.x = e * (Math.PI / 2) + over;
+    var tipMax = enemy.fallMax === undefined ? Math.PI / 2 : num(enemy.fallMax);
+    if (enemy.fallYaw === undefined) {
+      g.rotation.x = e * tipMax + over;
+    } else {
+      if (A.yaw0 === undefined) A.yaw0 = g.rotation.y;
+      var dy = Math.atan2(Math.sin(enemy.fallYaw - A.yaw0), Math.cos(enemy.fallYaw - A.yaw0));
+      g.rotation.order = 'YXZ';
+      g.rotation.y = A.yaw0 + dy * Math.min(1, k * 4);
+      g.rotation.x = -(e * tipMax + over * tipMax / (Math.PI / 2));
+    }
     g.position.y = A.deathY + e * 0.28;
     if (kind === 'crumple') {
+      // The arms swing out as the body folds; a body with no room to lie down
+      // (tip capped) only slumps, so it folds and swings its arms that much less.
+      var fold = e * Math.max(0.3, tipMax / (Math.PI / 2));
       addRot(P.torso, -0.5 * e, 0, 0.18 * e);
       addRot(P.head, 0.7 * e, 0, 0);
-      addRot(P.leftShoulder, -0.6 * e, 0, -0.45 * e);
-      addRot(P.rightShoulder, -0.5 * e, 0, 0.45 * e);
+      addRot(P.leftShoulder, -0.6 * fold, 0, -0.45 * fold);
+      addRot(P.rightShoulder, -0.5 * fold, 0, 0.45 * fold);
       if (L) {
-        addRot(L.leftLeg, 0.9 * e, 0, 0);
-        addRot(L.rightLeg, 0.7 * e, 0, 0);
-        addRot(lower(L.leftLeg), 1.5 * e, 0, 0);
-        addRot(lower(L.rightLeg), 1.2 * e, 0, 0);
+        var legFold = e * Math.min(1, Math.max(0.2, tipMax / (Math.PI / 2)));
+        addRot(L.leftLeg, 0.9 * legFold, 0, 0);
+        addRot(L.rightLeg, 0.7 * legFold, 0, 0);
+        addRot(lower(L.leftLeg), -1.5 * legFold, 0, 0);
+        addRot(lower(L.rightLeg), -1.2 * legFold, 0, 0);
       }
     }
   }
@@ -1903,7 +1929,7 @@
 
     // ---- resolve the four drivers, defensively -------------------------
     if (dead) A.deadT = Math.min(1, (A.deadT || 0) + delta / A.pose.deathDur);
-    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; g.visible = true; g.scale.setScalar(A.s0 || 1); }
+    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; A.yaw0 = undefined; g.rotation.order = 'XYZ'; g.rotation.x = 0; g.visible = true; g.scale.setScalar(A.s0 || 1); }
     var deathK = Math.max(num(enemy.deathT), A.deadT || 0);
 
     // Either cooldown jumping back up means a shot just went off. The AI winds
@@ -1995,23 +2021,45 @@
       Math.sin(t * 0.9) * 0.02 * idle);
     addRot(P.head, Math.sin(t * 1.15 + 1.2) * 0.03 * idle, Math.sin(t * 0.41) * 0.12 * idle, 0);
 
-    // walk cycle — legs from the shared rig, arms counter-swinging
+    // Ground speed actually covered, smoothed: a charging Demon runs, a
+    // Zombieman shuffling round a corner walks. Capped so a teleport or a
+    // spawn snap does not read as a sprint.
+    var gx = g.position.x, gz = g.position.z;
+    if (A.px !== undefined) {
+      var inst = Math.min(12, Math.sqrt((gx - A.px) * (gx - A.px) + (gz - A.pz) * (gz - A.pz)) / delta);
+      A.vel += (inst - A.vel) * Math.min(1, delta * 6);
+    }
+    A.px = gx; A.pz = gz;
+
+    // walk / run cycle — legs from the shared rig, arms counter-swinging
     if (A.gait > 0.01) {
-      var spd = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
-      A.walk += delta * spd * 2.3 * A.gait;
-      var sw = Math.sin(A.walk), amp = A.gait;
+      var stat = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
+      var spd = A.vel > 0.5 ? A.vel : stat;
+      A.run += (clamp01((spd - 4.0) / 1.6) - A.run) * Math.min(1, delta * 4);
+      var run = A.run, amp = A.gait;
+      // longer strides, not just faster ones, as the gait opens into a run
+      A.walk += delta * spd * (2.3 - 0.5 * run) * amp;
+      var sw = Math.sin(A.walk), cw = Math.cos(A.walk);
       if (L) {
-        addRot(L.leftLeg, sw * 0.62 * amp, 0, 0);
-        addRot(L.rightLeg, -sw * 0.62 * amp, 0, 0);
-        addRot(lower(L.leftLeg), Math.max(0, sw) * 0.85 * amp, 0, 0);
-        addRot(lower(L.rightLeg), Math.max(0, -sw) * 0.85 * amp, 0, 0);
+        // Knees bend the human way (shin trails, -x) and fold hardest while
+        // the leg swings through under the hip (cw > 0 is the left leg's
+        // swing); the planted leg keeps a soft knee. A run swings the thighs
+        // wider, carries them a little forward and folds the swing knee deep.
+        var hip = (0.55 + 0.25 * run) * amp, knee = (0.8 + 0.75 * run) * amp;
+        addRot(L.leftLeg, sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(L.rightLeg, -sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(lower(L.leftLeg), -(Math.max(0, cw) * knee + 0.10 * amp), 0, 0);
+        addRot(lower(L.rightLeg), -(Math.max(0, -cw) * knee + 0.10 * amp), 0, 0);
       }
-      addRot(P.leftShoulder, -sw * 0.34 * amp, 0, 0);
-      addRot(P.rightShoulder, sw * 0.34 * amp, 0, 0);
-      addRot(lower(P.leftShoulder), Math.max(0, -sw) * 0.4 * amp, 0, 0);
-      addRot(lower(P.rightShoulder), Math.max(0, sw) * 0.4 * amp, 0, 0);
-      // torso counter-rotates and the whole body rocks on each footfall
-      addRot(P.torso, Math.abs(Math.cos(A.walk)) * 0.05 * amp, -sw * 0.10 * amp, 0);
+      // arms pump harder and hold a deeper elbow bend at a run
+      var arm = (0.34 + 0.24 * run) * amp, bend = (0.18 + 0.85 * run) * amp;
+      addRot(P.leftShoulder, -sw * arm, 0, 0);
+      addRot(P.rightShoulder, sw * arm, 0, 0);
+      addRot(lower(P.leftShoulder), bend + Math.max(0, -sw) * 0.4 * amp, 0, 0);
+      addRot(lower(P.rightShoulder), bend + Math.max(0, sw) * 0.4 * amp, 0, 0);
+      // torso counter-rotates, leans into a run, and the whole body rocks on
+      // each footfall
+      addRot(P.torso, Math.abs(cw) * 0.05 * amp - 0.20 * run * amp, -sw * 0.10 * amp, 0);
       root.z += Math.sin(A.walk * 2) * 0.03 * amp;
     }
 

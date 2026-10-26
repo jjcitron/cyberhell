@@ -82,6 +82,9 @@ const state = (page) => page.evaluate(() => ({
   buffer: (() => { const c = window.cyberEngine.renderer.domElement; return c.width * c.height; })(),
 }));
 async function tapStart(page, how) {
+  // START is intentionally gated while the boot splash owns input. Wait for
+  // that gate before measuring/clicking, just as a real title-screen user does.
+  await page.waitForFunction(() => !window.AcidSplash || !window.AcidSplash.blocking());
   const b = await page.locator('#start-btn').boundingBox();
   const x = b.x + b.width / 2, y = b.y + b.height / 2;
   if (how === 'finger') await page.touchscreen.tap(x, y);

@@ -17,10 +17,19 @@
     { id: 'nightmare', name: 'NIGHTMARE', ai: 'nightmare', taken: 1.6,  dealt: 0.8,  note: 'Cyberhell nightmare' }
   ];
   var KEY = 'cyberhell-difficulty', DEFAULT = 2;
-  var idx = DEFAULT;
+  var idx = DEFAULT, custom = null, listeners = [];
   try { var v = localStorage.getItem(KEY), i = DIFFS.findIndex(function (d) { return d.id === v; }); if (i >= 0) idx = i; } catch (e) {}
+  // Migrate the branch's damage controls into the same state as the master slider.
+  try {
+    if (!v || v === 'custom') {
+      var saved = JSON.parse(localStorage.getItem('cyberhell.difficulty'));
+      if (saved && valid(saved.dealt, 0.25, 3) && valid(saved.taken, 0.1, 2)) custom = manual(saved.dealt, saved.taken);
+    }
+  } catch (e) {}
 
-  function cur() { return DIFFS[idx]; }
+  function valid(n, min, max) { return typeof n === 'number' && isFinite(n) && n >= min && n <= max; }
+  function manual(dealt, taken) { return { id: 'custom', name: 'CUSTOM', ai: 'normal', dealt: dealt, taken: taken, note: 'damage controls' }; }
+  function cur() { return custom || DIFFS[idx]; }
   function applyAI() {
     var A = window.CyberAI;
     if (!A || !A.setDifficulty) return;
@@ -36,10 +45,21 @@
   function set(i) {
     if (typeof i === 'string') i = DIFFS.findIndex(function (d) { return d.id === i; });
     idx = Math.max(0, Math.min(DIFFS.length - 1, i | 0));
+    custom = null;
+    return changed();
+  }
+  function changed() {
     try { localStorage.setItem(KEY, cur().id); } catch (e) {}
+    try { localStorage.setItem('cyberhell.difficulty', JSON.stringify({ dealt: cur().dealt, taken: cur().taken })); } catch (e) {}
     applyAI();
     document.querySelectorAll('.diffSlider').forEach(sync);
+    listeners.forEach(function (fn) { fn(); });
     return cur();
+  }
+  function setCustom(dealt, taken) {
+    if (!valid(dealt, 0.25, 3) || !valid(taken, 0.1, 2)) return cur();
+    custom = manual(dealt, taken);
+    return changed();
   }
   function mount(el) {
     el.classList.add('diffSlider');
@@ -57,7 +77,8 @@
   }
 
   window.CyberDifficulty = {
-    LEVELS: DIFFS, get: cur, set: set, mount: mount, applyAI: applyAI,
+    LEVELS: DIFFS, get: cur, set: set, setCustom: setCustom, mount: mount, applyAI: applyAI,
+    subscribe: function (fn) { listeners.push(fn); },
     taken: function () { return cur().taken; },
     dealt: function () { return cur().dealt; }
   };

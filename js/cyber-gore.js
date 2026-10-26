@@ -472,7 +472,9 @@
     },
 
     // delta: seconds since last frame. floorAtFn(x,z) -> {inside, floorY}.
-    update: function (delta, floorAtFn) {
+    // wallHitFn(x0,z0,x1,z1,y) -> true if that step crosses a solid wall;
+    // optional, debris just flies free without it.
+    update: function (delta, floorAtFn, wallHitFn) {
       if (!scene) return;
 
       updatePool(pools.blood, delta, floorAtFn, DROP_GRAVITY, function (rec) {
@@ -487,6 +489,7 @@
       for (var i = chunks.length - 1; i >= 0; i--) {
         var c = chunks[i];
         c.vel.y -= GRAVITY * delta;
+        var cx = c.mesh.position.x, cz = c.mesh.position.z;
         c.mesh.position.addScaledVector(c.vel, delta);
         c.mesh.rotation.x += c.rot.x * delta;
         c.mesh.rotation.y += c.rot.y * delta;
@@ -504,6 +507,12 @@
               c.vel.set(0, 0, 0);
             }
           }
+        }
+        // A chunk thrown at a wall bounces off it instead of through it.
+        // After the floor clamp, so the height tested is the one it is drawn at.
+        if (wallHitFn && wallHitFn(cx, cz, c.mesh.position.x, c.mesh.position.z, c.mesh.position.y)) {
+          c.mesh.position.x = cx; c.mesh.position.z = cz;
+          c.vel.x *= -0.3; c.vel.z *= -0.3;
         }
         if (c.life <= 0) {
           scene.remove(c.mesh);
@@ -572,6 +581,9 @@
       splashes = [];
       growingPools = [];
     },
+
+    // QA/debug only: the live death-debris meshes (tests/qa-collision.js).
+    __debugChunks: function () { return chunks.map(function (c) { return c.mesh; }); },
 
     // QA/debug only: live counts per pool and decal ring.
     __debugCounts: function () {
