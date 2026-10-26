@@ -162,6 +162,20 @@
     s = s || 8;
     return mesh(geo('c' + rt + ',' + rb + ',' + h + ',' + s, function () { return new T.CylinderGeometry(rt, rb, h, s); }), m, ns);
   }
+  // round 7 (beat 'em up): limb segment = 3 height rings so the refine taper pass (cyber-refine.js,
+  // userData.taper) can give it a muscle belly and a slim joint end; the pass is pure deformation
+  function limb(rt, rb, h, m, prof) {
+    var o = mesh(geo('L' + rt + ',' + rb + ',' + h, function () { return new T.CylinderGeometry(rt, rb, h, 6, 3); }), m);
+    o.userData.taper = { prof: prof };
+    return o;
+  }
+  var TAPER = {
+    upper: [[0, 1], [0.35, 0.97], [1, 0.8]],
+    fore: [[0, 0.98], [0.33, 1.06], [1, 0.78]],
+    thigh: [[0, 1.03], [0.35, 0.97], [1, 0.8]],
+    shin: [[0, 0.95], [0.33, 1.07], [1, 0.76]],
+    torso: [[0, 1], [0.35, 0.98], [0.8, 0.84], [1, 0.84]]
+  };
   function cone(r, h, m, s, ns) {
     s = s || 8;
     return mesh(geo('n' + r + ',' + h + ',' + s, function () { return new T.ConeGeometry(r, h, s); }), m, ns);
@@ -271,6 +285,9 @@
   //      shoulderW, upper, fore, armMat, handMat,
   //      thigh, shin, legMat, legR, footMat, armZ }
 
+  // joint filler pieces stay 12x8 (the refine pass still textures their shared material)
+  function jp(m) { m.userData.noRefine = true; return m; }
+
   function humanoid(root, o) {
     var p = {};
     var hipY = o.hipY, tW = o.torsoW, tH = o.torsoH, tD = o.torsoD;
@@ -278,16 +295,34 @@
     p.torso = grp(root, 0, hipY, 0);
     var chest = add(p.torso, o.torsoOct ? oct(tW, tH, tD, o.torsoMat) : box(tW, tH, tD, o.torsoMat), 0, tH / 2, 0);
     if (o.torsoGrad) vgrad(chest, o.torsoGrad[0], o.torsoGrad[1]);
+    chest.userData.taper = { prof: TAPER.torso, wx: 1, wz: 0.45 };   // round 7: pulls in at the waist (shoulders along X)
     p.chest = chest;
     // pelvis
     add(p.torso, box(tW * 0.86, 0.16, tD * 0.92, o.legMat || o.torsoMat), 0, 0.02, 0);
 
     if (o.headSize) {
-      p.neck = add(p.torso, cyl(tD * 0.2, tD * 0.22, 0.1, o.armMat || o.torsoMat, 6), 0, tH + 0.04, 0);
+      var nR = o.neckR || tD * 0.2;
       p.head = grp(p.torso, 0, tH + 0.09 + o.headSize / 2, 0);
-      var skull = add(p.head, oct(o.headSize, o.headSize, o.headSize * 0.9, o.headMat || o.torsoMat), 0, 0, 0);
-      if (o.headGrad) vgrad(skull, o.headGrad[0], o.headGrad[1]);
-      p.skull = skull;
+      var H3 = typeof window !== 'undefined' && window.Head3;
+      if (H3) {
+        // three-shape head (beat 'em up, Oct 13): cranium with flat side planes + brow, jaw wedge off the front-bottom,
+        // neck angled back (+Z here: these rigs face -Z) and up into the skull base. Creature heads keep their horns/masks.
+        var hs = o.headSize, hp = H3.head3Params('cy' + (o.headSeed || hs + ':' + tW), Object.assign({ R: hs * 0.47, crD: 0.9, jawX: 0.3, chinFwd: 0.34, jawLen: 0.72, jawD: 0.7 }, o.head3 || {}));
+        // sculpted face (Oct 13 pm) on the human former-soldiers only; demons keep their creature heads. Their own glowing
+        // eye meshes stay, so the face skips eyeballs and builds ridge/brows/cheeks/nose/lips/ears around them.
+        var human = o.face !== false && (o.face || HUMAN_FACE[buildTypeId]);
+        var hd = H3.buildHead(T, o.headMat || o.torsoMat, hp, { fwd: '-z', face: human ? Object.assign({ eyes: false, params: H3.faceParams('cy' + (o.headSeed || hs), o.faceParams) }, o.face || {}) : false });
+        p.head.add(hd.group); hd.group.position.set(0, hs * 0.04, 0);
+        if (o.headGrad) { vgrad(hd.cranium, o.headGrad[0], o.headGrad[1]); vgrad(hd.jaw, o.headGrad[0], o.headGrad[1]); }
+        p.neck = H3.buildNeck(T, o.neckMat || o.armMat || o.torsoMat, { r: nR, len: 0.09 + hs * 0.5, tilt: 0.3, fwd: '-z' });
+        p.neck.position.set(0, tH - 0.02, -hs * 0.08); p.torso.add(p.neck);
+        p.skull = hd.cranium; p.jaw3 = hd.jaw;
+      } else {
+        p.neck = add(p.torso, cyl(nR, nR * 1.1, 0.1, o.neckMat || o.armMat || o.torsoMat, 6), 0, tH + 0.04, 0);
+        var skull = add(p.head, oct(o.headSize, o.headSize, o.headSize * 0.9, o.headMat || o.torsoMat), 0, 0, 0);
+        if (o.headGrad) vgrad(skull, o.headGrad[0], o.headGrad[1]);
+        p.skull = skull;
+      }
     }
 
     var limbs = {};
@@ -295,10 +330,16 @@
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
       var sh = grp(p.torso, sgn * sw, tH - 0.08, o.armZ || 0);
-      add(sh, cyl(aR * 1.35, aR * 1.15, uA, o.armMat, 6), 0, -uA / 2, 0);
+      add(sh, limb(aR * 1.35, aR * 1.15, uA, o.armMat, TAPER.upper), 0, -uA / 2, 0);
       var el = grp(sh, 0, -uA, 0);
-      add(el, cyl(aR * 1.05, aR * 0.9, fA, o.armMat, 6), 0, -fA / 2, 0);
+      add(el, limb(aR * 1.05, aR * 0.9, fA, o.armMat, TAPER.fore), 0, -fA / 2, 0);
       var hand = add(el, box(aR * 2.2, aR * 2.0, aR * 2.4, o.handMat || o.armMat), 0, -fA - aR * 0.8, 0);
+      // shoulder joint (beat 'em up round 6): a deltoid cap that rides with the arm, plus a
+      // torso-side trapezius/pec bridge out to the joint, so the arm never floats off the body
+      jp(add(sh, sph(Math.min(aR * 1.75, aR + 0.07), o.capMat || o.armMat, 12, 8), 0, -aR * 0.15, 0)).scale.set(1.05, 0.9, 1.05);
+      var bx0 = tW * 0.32, bhl = Math.max(0.02, (sw - bx0) / 2);
+      jp(add(p.torso, sph(1, o.torsoMat, 12, 8), sgn * (bx0 + bhl), tH - 0.08 - aR * 0.2, o.armZ || 0)
+        ).scale.set(bhl + aR * 0.9, aR * 1.45, Math.min(tD * 0.48, aR * 1.8));
       sh.userData.lower = el;
       el.userData.hand = hand;
       limbs[side + 'Arm'] = sh;
@@ -312,16 +353,21 @@
       ['left', 'right'].forEach(function (side) {
         var sgn = side === 'left' ? -1 : 1;
         var hp = grp(root, sgn * (tW * 0.26), hipY, 0);
-        add(hp, cyl(lR * 1.2, lR, th, o.legMat, 6), 0, -th / 2, 0);
+        add(hp, limb(lR * 1.2, lR, th, o.legMat, TAPER.thigh), 0, -th / 2, 0);
         var kn = grp(hp, 0, -th, 0);
-        add(kn, cyl(lR * 0.95, lR * 0.8, sn, o.legMat, 6), 0, -sn / 2, 0);
+        add(kn, limb(lR * 0.95, lR * 0.8, sn, o.legMat, TAPER.shin), 0, -sn / 2, 0);
         add(kn, box(lR * 2.1, 0.09, lR * 3.2, o.footMat || o.legMat), 0, -sn - 0.04, -lR * 0.6);
+        // hip joint (round 6): ball cap riding with the thigh
+        jp(add(hp, sph(lR * 1.35, o.legMat, 12, 8), 0, -lR * 0.1, 0));
         hp.userData.lower = kn;
         limbs[side + 'Leg'] = hp;
         p[side + 'Hip'] = hp;
       });
     }
 
+    if (th) {   // groin: fills the crotch between the two hip caps, under the pelvis
+      jp(add(p.torso, sph(1, o.legMat || o.torsoMat, 12, 8), 0, -0.04, 0)).scale.set(tW * 0.3 + lR * 0.3, lR * 0.8 + 0.03, tD * 0.4);
+    }
     p.limbs = limbs.leftLeg ? limbs : null;
     return p;
   }
@@ -546,18 +592,16 @@
       hipY: 0.92, torsoW: 0.38, torsoH: 0.62, torsoD: 0.26, torsoMat: hide,
       headSize: 0.28, headMat: hide, shoulderW: 0.26, upper: 0.52, fore: 0.50,
       armMat: dark, handMat: dark, armR: 0.055, thigh: 0.50, shin: 0.44,
-      legMat: dark, footMat: horn, legR: 0.07,
+      legMat: dark, footMat: horn, legR: 0.07, neckR: 0.088, neckMat: hide,
       torsoGrad: [0xa85e3c, 0x3d2013], headGrad: [0xa85e3c, 0x421f12]
     });
     // ribs and a glowing furnace in the chest
     for (var i = 0; i < 4; i++) add(p.torso, box(0.40 - i * 0.02, 0.035, 0.28, dark), 0, 0.16 + i * 0.11, 0);
-    var core = add(p.torso, sph(0.10, org, 8, 6, true), 0, 0.34, -0.13);
+    var core = add(p.torso, sph(0.06, org, 8, 6, true), 0, 0.30, -0.125);   // the furnace now sits inside the chest hole
     // furnace vents cut into the belly, and a spine of small plates
     for (var vv = 0; vv < 3; vv++) {
-      add(p.torso, box(0.16, 0.022, 0.03, org, true), 0, 0.14 + vv * 0.06, -0.12);
       add(p.torso, box(0.10, 0.05, 0.04, horn), 0, 0.24 + vv * 0.13, 0.12);
     }
-    add(p.torso, box(0.30, 0.05, 0.03, org, true), 0, 0.52, -0.14);
     // long clawed hands
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
@@ -573,9 +617,29 @@
       add(p[side + 'Shoulder'], cone(0.05, 0.16, horn, 5), sgn * 0.06, 0.04, 0, 0, 0, sgn * 0.7);
       add(p[side + 'Hip'], cone(0.04, 0.12, horn, 4), sgn * 0.05, -0.46, -0.02, -0.6);
     });
-    // long snouted head, yellow eyes, horns
-    add(p.head, box(0.18, 0.12, 0.16, dark), 0, -0.05, -0.16);
-    teeth(p.head, { n: 4, w: 0.16, mat: rough(0xdedac8), h: 0.05, y: -0.08, z: -0.22 });
+    var pit = rough(0x0d0604), char = rough(0x24120a);
+    // no snout (Joel, beat 'em up round 5): a gaping caved-in hole from the nose down through the
+    // sternum to the diaphragm, charred rim, embers burning inside; the fireball is born in there.
+    var emb = E(0xff4a00, 1.6), emb2 = E(0xffb020, 1.8);
+    add(p.head, box(0.11, 0.13, 0.03, pit, true), 0, -0.075, -0.135);            // nose-to-chin cavity
+    // round 6 (Joel): the neck is now thick enough that the throat slot is a narrow inset with
+    // neck all round it, instead of a gap that ate the neck silhouette
+    add(p.torso, box(0.07, 0.13, 0.03, pit, true), 0, 0.665, -0.077);            // through the throat
+    [-1, 1].forEach(function (sg) { add(p.torso, box(0.012, 0.13, 0.02, char, true), sg * 0.041, 0.665, -0.083); });
+    var cav = add(p.torso, box(0.17, 0.44, 0.03, pit, true), 0, 0.38, -0.135);   // sternum to diaphragm
+    // ragged charred rim: shards pointing into the hole, both sides, top to bottom
+    for (var rs = 0; rs < 7; rs++) [-1, 1].forEach(function (sg) {
+      add(p.torso, cone(0.022, 0.07 + (rs % 3) * 0.02, char, 4), sg * 0.095, 0.18 + rs * 0.07, -0.145, 0, 0, sg * Math.PI / 2 + (rs % 2 ? 0.25 : -0.25));
+    });
+    for (var hs = -1; hs <= 1; hs++) add(p.head, cone(0.018, 0.05, char, 4), hs * 0.04, -0.005, -0.14, 0, 0, Math.PI);
+    // embers inside the cavity: they flicker (A.pulse) and swell + climb when it winds up a throw
+    var embers = [];
+    for (var eb = 0; eb < 9; eb++) {
+      var em = add(p.torso, sph(0.022 + (eb % 3) * 0.008, eb % 2 ? emb : emb2, 6, 4, true), ((eb * 37) % 7 - 3) * 0.018, 0.2 + (eb * 0.043) % 0.38, -0.14);
+      em.userData.y0 = em.position.y; em.userData.ph = eb * 1.7; embers.push(em);
+    }
+    A.pulse.push({ m: emb, base: 1.6, amp: 1.1, f: 9.0, ph: 0 }, { m: emb2, base: 1.8, amp: 1.0, f: 7.3, ph: 1.3 });
+    A.chestFire = { embers: embers, core: null };
     A.eyeMeshes = eyes(p.head, { mat: ylw, y: 0.05, z: -0.13, dx: 0.075, size: 0.075, tall: 0.6 });
     add(p.head, cone(0.045, 0.24, horn, 5), -0.11, 0.20, 0.02, -0.35);
     add(p.head, cone(0.045, 0.24, horn, 5), 0.11, 0.20, 0.02, -0.35);
@@ -588,6 +652,15 @@
       var g2 = 1 + w * 0.9 + s * 0.3;
       core.scale.setScalar(g2);
       core.material.emissiveIntensity = 2.0 + w * 3.4 + s * 1.2;
+      // chest fire builds: embers swell, brighten and climb toward the hole's mouth, then blow out on the throw
+      var t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+      for (var q = 0; q < embers.length; q++) {
+        var e2 = embers[q], b = 1 + w * 1.6 + s * 0.8;
+        e2.scale.setScalar(b * (0.8 + 0.3 * Math.sin(t * 13 + e2.userData.ph)));
+        e2.position.y = e2.userData.y0 + w * 0.05 * Math.sin(t * 9 + e2.userData.ph);
+        e2.position.z = -0.14 - s * 0.05;
+      }
+      emb.emissiveIntensity = 1.6 + w * 4 + s * 2; emb2.emissiveIntensity = 1.8 + w * 4 + s * 2;
     };
     A.blink.push({ o: A.eyeMeshes[0] }, { o: A.eyeMeshes[1] });
     return p;
@@ -617,17 +690,45 @@
     for (var sp = 0; sp < 4; sp++) add(p.torso, cone(0.045, 0.15, gum, 4), 0, 0.30 + sp * 0.13, 0.28, -0.35);
     // the face: two eyes high on the chest, hinged jaw below
     A.eyeMeshes = eyes(p.torso, { mat: ylw, y: 0.58, z: -0.32, dx: 0.16, size: 0.11, tall: 0.8 });
-    add(p.torso, box(0.44, 0.06, 0.05, gum, true), 0, 0.44, -0.31);
-    var mouth = grp(p.torso, 0, 0.42, -0.28);
-    add(mouth, box(0.46, 0.26, 0.10, gum, true), 0, -0.13, 0.0);
-    teeth(mouth, { n: 6, w: 0.42, mat: rough(0xf0ead6), h: 0.09, y: -0.03, z: -0.05, down: true });
-    var jaw = grp(p.torso, 0, 0.28, -0.28);
-    add(jaw, box(0.46, 0.16, 0.20, deep), 0, -0.08, 0.06);
-    teeth(jaw, { n: 6, w: 0.42, mat: rough(0xf0ead6), h: 0.09, y: -0.02, z: -0.02 });
+    // round 6 (Joel, ref: industrial dual-shaft scrap shredder): a boxy steel hopper for a mouth with
+    // two parallel horizontal shafts of interleaved hooked cutter discs that counter-rotate (A.spin,
+    // axis x) and rev with the bite (see animate()). The lower hopper lip is the hinged jaw.
+    var steel = new T.MeshStandardMaterial({ color: 0xa9a397, metalness: 0.78, roughness: 0.42 });
+    var edge = new T.MeshStandardMaterial({ color: 0xd9d3c4, metalness: 0.85, roughness: 0.3 });
+    var iron = new T.MeshStandardMaterial({ color: 0x4d4741, metalness: 0.7, roughness: 0.55 });
+    var pit = rough(0x080304);
+    var maw = grp(p.torso, 0, 0.32, -0.30);
+    add(maw, box(0.44, 0.24, 0.05, pit, true), 0, 0, 0.06);                         // the throat behind the shafts
+    add(maw, box(0.54, 0.055, 0.17, iron), 0, 0.145, -0.03);                        // hopper top plate
+    add(maw, box(0.50, 0.03, 0.05, steel), 0, 0.115, -0.10, -0.5);                  // its worn feed lip, angled in
+    [-1, 1].forEach(function (sg) {
+      add(maw, box(0.055, 0.31, 0.17, iron), sg * 0.25, 0, -0.03);                  // side cheeks (bearing housings)
+      add(maw, cyl(0.035, 0.035, 0.02, steel, 10), sg * 0.28, 0.055, -0.03, 0, 0, Math.PI / 2);   // bearing caps
+      add(maw, cyl(0.035, 0.035, 0.02, steel, 10), sg * 0.28, -0.055, -0.03, 0, 0, Math.PI / 2);
+      for (var bt = 0; bt < 2; bt++) add(maw, cyl(0.012, 0.012, 0.015, edge, 6), sg * 0.20, 0.145, -0.115 + bt * 0.0, 0, 0, 0);
+    });
+    var NDISC = 9, PITCH = 0.048, X0 = -(NDISC - 1) * PITCH / 2;
+    [[0.055, 6.0], [-0.055, -6.0]].forEach(function (S, k) {
+      var shaft = grp(maw, 0, S[0], -0.03);
+      add(shaft, cyl(0.02, 0.02, 0.47, iron, 8), 0, 0, 0, 0, 0, Math.PI / 2);         // hex shaft
+      for (var d = 0; d < NDISC; d++) {
+        var dx = X0 + d * PITCH + (k ? PITCH / 2 : 0) - PITCH / 4;                 // interleave the two stacks
+        var disc = grp(shaft, dx, 0, 0, (d * 0.7 + k) % (Math.PI * 2));
+        add(disc, cyl(0.058, 0.058, 0.02, steel, 12), 0, 0, 0, 0, 0, Math.PI / 2);
+        for (var hk = 0; hk < 3; hk++) {
+          var an = hk / 3 * Math.PI * 2;
+          // hooked cutter tooth, raked forward in this shaft's direction of rotation
+          add(disc, cone(0.02, 0.05, edge, 4), 0, Math.cos(an) * 0.064, Math.sin(an) * 0.064, an + (k ? -0.95 : 0.95));
+        }
+      }
+      A.spin.push({ o: shaft, axis: 'x', rate: S[1], base: S[1], grinder: true });
+    });
+    A.grinder = maw;
+    var jaw = grp(p.torso, 0, 0.165, -0.30);                                        // lower hopper lip = hinged jaw
+    add(jaw, box(0.54, 0.10, 0.22, deep), 0, -0.06, 0.04);
+    add(jaw, box(0.52, 0.04, 0.17, iron), 0, -0.005, -0.03);
+    add(jaw, box(0.50, 0.03, 0.05, steel), 0, 0.02, -0.10, 0.5);
     A.jaw = { o: jaw, closed: 0, open: 0.55 };
-    // upper gums and two tusks that clear the lower jaw
-    add(p.torso, cone(0.05, 0.20, rough(0xf0ead6), 4), -0.16, 0.34, -0.30, Math.PI);
-    add(p.torso, cone(0.05, 0.20, rough(0xf0ead6), 4), 0.16, 0.34, -0.30, Math.PI);
     // gorilla arms: knuckles on the floor, spiked
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
@@ -1343,6 +1444,7 @@
   // converter does not spawn Lost Souls (3006) or Pain Elementals (71).
   var DEFAULT_STATS = { hp: 50, speed: 3.5, attack: 'melee', range: 2.5, cooldown: 1.6, damage: 10, scale: 1.0 };
 
+  var buildTypeId = 0, HUMAN_FACE = { 3004: 1, 9: 1, 65: 1 };   // sculpted faces only on the human former-soldiers
   var NAMES = {
     3004: 'Zombieman', 9: 'Shotgun Guy', 65: 'Chaingunner', 3001: 'Imp',
     3002: 'Demon', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
@@ -1447,6 +1549,7 @@
       curLook = null; curSlots = null; slotSeq = null;
     }
     g.userData.lookSlots = slots;
+    if (window.CyberRefine) window.CyberRefine.apply(g, THREE);   // refinement pass (cyber-refine.js)
     if (look) {
       if (look.parts) {
         g.traverse(function (o) {
@@ -1492,9 +1595,10 @@
 
   /** Public build: resolves custom:<id> to its base + look, else the stock rig. */
   function build(typeId, ent, THREE) {
-    if (!isCustom(typeId)) return buildBase(typeId, ent, THREE);
+    var R = window.CyberRefine ? function (g) { return window.CyberRefine.apply(g, THREE); } : function (g) { return g; };   // refinement pass (cyber-refine.js)
+    if (!isCustom(typeId)) return R(buildBase(typeId, ent, THREE));
     var def = customDef(typeId);
-    if (!def) return buildBase(0, ent, THREE);
+    if (!def) return R(buildBase(0, ent, THREE));
     var look = null, k;
     if (def.look) { look = {}; for (k in def.look) look[k] = def.look[k]; }
     // A stat-panel `scale` scales the rig relative to its base's own scale.
@@ -1530,6 +1634,7 @@
     var accents = [];
     buildAccents = accents;
     var parts;
+    buildTypeId = id;
     try {
       parts = BUILDERS[id](root, A) || {};
     } finally {
@@ -1589,6 +1694,7 @@
     root.userData.limbs = parts.limbs || null;
     root.userData.eyes = A.eyeMeshes;
     root.userData.jaw = A.jaw ? A.jaw.o : null;
+    root.userData.parts = parts;   // round 6: lets tools pose the rig
     root.userData.arms = parts.leftShoulder ? [parts.leftShoulder, parts.rightShoulder] : [];
     root.userData.rotor = A.spin.length ? A.spin[0].o : null;
     root.userData.tankTreads = A.treads || null;
@@ -1867,6 +1973,7 @@
       o = A.spin[i];
       // treads only roll while the thing is actually driving at you
       var rate = o.tread ? (moving ? o.rate : 0) : o.rate;
+      if (o.grinder && A.jaw) rate *= 1 + 3.5 * (A.jaw.bite || 0);   // shredder shafts rev up with the bite
       o.o.rotation[o.axis] += rate * delta;
     }
     for (i = 0; i < A.slide.length; i++) {

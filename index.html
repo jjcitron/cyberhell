@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Acidlemon Games startup splash: first script, so it sees input before the game -->
+  <script src="js/acid-splash.js" data-logo="brand/acidlemon-lockup.svg"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -9,14 +11,21 @@
   <link rel="manifest" href="site.webmanifest">
   <link rel="icon" href="data:,">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
+  <!-- First script: sets html.touch / window.CYBER_TOUCH before any CSS rule or engine code reads it. -->
+  <script src="js/cyber-input-mode.js"></script>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
+  <script src="js/cyber-refine.js"></script>
+  <script src="js/head3.js"></script>
   <script src="js/cyber-enemies.js"></script>
   <script src="js/cyber-ai.js"></script>
+  <script src="js/cyber-difficulty.js"></script>
   <script src="js/cyber-weapons.js"></script>
   <script src="js/cyber-gore.js"></script>
   <script src="js/cyber-env.js"></script>
   <script src="js/cyber-traversal.js"></script>
+  <script src="js/acid-gamepad.js"></script>
+  <script src="js/cyber-gamepad.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -242,6 +251,7 @@
       font-weight: bold;
     }
     #difficulty-panel { background: rgba(0,0,0,0.6); border: 1px solid #ff3355; border-radius: 4px; padding: 8px 14px; color: #ffb3c0; font-family: monospace; font-size: 13px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+    #difficulty-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 100%; }
     #difficulty-panel .dp-presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
     #difficulty-panel button { background: #1a0d12; color: #ff8fa3; border: 1px solid #ff3355; padding: 4px 10px; font-family: monospace; font-weight: bold; border-radius: 3px; cursor: pointer; }
     #difficulty-panel button.on { background: #ff3355; color: #000; }
@@ -341,6 +351,14 @@
     #overlay-screen:not(.mode-pause) #pause-music { display: none; }
     #overlay-screen.mode-pause .title-tip { display: none; }
     #overlay-screen.mode-end #pause-music { display: none; }
+    #overlay-screen.mode-end #difficulty-slider { display: none; }
+    #difficulty-slider { background: rgba(0,0,0,0.6); border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px;
+      width: min(440px, 92vw); box-sizing: border-box; color: #00ffcc; font-family: monospace; text-align: center; }
+    #difficulty-slider label { display: block; font-weight: bold; font-size: 14px; }
+    #difficulty-slider label b { color: #fff; margin-left: 6px; }
+    #difficulty-slider label small { display: block; font-weight: normal; color: #a0aec0; font-size: 11px; margin-top: 2px; }
+    #difficulty-slider input { width: 100%; accent-color: #00ffcc; height: 28px; margin: 6px 0 2px; touch-action: pan-x; cursor: pointer; }
+    #difficulty-slider .dl { display: flex; justify-content: space-between; font-size: 10px; color: #7fd; }
 
     #pause-music {
       display: flex;
@@ -457,10 +475,10 @@
       border-radius: 6px; font-size: 20px; z-index: 16; touch-action: manipulation;
     }
     .touch-only { display: none; }
-    @media (pointer: coarse) {
-      .touch-only { display: inline-block; }
-      #fs-hud-btn { display: flex; }
-    }
+    /* html.touch, not (pointer: coarse): a stylus tablet reports a fine primary
+       pointer (see js/cyber-input-mode.js). */
+    html.touch .touch-only { display: inline-block; }
+    html.touch #fs-hud-btn { display: flex; }
     .start-btn {
       padding: 16px 44px;
       font-size: 22px;
@@ -483,7 +501,8 @@
     /* CH-QA-01: a 1280x800 desktop leaves Chrome roughly 620-640px of page
        height. Compact the title screen there so the whole thing fits without
        scrolling and the CTA stays fully on screen. */
-    @media (max-height: 740px) {
+    /* Both difficulty controls need the compact menu on 768/800px laptops. */
+    @media (max-height: 820px) {
       .title-glitch { font-size: 36px; letter-spacing: 4px; margin-bottom: 4px; }
       .subtitle { font-size: 13px; letter-spacing: 2px; margin-bottom: 12px; }
       .instructions-card {
@@ -739,19 +758,19 @@
       text-align: center;
       padding: 24px;
     }
-    @media (pointer: coarse) and (orientation: portrait) {
-      #rotate-nudge { display: flex; }
+    @media (orientation: portrait) {
+      html.touch #rotate-nudge { display: flex; }
     }
 
     /* ---- Landscape touch layout (landscape only, no portrait reflow) ---- */
-    @media (pointer: coarse) and (orientation: landscape) {
+    @media (orientation: landscape) {
       /* Controls become a transparent full-screen layer instead of stealing a
          140px band off the bottom of the play view. */
-      #mobile-controls { display: block; }
+      html.touch #mobile-controls { display: block; }
 
       /* HUD off the play view: no opaque 90px bar, thin translucent top strip
          that reads over the world instead of hiding it. */
-      #hud-bar {
+      html.touch #hud-bar {
         top: 0;
         bottom: auto;
         height: auto;
@@ -762,36 +781,36 @@
         pointer-events: none;
         align-items: flex-start;
       }
-      .hud-block {
+      html.touch .hud-block {
         min-width: 0;
         padding: 2px 8px;
         border: none;
         background: rgba(6, 10, 14, 0.42);
         box-shadow: none;
       }
-      .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
-      .hud-val { font-size: 18px; line-height: 19px; }
-      #face-container { display: none; }
+      html.touch .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
+      html.touch .hud-val { font-size: 18px; line-height: 19px; }
+      html.touch #face-container { display: none; }
       /* The six-slot selector wrapped to two rows and ate the whole top-right,
          which is where the touch layer's icons and fullscreen button live. The
          touch build switches weapons with the edge arrows, and those carry the
          current weapon's name, so the slot list is redundant here. */
-      .weapon-selector { display: none; }
+      html.touch .weapon-selector { display: none; }
       /* space-between would fling ARMOR to the far right with the selector
          gone; keep the readouts clustered in the top-left corner. */
-      #hud-bar { justify-content: flex-start; gap: 6px; }
+      html.touch #hud-bar { justify-content: flex-start; gap: 6px; }
 
       /* Banner sat at top:24px, straight under the new HUD strip. */
-      #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+      html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
 
       /* Start/pause overlay has to fit a ~360px-tall viewport and stay
          scrollable, or the ENTER/RESUME button is unreachable. */
-      #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
-      .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
-      .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
-      .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
-      .instructions-grid { display: none; }
-      .start-btn { padding: 12px 30px; font-size: 17px; }
+      html.touch #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
+      html.touch .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
+      html.touch .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+      html.touch .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
+      html.touch .instructions-grid { display: none; }
+      html.touch .start-btn { padding: 12px 30px; font-size: 17px; }
     }
   </style>
   <!-- Three.js 3D Engine -->
@@ -874,6 +893,7 @@
           <div><span class="key-badge">TAB / M</span> Tactical Automap</div>
           <div><span class="key-badge">R</span> Restart Level</div>
         </div>
+        <p class="gamepad-hint" style="margin-top:8px; font-size:12px; opacity:0.85;"><span class="key-badge">GAMEPAD</span> L-stick move &middot; R-stick look &middot; X/RB fire &middot; A jump &middot; Y/LB use &middot; LT/RT weapon &middot; View map &middot; Start pause &middot; menus: D-pad + A, B back</p>
       </div>
 
       <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:14px;">
@@ -898,12 +918,13 @@
           </label>
         </div>
 
-        <!-- DIFFICULTY. Presets only set the two damage sliders; enemy counts
-             and AI are the same in every mode. Ultra-Violence is the tuning
-             the game shipped with (both 100%). God mode above is separate. -->
+        <div id="difficulty-controls">
+        <!-- Damage overrides share CyberDifficulty with the difficulty slider.
+             These legacy presets use normal AI and never change enemy counts.
+             Ultra-Violence is 100% damage; god mode above stays separate. -->
         <div id="difficulty-panel">
           <div class="dp-presets">
-            <span style="color:#ff3355; font-weight:bold;">DIFFICULTY:</span>
+            <span style="color:#ff3355; font-weight:bold;">DAMAGE PRESETS:</span>
             <button type="button" data-preset="easy">EASY</button>
             <button type="button" data-preset="medium">MEDIUM</button>
             <button type="button" data-preset="hard">HARD</button>
@@ -912,6 +933,11 @@
           </div>
           <label>DAMAGE YOU DEAL <input type="range" id="dmg-dealt" min="25" max="300" step="5" value="100" /> <span class="dp-val" id="dmg-dealt-val">100%</span></label>
           <label>DAMAGE YOU TAKE <input type="range" id="dmg-taken" min="10" max="200" step="5" value="100" /> <span class="dp-val" id="dmg-taken-val">100%</span></label>
+        </div>
+
+        <!-- DIFFICULTY (js/cyber-difficulty.js). Same overlay = title screen AND pause menu, so it
+             shows on both; hidden only on the end-of-mission card. -->
+        <div id="difficulty-slider" data-diff-slider></div>
         </div>
 
         <!-- PAUSE-MENU MUSIC. The only track switcher in the game: hidden on the
@@ -2452,10 +2478,13 @@ class CyberDoomEngine {
 
     // Touch build: pointer lock does not exist on mobile Chrome, so the whole
     // start/pause path has to run off taps instead.
-    // Same predicate the CSS uses, deliberately: maxTouchPoints would also be
-    // true on a touchscreen laptop and would rob desktop play of pointer-lock
-    // mouse look, and it would disagree with the media query that shows the pad.
-    this.isTouch = window.matchMedia('(pointer: coarse)').matches;
+    // Same flag the CSS uses (html.touch), deliberately: one decision, made in
+    // js/cyber-input-mode.js, so the pad and the start path cannot disagree.
+    // It is not (pointer: coarse) alone: Android tablets with a stylus report a
+    // fine primary pointer. A touchscreen Windows/Mac laptop still stays on
+    // pointer-lock mouse look unless a finger actually taps.
+    this.isTouch = (typeof window.CYBER_TOUCH === 'boolean')
+      ? window.CYBER_TOUCH : window.matchMedia('(pointer: coarse)').matches;
     this.pausedByBlur = false;
 
     // Setup Components
@@ -2487,11 +2516,22 @@ class CyberDoomEngine {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    // Weak mobile GPUs (Mali on MediaTek tablets) can refuse the MSAA context;
+    // a plain context still plays.
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    } catch (err) {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'low-power' });
+    }
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    // Phones ship 3x panels; rendering a Doom map at native density is three
-    // times the fragment work for detail nobody can see at arm's length.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? 1.5 : 2));
+    this.applyPixelRatio();
+    // A lost context (driver reset, memory pressure on a tablet) used to leave
+    // a frozen frame. preventDefault lets the browser restore it; the run parks
+    // behind the pause overlay meanwhile.
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (this.isRunning) this.pauseRun('GRAPHICS RESET', 'TAP RESUME TO CONTINUE');
+    }, false);
     // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
     // where the extra shadow-map pass isn't worth the frame cost.
     this.renderer.shadowMap.enabled = !this.isTouch;
@@ -2501,7 +2541,37 @@ class CyberDoomEngine {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.applyPixelRatio();
     });
+  }
+
+  // Phones ship 3x panels; rendering a Doom map at native density is three
+  // times the fragment work for detail nobody can see at arm's length. Touch
+  // also gets a total pixel budget: a 10-11" tablet at its native 1.5x is ~2-3
+  // megapixels, which a phone-class Mali GPU cannot fill at frame rate.
+  applyPixelRatio() {
+    const dpr = window.devicePixelRatio || 1;
+    let pr = Math.min(dpr, this.isTouch ? 1.5 : 2);
+    if (this.isTouch) {
+      const BUDGET = 1.6e6; // drawing-buffer pixels
+      const css = Math.max(1, window.innerWidth * window.innerHeight);
+      pr = Math.max(0.75, Math.min(pr, Math.sqrt(BUDGET / css)));
+    }
+    if (this.renderer && Math.abs(this.renderer.getPixelRatio() - pr) > 0.01) {
+      this.renderer.setPixelRatio(pr);
+    }
+  }
+
+  // Upgrade a desktop-detected session to the touch build. Used when a finger
+  // or pen presses before the mission starts (a stylus tablet that reported
+  // pointer: fine) and when pointer lock is refused on a touchscreen device.
+  enterTouchMode(reason) {
+    if (this.isTouch) return;
+    this.isTouch = true;
+    if (window.CyberInputMode) window.CyberInputMode.setTouchMode(true);
+    else { window.CYBER_TOUCH = true; document.documentElement.classList.add('touch'); }
+    this.touchModeReason = reason || 'runtime';
+    this.applyPixelRatio();
   }
 
   loadLevel(data) {
@@ -3328,10 +3398,11 @@ class CyberDoomEngine {
     if (!body || rec.state === 'DEAD' || !g.visible) return;
     // Looming rigs (1.5x+, see enemyRadius) reach and need to slide further,
     // and their bigger swing carries a part further between two corrections.
-    // ponytail: flat 0.04/scale-unit margin, measured (Mancubus 1.6x reached
-    // 0.051 on the riser press without it); per-part swing speed if it bites.
+    // Leave 1 cm for between-frame swing on the backported Chaingunner rig
+    // (CH-COL-14a measured 0.052 penetration at a riser), plus the larger
+    // rigs' existing 0.04/scale-unit margin.
     const big = Math.max(1, g.scale.x);
-    const WALL_FACE = 0.2 + 0.04 * (big - 1), REACH = 2.2 * big, MAX_OFF = 1.4 * big;
+    const WALL_FACE = 0.21 + 0.04 * (big - 1), REACH = 2.2 * big, MAX_OFF = 1.4 * big;
     const off = rec.wallOff || (rec.wallOff = { x: 0, z: 0, lx: 0, lz: 0 });
     // Take last frame's slide back out, so what is measured is the rig alone.
     body.position.x -= off.lx; body.position.z -= off.lz;
@@ -3568,11 +3639,9 @@ class CyberDoomEngine {
   /* Settings screen: preset buttons snap the sliders; the sliders are the
      truth and are saved as they move. */
   initDifficulty() {
-    const KEY = 'cyberhell.difficulty';
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (err) {}
-    this.difficulty = { dealt: 1, taken: 1 };
-    if (saved && isFinite(saved.dealt) && isFinite(saved.taken)) this.difficulty = { dealt: +saved.dealt, taken: +saved.taken };
+    const D = window.CyberDifficulty;
+    // Both menus read and write one state; combat scales damage exactly once.
+    Object.defineProperty(this, 'difficulty', { get: () => D.get() });
     const dealt = document.getElementById('dmg-dealt'), taken = document.getElementById('dmg-taken');
     if (!dealt || !taken) return;
     const show = () => {
@@ -3587,23 +3656,21 @@ class CyberDoomEngine {
       }
       document.querySelectorAll('#difficulty-panel button[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === match));
       document.getElementById('dp-custom').innerText = match ? '' : 'CUSTOM';
-      try { localStorage.setItem(KEY, JSON.stringify(this.difficulty)); } catch (err) {}
     };
     this.setDifficulty = (preset) => {
       const pr = DIFFICULTY_PRESETS[preset];
       if (!pr) return;
-      this.difficulty = { dealt: pr.dealt, taken: pr.taken };
-      show();
+      D.setCustom(pr.dealt, pr.taken);
     };
     document.querySelectorAll('#difficulty-panel button[data-preset]').forEach(b => {
       b.addEventListener('click', (e) => { e.stopPropagation(); this.setDifficulty(b.dataset.preset); });
     });
     const onSlide = () => {
-      this.difficulty = { dealt: Number(dealt.value) / 100, taken: Number(taken.value) / 100 };
-      show();
+      D.setCustom(Number(dealt.value) / 100, Number(taken.value) / 100);
     };
     dealt.addEventListener('input', onSlide);
     taken.addEventListener('input', onSlide);
+    D.subscribe(show);
     show();
   }
 
@@ -3655,6 +3722,13 @@ class CyberDoomEngine {
     // through the pause gate's own path so there is exactly one thing starting
     // playback - pointerlockchange calls resumeAllAudio() for the same click,
     // and resumeForGame() is idempotent, so the two cannot race each other.
+    // A finger or pen on the title/pause screen means this is a touchscreen
+    // being used as one, whatever (pointer: coarse) said. Capture phase, so it
+    // lands before the START click reaches startRun().
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isTouch || this.isRunning) return;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.enterTouchMode('pointer:' + e.pointerType);
+    }, true);
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
       this.sound.resume();
@@ -3883,6 +3957,7 @@ class CyberDoomEngine {
       startBtn.innerText = "RESUME";
     };
 
+    document.addEventListener('pointerlockerror', () => this.onPointerLockRefused());
     document.addEventListener('pointerlockchange', () => {
       if (this.isTouch) return;
       if (document.pointerLockElement === this.canvas) {
@@ -3971,6 +4046,8 @@ class CyberDoomEngine {
 
     this.initTouchControls();
     this.initFocusPause();
+    // Gamepad (Xbox / PlayStation / generic, hot-plug): js/cyber-gamepad.js.
+    this.padCtl = window.CyberGamepad ? window.CyberGamepad.attach(this) : null;
   }
 
   /* ==========================================================================
@@ -3981,16 +4058,30 @@ class CyberDoomEngine {
   // rejects it for touch, so a touch build starts the run directly, the way
   // the pointerlockchange 'locked' branch does for a mouse.
   startRun() {
-    if (this.isTouch || typeof this.canvas.requestPointerLock !== 'function') {
+    // A pad press is not a user gesture, so pointer lock would be refused:
+    // a run started from the controller goes the touch way (no lock).
+    if (this.isTouch || this.padGesture || typeof this.canvas.requestPointerLock !== 'function') {
       if (this.isGameOver || this.isVictory) return;
       this.missionStarted = true;
       this.resumeRun();
       return;
     }
+    // Lock refused on a touchscreen device (Android refuses it for touch): the
+    // START tap would otherwise be a dead button, so drop into the touch build.
+    const refused = () => this.onPointerLockRefused();
     try {
       const p = this.canvas.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
-    } catch (err) { /* lock refused: the overlay stays up, click again */ }
+      if (p && p.catch) p.catch(refused);
+    } catch (err) { refused(); }
+  }
+
+  // Older Chrome reports refusal only through 'pointerlockerror', newer through
+  // the promise; both land here, so this has to be idempotent.
+  onPointerLockRefused() {
+    if (this.isRunning || document.pointerLockElement) return;
+    if (!(navigator.maxTouchPoints > 0)) return; // a real desktop: overlay stays, click again
+    this.enterTouchMode('pointerlock-refused');
+    this.startRun();
   }
 
   unlockPointer() {
@@ -4034,13 +4125,16 @@ class CyberDoomEngine {
     this.isRunning = false;
     this.keys = {}; // drop any held d-pad or WASD direction across the pause
     this.clearTouchInput();
-    this.sound.pause();
-    if (window.cyberMidi && window.cyberMidi.isPlaying) window.cyberMidi.pause();
+    // SoundEngine has no pause(): the old call threw here, leaving a BOOT ERROR overlay on
+    // every touch / lost-focus / controller pause. Same audio path as every other pause;
+    // the overlay mode is set once, below, after the title.
+    this.pauseAllAudio();
     // Mouse events go to the locked element, so an overlay shown while pointer
     // lock is still held cannot be clicked and RESUME becomes a dead button.
     this.unlockPointer();
     document.getElementById('overlay-screen').style.display = 'flex';
     document.getElementById('overlay-title').innerText = title || "PAUSED";
+    this.setOverlayMode('pause');
     document.getElementById('overlay-subtitle').innerText = subtitle || "TAP RESUME TO CONTINUE INFILTRATION";
     document.getElementById('start-btn').innerText = "RESUME";
   }
@@ -4869,6 +4963,8 @@ class CyberDoomEngine {
     // dropped every corpse killed on a raised floor through it.
     this.showHudMessage(`ELIMINATED ${enemy.type.toUpperCase()}`);
     this.hudFace.triggerGrin();
+    // Crossfire rumble: kill, or boss kill for the Cyberdemon (16) / Spider Mastermind (7).
+    if (this.gamepad) this.gamepad.feel([16, 7].includes(parseInt(enemy.enemyType)) ? 'boss' : 'kill');
   }
 
   explodeBarrel(barrel) {
@@ -4886,7 +4982,7 @@ class CyberDoomEngine {
       if (ex * ex + ez * ez > 49) return;
       const d = bPos.distanceTo(e.group.position);
       if (d < 7.0) {
-        e.hp -= (7.0 - d) * 18 * (this.difficulty ? this.difficulty.dealt : 1);
+        e.hp -= (7.0 - d) * 18 * (window.CyberDifficulty ? window.CyberDifficulty.dealt() : 1);
         if (e.hp <= 0) this.killEnemy(e);
       }
     });
@@ -5337,6 +5433,17 @@ class CyberDoomEngine {
               // Crossed the wall! Push back to radius on fromSide
               pushDist = r + res.dist;
             }
+          }
+
+          // Beyond an endpoint the obstacle is a round cap, not the wall's
+          // infinite line. A perpendicular push there traps a chasing body at
+          // convex corners (the L-shaped corridor); push radially off the cap.
+          const along = ((resX - p1x) * dx + (resZ - p1z) * dz) / (segLen * segLen);
+          if ((along < 0 || along > 1) && res.dist > 1e-6) {
+            const ex = along < 0 ? p1x : p2x, ez = along < 0 ? p1z : p2z;
+            nx = (resX - ex) / res.dist;
+            nz = (resZ - ez) / res.dist;
+            pushDist = r - res.dist;
           }
 
           if (pushDist > 1e-4) {
@@ -5790,6 +5897,19 @@ class CyberDoomEngine {
       aim.z += this.player.velocity.z * ai.lead;
     }
     const dir = new THREE.Vector3().subVectors(aim, from).normalize();
+    // Imp (3001): the refined rig has a burning hole in its chest, so the fireball leaves from
+    // there (~0.6 of rig height, 0.35 forward) instead of the generic +1.0 point. Same speed/damage.
+    if (parseInt(enemy.enemyType, 10) === 3001 && !st.fly && enemy.group) {
+      if (enemy._chestY === undefined) {
+        const bb = new THREE.Box3().setFromObject(enemy.group);
+        const h = bb.isEmpty() ? 0 : bb.max.y - enemy.group.position.y;
+        enemy._chestY = (h > 0.4 && h < 6) ? h * 0.6 : 1.0;
+      }
+      const fl = Math.hypot(dir.x, dir.z) || 1;
+      from.copy(enemy.group.position);
+      from.x += dir.x / fl * 0.35; from.z += dir.z / fl * 0.35; from.y += enemy._chestY;
+      dir.subVectors(aim, from).normalize();
+    }
     this.spawnProjectile({ from, dir, kind, owner: 'enemy', damage: dmg });
   }
 
@@ -5859,7 +5979,8 @@ class CyberDoomEngine {
   // projectiles. Mirrors what raycastHitscan does on a hit.
   damageEnemy(enemy, amount, hitPoint) {
     if (!enemy || enemy.state === 'DEAD') return;
-    amount *= (this.difficulty ? this.difficulty.dealt : 1);
+    // Difficulty: damage dealt x dealt (NORMAL = 1, unchanged).
+    if (window.CyberDifficulty) amount *= window.CyberDifficulty.dealt();
     enemy.hp -= amount;
     this.showHitmarker();
     this.sound.playMonsterHurt();
@@ -6156,8 +6277,9 @@ class CyberDoomEngine {
     const god = document.getElementById('god-mode-chk');
     if (god && god.checked) return;
 
-    // Difficulty: at least 1, so a scaled-down hit still registers.
-    let dmg = Math.max(1, Math.round(amount * (this.difficulty ? this.difficulty.taken : 1)));
+    // Difficulty: damage taken x taken (NORMAL = 1, unchanged).
+    const taken = window.CyberDifficulty ? window.CyberDifficulty.taken() : 1;
+    let dmg = (taken === 1 || !(amount > 0)) ? amount : Math.max(1, Math.round(amount * taken));
     if (this.player.armor > 0) {
       const absorbed = Math.min(this.player.armor, Math.floor(dmg * 0.6));
       this.player.armor -= absorbed;
@@ -6166,6 +6288,7 @@ class CyberDoomEngine {
 
     this.player.health -= dmg;
     this.sound.playMonsterHurt();
+    if (this.gamepad) this.gamepad.feel('hit');   // Crossfire rumble: hit
 
     const df = document.getElementById('damage-flash');
     df.style.opacity = '1';
@@ -6693,6 +6816,8 @@ class CyberDoomEngine {
     requestAnimationFrame(() => this.animate());
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
+
+    if (this.padCtl) this.padCtl.update(delta);
 
     if (this.isRunning) {
       this.updatePhysics(delta);

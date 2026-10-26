@@ -11,11 +11,12 @@
     "dev": "node tools/dev_api_server.mjs",
     "dev:api": "node tools/dev_api_server.mjs",
     "migrate": "node tools/migrate_levels_to_blob.mjs",
-    "test": "node --test tests/api.test.mjs tests/level-validate.test.mjs tests/midi-writer.test.mjs tests/midi-level-music.test.mjs && node tests/check-exits.js && node tests/editor-roundtrip.js",
+    "test": "node --test tests/api.test.mjs tests/level-validate.test.mjs tests/midi-writer.test.mjs tests/midi-level-music.test.mjs tests/input-mode.test.js tests/gamepad.test.mjs tests/difficulty-state.test.mjs tests/collision-endpoint.test.mjs && node tests/check-exits.js && node tests/editor-roundtrip.js",
     "test:api": "node --test tests/api.test.mjs",
     "check:levels": "node tests/check-exits.js && node tests/check-clipping.js && node tests/editor-roundtrip.js",
     "check:polys": "node tests/check-polys.js",
-    "qa:articulation": "node tests/qa-articulation.js"
+    "qa:articulation": "node tests/qa-articulation.js",
+    "test:gamepad": "node --test tests/gamepad.test.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^0.27.0",
