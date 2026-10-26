@@ -10,6 +10,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="site.webmanifest">
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
+  <!-- First script: sets html.touch / window.CYBER_TOUCH before any CSS rule or engine code reads it. -->
+  <script src="js/cyber-input-mode.js"></script>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
   <script src="js/cyber-refine.js"></script>
@@ -461,10 +463,10 @@
       border-radius: 6px; font-size: 20px; z-index: 16; touch-action: manipulation;
     }
     .touch-only { display: none; }
-    @media (pointer: coarse) {
-      .touch-only { display: inline-block; }
-      #fs-hud-btn { display: flex; }
-    }
+    /* html.touch, not (pointer: coarse): a stylus tablet reports a fine primary
+       pointer (see js/cyber-input-mode.js). */
+    html.touch .touch-only { display: inline-block; }
+    html.touch #fs-hud-btn { display: flex; }
     .start-btn {
       padding: 16px 44px;
       font-size: 22px;
@@ -740,19 +742,19 @@
       text-align: center;
       padding: 24px;
     }
-    @media (pointer: coarse) and (orientation: portrait) {
-      #rotate-nudge { display: flex; }
+    @media (orientation: portrait) {
+      html.touch #rotate-nudge { display: flex; }
     }
 
     /* ---- Landscape touch layout (landscape only, no portrait reflow) ---- */
-    @media (pointer: coarse) and (orientation: landscape) {
+    @media (orientation: landscape) {
       /* Controls become a transparent full-screen layer instead of stealing a
          140px band off the bottom of the play view. */
-      #mobile-controls { display: block; }
+      html.touch #mobile-controls { display: block; }
 
       /* HUD off the play view: no opaque 90px bar, thin translucent top strip
          that reads over the world instead of hiding it. */
-      #hud-bar {
+      html.touch #hud-bar {
         top: 0;
         bottom: auto;
         height: auto;
@@ -763,36 +765,36 @@
         pointer-events: none;
         align-items: flex-start;
       }
-      .hud-block {
+      html.touch .hud-block {
         min-width: 0;
         padding: 2px 8px;
         border: none;
         background: rgba(6, 10, 14, 0.42);
         box-shadow: none;
       }
-      .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
-      .hud-val { font-size: 18px; line-height: 19px; }
-      #face-container { display: none; }
+      html.touch .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
+      html.touch .hud-val { font-size: 18px; line-height: 19px; }
+      html.touch #face-container { display: none; }
       /* The six-slot selector wrapped to two rows and ate the whole top-right,
          which is where the touch layer's icons and fullscreen button live. The
          touch build switches weapons with the edge arrows, and those carry the
          current weapon's name, so the slot list is redundant here. */
-      .weapon-selector { display: none; }
+      html.touch .weapon-selector { display: none; }
       /* space-between would fling ARMOR to the far right with the selector
          gone; keep the readouts clustered in the top-left corner. */
-      #hud-bar { justify-content: flex-start; gap: 6px; }
+      html.touch #hud-bar { justify-content: flex-start; gap: 6px; }
 
       /* Banner sat at top:24px, straight under the new HUD strip. */
-      #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+      html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
 
       /* Start/pause overlay has to fit a ~360px-tall viewport and stay
          scrollable, or the ENTER/RESUME button is unreachable. */
-      #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
-      .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
-      .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
-      .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
-      .instructions-grid { display: none; }
-      .start-btn { padding: 12px 30px; font-size: 17px; }
+      html.touch #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
+      html.touch .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
+      html.touch .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+      html.touch .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
+      html.touch .instructions-grid { display: none; }
+      html.touch .start-btn { padding: 12px 30px; font-size: 17px; }
     }
   </style>
   <!-- Three.js 3D Engine -->
@@ -2276,10 +2278,13 @@ class CyberDoomEngine {
 
     // Touch build: pointer lock does not exist on mobile Chrome, so the whole
     // start/pause path has to run off taps instead.
-    // Same predicate the CSS uses, deliberately: maxTouchPoints would also be
-    // true on a touchscreen laptop and would rob desktop play of pointer-lock
-    // mouse look, and it would disagree with the media query that shows the pad.
-    this.isTouch = window.matchMedia('(pointer: coarse)').matches;
+    // Same flag the CSS uses (html.touch), deliberately: one decision, made in
+    // js/cyber-input-mode.js, so the pad and the start path cannot disagree.
+    // It is not (pointer: coarse) alone: Android tablets with a stylus report a
+    // fine primary pointer. A touchscreen Windows/Mac laptop still stays on
+    // pointer-lock mouse look unless a finger actually taps.
+    this.isTouch = (typeof window.CYBER_TOUCH === 'boolean')
+      ? window.CYBER_TOUCH : window.matchMedia('(pointer: coarse)').matches;
     this.pausedByBlur = false;
 
     // Setup Components
@@ -2311,11 +2316,22 @@ class CyberDoomEngine {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    // Weak mobile GPUs (Mali on MediaTek tablets) can refuse the MSAA context;
+    // a plain context still plays.
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    } catch (err) {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'low-power' });
+    }
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    // Phones ship 3x panels; rendering a Doom map at native density is three
-    // times the fragment work for detail nobody can see at arm's length.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isTouch ? 1.5 : 2));
+    this.applyPixelRatio();
+    // A lost context (driver reset, memory pressure on a tablet) used to leave
+    // a frozen frame. preventDefault lets the browser restore it; the run parks
+    // behind the pause overlay meanwhile.
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (this.isRunning) this.pauseRun('GRAPHICS RESET', 'TAP RESUME TO CONTINUE');
+    }, false);
     // Shadows on desktop/laptop pointers; skipped on touch (phones/tablets)
     // where the extra shadow-map pass isn't worth the frame cost.
     this.renderer.shadowMap.enabled = !this.isTouch;
@@ -2325,7 +2341,37 @@ class CyberDoomEngine {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.applyPixelRatio();
     });
+  }
+
+  // Phones ship 3x panels; rendering a Doom map at native density is three
+  // times the fragment work for detail nobody can see at arm's length. Touch
+  // also gets a total pixel budget: a 10-11" tablet at its native 1.5x is ~2-3
+  // megapixels, which a phone-class Mali GPU cannot fill at frame rate.
+  applyPixelRatio() {
+    const dpr = window.devicePixelRatio || 1;
+    let pr = Math.min(dpr, this.isTouch ? 1.5 : 2);
+    if (this.isTouch) {
+      const BUDGET = 1.6e6; // drawing-buffer pixels
+      const css = Math.max(1, window.innerWidth * window.innerHeight);
+      pr = Math.max(0.75, Math.min(pr, Math.sqrt(BUDGET / css)));
+    }
+    if (this.renderer && Math.abs(this.renderer.getPixelRatio() - pr) > 0.01) {
+      this.renderer.setPixelRatio(pr);
+    }
+  }
+
+  // Upgrade a desktop-detected session to the touch build. Used when a finger
+  // or pen presses before the mission starts (a stylus tablet that reported
+  // pointer: fine) and when pointer lock is refused on a touchscreen device.
+  enterTouchMode(reason) {
+    if (this.isTouch) return;
+    this.isTouch = true;
+    if (window.CyberInputMode) window.CyberInputMode.setTouchMode(true);
+    else { window.CYBER_TOUCH = true; document.documentElement.classList.add('touch'); }
+    this.touchModeReason = reason || 'runtime';
+    this.applyPixelRatio();
   }
 
   loadLevel(data) {
@@ -3218,6 +3264,13 @@ class CyberDoomEngine {
     // through the pause gate's own path so there is exactly one thing starting
     // playback - pointerlockchange calls resumeAllAudio() for the same click,
     // and resumeForGame() is idempotent, so the two cannot race each other.
+    // A finger or pen on the title/pause screen means this is a touchscreen
+    // being used as one, whatever (pointer: coarse) said. Capture phase, so it
+    // lands before the START click reaches startRun().
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isTouch || this.isRunning) return;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.enterTouchMode('pointer:' + e.pointerType);
+    }, true);
     startBtn.addEventListener('click', () => {
       this.checkAllWeaponsOption();
       this.sound.resume();
@@ -3446,6 +3499,7 @@ class CyberDoomEngine {
       startBtn.innerText = "RESUME";
     };
 
+    document.addEventListener('pointerlockerror', () => this.onPointerLockRefused());
     document.addEventListener('pointerlockchange', () => {
       if (this.isTouch) return;
       if (document.pointerLockElement === this.canvas) {
@@ -3551,10 +3605,22 @@ class CyberDoomEngine {
       this.resumeRun();
       return;
     }
+    // Lock refused on a touchscreen device (Android refuses it for touch): the
+    // START tap would otherwise be a dead button, so drop into the touch build.
+    const refused = () => this.onPointerLockRefused();
     try {
       const p = this.canvas.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
-    } catch (err) { /* lock refused: the overlay stays up, click again */ }
+      if (p && p.catch) p.catch(refused);
+    } catch (err) { refused(); }
+  }
+
+  // Older Chrome reports refusal only through 'pointerlockerror', newer through
+  // the promise; both land here, so this has to be idempotent.
+  onPointerLockRefused() {
+    if (this.isRunning || document.pointerLockElement) return;
+    if (!(navigator.maxTouchPoints > 0)) return; // a real desktop: overlay stays, click again
+    this.enterTouchMode('pointerlock-refused');
+    this.startRun();
   }
 
   unlockPointer() {
