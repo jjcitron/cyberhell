@@ -26,6 +26,8 @@
   <script src="js/cyber-traversal.js"></script>
   <script src="js/acid-gamepad.js"></script>
   <script src="js/cyber-gamepad.js"></script>
+  <script src="js/growthTag.js"></script>
+  <script src="js/cyber-telemetry.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -2430,6 +2432,17 @@ function disposeObject3D(root) {
   });
 }
 
+// Anonymous growth beacon. Never throws. A missing telemetry script or a
+// 404 from a static host must not touch the game.
+function cyberTrack(name, props) {
+  try {
+    const t = window.cyberTelemetry && window.cyberTelemetry.instance;
+    if (!t) return;
+    if (name === 'session_start') t.once(name, props || {});
+    else t.track(name, props || {});
+  } catch (err) { /* analytics never touch the game */ }
+}
+
 class CyberDoomEngine {
   constructor() {
     this.canvas = document.getElementById('render-canvas');
@@ -2736,6 +2749,51 @@ class CyberDoomEngine {
     // first frame renders: otherwise frame one of a 4,161-enemy map submits
     // every rig in full and stalls for a beat.
     for (let i = 0; i < 8; i++) this.updateEnemyLOD();
+    // Title-screen preload is not a level begin. If the run is already going
+    // (next level), this load is the begin.
+    this.noteLevelLoaded();
+  }
+
+  // Catalog id only. A typed level title is free text and is not sent.
+  growthProps(extra) {
+    const props = {};
+    try {
+      const camp = this.campaign;
+      const item = camp && Array.isArray(camp.levels) ? camp.levels[camp.index] : null;
+      const rawId = item && typeof item.id === 'string' ? item.id : '';
+      if (/^[A-Za-z0-9_-]{1,40}$/.test(rawId)) props.level = rawId;
+      else if (this.levelData === MAP01_DATA) props.level = 'map01';
+      else props.level = 'custom';
+      if (camp && Number.isInteger(camp.index) && camp.index >= 0) props.index = camp.index;
+      const diff = window.CyberDifficulty && window.CyberDifficulty.get && window.CyberDifficulty.get();
+      if (diff && typeof diff.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(diff.id)) props.difficulty = diff.id;
+      if (extra && extra.cause === 'hp') props.cause = 'hp';
+    } catch (err) { /* analytics never touch the game */ }
+    return props;
+  }
+
+  noteLevelLoaded() {
+    try {
+      this._levelBeaconSent = false;
+      this._deathBeaconSent = false;
+      if (this.isRunning) this.emitLevelStart();
+    } catch (err) { /* analytics never touch the game */ }
+  }
+
+  emitLevelStart() {
+    try {
+      if (this._levelBeaconSent || !this.isRunning || !this.levelData) return;
+      this._levelBeaconSent = true;
+      cyberTrack('level_start', this.growthProps());
+    } catch (err) { /* analytics never touch the game */ }
+  }
+
+  emitDeath() {
+    try {
+      if (this._deathBeaconSent) return;
+      this._deathBeaconSent = true;
+      cyberTrack('death', this.growthProps({ cause: 'hp' }));
+    } catch (err) { /* analytics never touch the game */ }
   }
 
   // One texture per name per level. TextureFactory.create() paints a fresh
@@ -3964,6 +4022,7 @@ class CyberDoomEngine {
         overlay.style.display = 'none';
         this.isRunning = true;
         this.missionStarted = true;
+        this.emitLevelStart();
         this.resumeAllAudio();
       } else {
         if (!this.isGameOver && !this.isVictory) {
@@ -4110,6 +4169,7 @@ class CyberDoomEngine {
     this.clock.getDelta(); // drop the paused interval so physics does not lurch
     this.resumeAllAudio();
     this.isRunning = true;
+    this.emitLevelStart();
     // Point the player at the way out once per level. Without this the exit is
     // reachable but still has to be stumbled on.
     if (!this.briefedExit) {
@@ -6358,6 +6418,7 @@ class CyberDoomEngine {
 
   triggerGameOver() {
     this.isGameOver = true;
+    this.emitDeath();
     this.isRunning = false;
     this.unlockPointer();
     this.pauseAllAudio();
@@ -6835,10 +6896,16 @@ class CyberDoomEngine {
 
 // Start Engine on Window Load
 window.onload = function() {
+  // Once per page session, before the engine, so a boot throw cannot swallow it
+  // and a boot throw in telemetry cannot swallow the engine.
+  cyberTrack('session_start', {});
   const engine = new CyberDoomEngine();
   // Exposed so QA can assert pause/audio state without reaching into closures.
   window.cyberEngine = engine;
   engine.animate();
+  // once() drops this if the beacon already went out. Covers a module that
+  // finished after the first call.
+  cyberTrack('session_start', {});
   if (location.search.indexOf('selftest=1') !== -1) runStickSelfTest();
 };
   </script>
