@@ -1446,10 +1446,10 @@
 
   var buildTypeId = 0, HUMAN_FACE = { 3004: 1, 9: 1, 65: 1 };   // sculpted faces only on the human former-soldiers
   var NAMES = {
-    3004: 'Zombieman', 9: 'Shotgun Guy', 65: 'Chaingunner', 3001: 'Imp',
-    3002: 'Demon', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
-    3003: 'Baron of Hell', 66: 'Revenant', 67: 'Mancubus', 68: 'Arachnotron',
-    64: 'Archvile', 16: 'Cyberdemon', 7: 'Spider Mastermind'
+    3004: 'Gun Shitai', 9: 'Sandan Shitai', 65: 'Gatling Shitai', 3001: 'Kaen Oni',
+    3002: 'Momo Oni', 58: 'Yurei', 3005: 'Maw Oni', 69: 'Tetsu Oni',
+    3003: 'Oni Daimyo', 66: 'Rocket Shitai', 67: 'Hara Oni', 68: 'Kumo Oni',
+    64: 'Kaen Bozu', 16: 'Cyber Oni', 7: 'Kumo Shogun'
   };
 
   // -------------------------------------------------------------------
