@@ -39,6 +39,7 @@
     body, html {
       width: 100%;
       height: 100%;
+      height: 100dvh;
       overflow: hidden;
       background-color: #050508;
       font-family: 'Courier New', Courier, monospace;
@@ -50,6 +51,7 @@
       left: 0;
       width: 100%;
       height: 100%;
+      height: 100dvh;
       display: block;
     }
     canvas#render-canvas {
@@ -471,7 +473,7 @@
       font-size: 12px;
     }
     #fs-hud-btn {
-      position: absolute; top: 8px; right: 8px; width: 40px; height: 40px;
+      position: absolute; top: 8px; right: 8px; width: 48px; height: 48px;
       display: none; align-items: center; justify-content: center;
       background: rgba(0,0,0,0.45); border: 1px solid #00e5ff; color: #00e5ff;
       border-radius: 6px; font-size: 20px; z-index: 16; touch-action: manipulation;
@@ -520,11 +522,13 @@
     }
 
     /* ==========================================================================
-       TOUCH CONTROL LAYER (landscape phones)
-       Layout follows Delta Touch / Quad Touch: the whole right half is a look
-       surface, a translucent crosshair FIRE pad sits under the right thumb and
-       looks while it fires, the left third spawns a floating move stick, and
-       the utility icons live along the top edge clear of the HUD corners.
+       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111
+       Layout follows Delta Touch / Quad Touch and the GDK touch-adaptation
+       guide: the right half is a look surface, a translucent FIRE pad sits
+       toward the center of that half and looks while it fires, the left third
+       spawns a floating move stick, jump/use live in the outer-right cluster,
+       and the utility icons sit along the top edge clear of the HUD corners.
+       Landscape is the preferred view; portrait uses a compact reflow.
        Opacity is a single custom property so Settings can dim the whole layer.
        ========================================================================== */
     #mobile-controls {
@@ -581,6 +585,8 @@
       position: absolute;
       pointer-events: auto;
       touch-action: none;
+      min-width: 48px;
+      min-height: 48px;
       border-radius: 50%;
       border: 2px solid rgba(0, 229, 255, 0.85);
       background: radial-gradient(circle, rgba(0,229,255,0.16) 45%, rgba(0,229,255,0.06) 100%);
@@ -598,7 +604,9 @@
     .tc-pad.on { background: rgba(0, 255, 204, 0.34); border-color: #00ffcc; }
 
     #tc-fire {
-      right: 96px; bottom: 22px;
+      /* Inset toward the center of the right half so a hard right-turn
+         still has glass to travel (GDK guide). Jump/use stay outer-right. */
+      right: 148px; bottom: 22px;
       width: 116px; height: 116px;
       border-color: rgba(255, 0, 85, 0.85);
       background: radial-gradient(circle, rgba(255,0,85,0.18) 45%, rgba(255,0,85,0.06) 100%);
@@ -615,7 +623,7 @@
     #tc-lock {
       position: absolute;
       left: -6px; top: -6px;
-      width: 34px; height: 34px;
+      width: 48px; height: 48px;
       border-radius: 50%;
       border: 2px solid rgba(255, 210, 225, 0.8);
       background: rgba(10, 4, 8, 0.72);
@@ -639,6 +647,7 @@
       position: absolute;
       right: 10px;
       width: 52px; height: 52px;
+      min-width: 48px; min-height: 48px;
       pointer-events: auto;
       touch-action: none;
       border-radius: 8px;
@@ -685,6 +694,7 @@
       pointer-events: auto;
       touch-action: none;
       width: 48px; height: 48px;
+      min-width: 48px; min-height: 48px;
       border-radius: 8px;
       border: 2px solid rgba(0, 229, 255, 0.8);
       background: rgba(6, 10, 14, 0.5);
@@ -699,7 +709,7 @@
     /* Left-handed swap: mirror the two thumb zones and the pad cluster. */
     #mobile-controls.lefty #tc-look { left: 0; right: 34%; }
     #mobile-controls.lefty #tc-move { left: auto; right: 0; }
-    #mobile-controls.lefty #tc-fire { right: auto; left: 96px; }
+    #mobile-controls.lefty #tc-fire { right: auto; left: 148px; }
     #mobile-controls.lefty #tc-use  { right: auto; left: 14px; }
     #mobile-controls.lefty #tc-jump { right: auto; left: 14px; }
     #mobile-controls.lefty #tc-melee { right: auto; left: 122px; }
@@ -744,75 +754,188 @@
       font-weight: 900; letter-spacing: 2px; font-size: 15px;
     }
 
-    /* Portrait is not a supported layout. Prompt, do not reflow. */
+    /* Controls are a transparent full-screen layer in BOTH orientations
+       (portrait is a compact playable layout; landscape stays preferred). */
+    html.touch #mobile-controls { display: block; }
+
+    /* HUD off the play view: no opaque 90px bar, thin translucent top strip
+       that reads over the world instead of hiding it. */
+    html.touch #hud-bar {
+      top: 0;
+      bottom: auto;
+      height: auto;
+      padding: 5px 10px;
+      background: none;
+      border-top: none;
+      box-shadow: none;
+      pointer-events: none;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 6px;
+    }
+    html.touch .hud-block {
+      min-width: 0;
+      padding: 2px 8px;
+      border: none;
+      background: rgba(6, 10, 14, 0.42);
+      box-shadow: none;
+    }
+    html.touch .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
+    html.touch .hud-val { font-size: 18px; line-height: 19px; }
+    html.touch #face-container { display: none; }
+    /* The six-slot selector wrapped to two rows and ate the whole top-right,
+       which is where the touch layer's icons and fullscreen button live. The
+       touch build switches weapons with the edge arrows, and those carry the
+       current weapon's name, so the slot list is redundant here. */
+    html.touch .weapon-selector { display: none; }
+
+    /* Banner sat at top:24px, straight under the new HUD strip. */
+    html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+
+    /* Start/pause overlay has to fit a ~360px-tall landscape viewport and
+       stay scrollable, or the ENTER/RESUME button is unreachable. The same
+       compact card is fine in tall portrait. */
+    html.touch #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
+    html.touch .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
+    html.touch .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+    html.touch .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
+    html.touch .instructions-grid { display: none; }
+    html.touch .start-btn { padding: 12px 30px; font-size: 17px; }
+
+    /* Portrait: compact thumb layout. Stick lower-left (the rest-home already
+       sits there), fire toward the center of the right half, look on the rest
+       of that half, jump/use in the outer-right cluster. */
+    @media (orientation: portrait) {
+      html.touch #tc-fire {
+        right: 88px; bottom: 28px;
+        width: 100px; height: 100px;
+      }
+      html.touch #tc-use  { right: 12px; bottom: 108px; width: 68px; height: 68px; font-size: 13px; }
+      html.touch #tc-jump { right: 12px; bottom: 28px;  width: 68px; height: 68px; font-size: 12px; }
+      html.touch #tc-melee { right: 96px; bottom: 148px; width: 56px; height: 56px; font-size: 11px; }
+      html.touch #mobile-controls.lefty #tc-fire { right: auto; left: 88px; }
+      html.touch #mobile-controls.lefty #tc-use  { right: auto; left: 12px; }
+      html.touch #mobile-controls.lefty #tc-jump { right: auto; left: 12px; }
+      html.touch #mobile-controls.lefty #tc-melee { right: auto; left: 96px; }
+    }
+
+    /* Landscape-preferred chip. Dismissible; never a full-screen wall. */
     #rotate-nudge {
       position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: #050508;
-      z-index: 40;
+      top: calc(70px + env(safe-area-inset-top, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      width: auto;
+      height: auto;
+      min-height: 48px;
+      background: rgba(5, 5, 8, 0.88);
+      border: 1px solid rgba(0, 229, 255, 0.55);
+      border-radius: 8px;
+      z-index: 20;
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 14px;
-      font-size: 18px;
-      letter-spacing: 3px;
+      gap: 2px;
+      font-size: 13px;
+      letter-spacing: 2px;
       text-align: center;
-      padding: 24px;
+      padding: 8px 16px;
+      pointer-events: auto;
+      touch-action: manipulation;
+      color: #bffcff;
     }
     @media (orientation: portrait) {
       html.touch #rotate-nudge { display: flex; }
+      html.touch #rotate-nudge.dismissed { display: none; }
     }
 
-    /* ---- Landscape touch layout (landscape only, no portrait reflow) ---- */
-    @media (orientation: landscape) {
-      /* Controls become a transparent full-screen layer instead of stealing a
-         140px band off the bottom of the play view. */
-      html.touch #mobile-controls { display: block; }
-
-      /* HUD off the play view: no opaque 90px bar, thin translucent top strip
-         that reads over the world instead of hiding it. */
-      html.touch #hud-bar {
-        top: 0;
-        bottom: auto;
-        height: auto;
-        padding: 5px 10px;
-        background: none;
-        border-top: none;
-        box-shadow: none;
-        pointer-events: none;
-        align-items: flex-start;
+    /* Idle chrome fades so the world stays visible; contact restores it. */
+    #mobile-controls .tc-pad,
+    #mobile-controls .tc-arrow,
+    #mobile-controls .tc-icon,
+    #mobile-controls #tc-stick,
+    #mobile-controls #tc-wname {
+      transition: opacity 0.55s ease;
+    }
+    #mobile-controls.idle .tc-pad,
+    #mobile-controls.idle .tc-arrow,
+    #mobile-controls.idle .tc-icon,
+    #mobile-controls.idle #tc-wname {
+      opacity: calc(var(--tc-op) * 0.28);
+    }
+    #mobile-controls.idle #tc-stick {
+      opacity: calc(var(--tc-op) * 0.18);
+    }
+    #mobile-controls.idle .tc-pad.on,
+    #mobile-controls.idle #tc-stick.on {
+      opacity: var(--tc-op);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #mobile-controls .tc-pad,
+      #mobile-controls .tc-arrow,
+      #mobile-controls .tc-icon,
+      #mobile-controls #tc-stick,
+      #mobile-controls #tc-wname {
+        transition: none;
       }
-      html.touch .hud-block {
-        min-width: 0;
-        padding: 2px 8px;
-        border: none;
-        background: rgba(6, 10, 14, 0.42);
-        box-shadow: none;
+    }
+
+    /* One-time "tilt to aim?" offer. Never required, never covers the pads. */
+    #tc-gyro-prompt {
+      position: absolute;
+      left: 50%;
+      /* Below the top icon row / landscape chip, clear of the objective banner
+         (which sits at bottom: 34%). */
+      top: calc(128px + env(safe-area-inset-top, 0px));
+      bottom: auto;
+      transform: translateX(-50%);
+      z-index: 22;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      padding: 8px 12px 8px 16px;
+      background: rgba(5, 8, 12, 0.92);
+      border: 1px solid #00e5ff;
+      border-radius: 8px;
+      color: #bffcff;
+      letter-spacing: 2px;
+      font-size: 13px;
+      pointer-events: auto;
+    }
+    #tc-gyro-prompt[hidden] { display: none; }
+    #tc-gyro-prompt button {
+      min-width: 48px;
+      min-height: 48px;
+      padding: 0 14px;
+      border: none;
+      border-radius: 4px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      font-size: 13px;
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      pointer-events: auto;
+      touch-action: manipulation;
+    }
+    #tc-gyro-yes { background: #00e5ff; color: #000; }
+    #tc-gyro-no  { background: #263238; color: #bffcff; }
+
+    /* First-map only: pulse fire, then jump, then stop. Not a permanent coach. */
+    @keyframes tc-hint-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0); }
+      50%      { box-shadow: 0 0 0 10px rgba(255, 0, 85, 0.4); }
+    }
+    #tc-fire.tc-hint, #tc-jump.tc-hint {
+      animation: tc-hint-pulse 0.9s ease-in-out 3;
+      opacity: 1;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #tc-fire.tc-hint, #tc-jump.tc-hint {
+        animation: none;
+        outline: 2px solid #ff3b76;
+        opacity: 1;
       }
-      html.touch .hud-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 0; }
-      html.touch .hud-val { font-size: 18px; line-height: 19px; }
-      html.touch #face-container { display: none; }
-      /* The six-slot selector wrapped to two rows and ate the whole top-right,
-         which is where the touch layer's icons and fullscreen button live. The
-         touch build switches weapons with the edge arrows, and those carry the
-         current weapon's name, so the slot list is redundant here. */
-      html.touch .weapon-selector { display: none; }
-      /* space-between would fling ARMOR to the far right with the selector
-         gone; keep the readouts clustered in the top-left corner. */
-      html.touch #hud-bar { justify-content: flex-start; gap: 6px; }
-
-      /* Banner sat at top:24px, straight under the new HUD strip. */
-      html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
-
-      /* Start/pause overlay has to fit a ~360px-tall viewport and stay
-         scrollable, or the ENTER/RESUME button is unreachable. */
-      html.touch #overlay-screen { justify-content: flex-start; overflow-y: auto; padding: 10px 14px; }
-      html.touch .title-glitch { font-size: 26px; letter-spacing: 3px; margin-bottom: 2px; }
-      html.touch .subtitle { font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
-      html.touch .instructions-card { padding: 8px 12px; font-size: 11px; line-height: 1.35; margin-bottom: 10px; max-width: none; }
-      html.touch .instructions-grid { display: none; }
-      html.touch .start-btn { padding: 12px 30px; font-size: 17px; }
     }
   </style>
   <!-- Three.js 3D Engine -->
@@ -1026,11 +1149,18 @@
       <button id="tc-settings-close" type="button">BACK</button>
     </div>
 
-    <!-- Portrait prompt (landscape-only game, no reflow) -->
+    <!-- Portrait: landscape is preferred, but the compact layout is playable.
+         This is a dismissible chip, not a full-screen wall. -->
     <div id="rotate-nudge">
-      <div style="font-size:44px;">&#8635;</div>
-      <div>ROTATE TO LANDSCAPE</div>
-      <div style="font-size:11px; color:#7f8c9a; letter-spacing:1px;">CYBER-ENTRY RUNS WIDE</div>
+      <div>LANDSCAPE PREFERRED</div>
+      <div style="font-size:11px; color:#7f8c9a; letter-spacing:1px;">TAP TO DISMISS</div>
+    </div>
+
+    <!-- One-time first-phone-play gyro offer. Never required. -->
+    <div id="tc-gyro-prompt" hidden>
+      <span>TILT TO AIM?</span>
+      <button type="button" id="tc-gyro-yes">YES</button>
+      <button type="button" id="tc-gyro-no">NO</button>
     </div>
   </div>
 
@@ -3788,6 +3918,12 @@ class CyberDoomEngine {
       if (e.pointerType === 'touch' || e.pointerType === 'pen') this.enterTouchMode('pointer:' + e.pointerType);
     }, true);
     startBtn.addEventListener('click', () => {
+      // Auto-enter fullscreen on the Play/Resume gesture (phones only),
+      // synchronously in this click, before any later work that could spend
+      // the user-gesture token. Desktop keeps pointer lock. The manual
+      // FULL SCREEN button, vendor prefixes, landscape lock and iOS tip
+      // stay in toggleFullscreen / enterLandscapeFullscreen, unchanged.
+      this.autoEnterFullscreen();
       this.checkAllWeaponsOption();
       this.sound.resume();
       if (window.cyberMidi) {
@@ -3989,7 +4125,7 @@ class CyberDoomEngine {
     // the primary #start-btn per-case; these two are always the same action).
     const endReplayBtn = document.getElementById('end-replay-btn');
     const endMenuBtn = document.getElementById('end-menu-btn');
-    if (endReplayBtn) endReplayBtn.addEventListener('click', () => this.replayCurrentLevel());
+    if (endReplayBtn) endReplayBtn.addEventListener('click', () => { this.autoEnterFullscreen(); this.replayCurrentLevel(); });
     if (endMenuBtn) endMenuBtn.addEventListener('click', () => window.location.reload());
 
     // Enter/Space activates whatever the cleared-screen's primary CTA is
@@ -4147,6 +4283,21 @@ class CyberDoomEngine {
     try { if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock(); } catch (err) {}
   }
 
+  /* Phones only, Play/Resume click. Skips desktop pointer-lock, QA ?autostart,
+     already-fullscreen, and installed-PWA standalone. Delegates to
+     enterLandscapeFullscreen() so prefixes, navigationUI, landscape lock and
+     silent .catch stay in one place. Failures never block the run. */
+  autoEnterFullscreen() {
+    if (!this.isTouch) return;
+    try {
+      if (typeof location !== 'undefined' && /[?&]autostart\b/.test(location.search || '')) return;
+      if (navigator.standalone === true) return;
+      if (typeof window.matchMedia === 'function' &&
+          window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) return;
+      this.enterLandscapeFullscreen();
+    } catch (err) { /* play in the tab */ }
+  }
+
   toggleFullscreen() {
     const doc = document;
     const el = doc.documentElement;
@@ -4177,6 +4328,11 @@ class CyberDoomEngine {
       this.showHudMessage(this.exitWalls && this.exitWalls.length
         ? "OBJECTIVE: REACH EXTRACTION - MARKED ON AUTOMAP [TAB]"
         : "OBJECTIVE: LOCATE EXTRACTION");
+    }
+    if (this.isTouch) {
+      this.pingTouchChrome();
+      this.maybeOfferGyroPrompt();
+      this.maybeTouchOnboard();
     }
   }
 
@@ -4245,7 +4401,7 @@ class CyberDoomEngine {
   static get LOOK_BASE() { return 0.0105; }
 
   defaultTouchOpts() {
-    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, lefty: false };
+    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, gyroAsked: false, lefty: false };
   }
 
   loadTouchOpts() {
@@ -4371,10 +4527,11 @@ class CyberDoomEngine {
       // Autofire lock: a tap latches the trigger, the next tap releases it.
       if (this.touchOpts.autofire) {
         this.isFiring = !this.isFiring;
-        if (this.isFiring) this.fireWeapon();
+        if (this.isFiring) { this.haptic('fire'); this.fireWeapon(); }
         return;
       }
       this.isFiring = true;
+      this.haptic('fire');
       this.fireWeapon();
     };
 
@@ -4385,6 +4542,7 @@ class CyberDoomEngine {
       // Chrome mobile can refuse an AudioContext resume outside a gesture, so
       // the first thumb press after a background pause re-arms audio.
       this.sound.resume();
+      this.pingTouchChrome();
 
       const role = el.dataset.tc;
       if (role === 'btn') { this.touchAction(el.dataset.act); return; }
@@ -4444,6 +4602,8 @@ class CyberDoomEngine {
     this.initTouchSettings();
     this.applyTouchOpts();
     this.updateTouchWeaponLabel();
+    this.initLandHint();
+    this.pingTouchChrome();
   }
 
   /* ==========================================================================
@@ -4509,9 +4669,9 @@ class CyberDoomEngine {
   /* Optional gyro assist. Off by default; iOS needs the permission prompt to
      happen inside the tap that turned the toggle on, which it does here. */
   enableGyro() {
-    if (this.gyroHandler) return;
+    if (this.gyroHandler) return Promise.resolve(true);
     const DOE = window.DeviceOrientationEvent;
-    if (!DOE) return;
+    if (!DOE) return Promise.resolve(false);
     const start = () => {
       if (this.gyroHandler) return;
       this.gyroLast = null;
@@ -4534,10 +4694,13 @@ class CyberDoomEngine {
       window.addEventListener('deviceorientation', this.gyroHandler);
     };
     if (typeof DOE.requestPermission === 'function') {
-      DOE.requestPermission().then((r) => { if (r === 'granted') start(); }).catch(() => {});
-    } else {
-      start();
+      return DOE.requestPermission().then((r) => {
+        if (r === 'granted') { start(); return true; }
+        return false;
+      }).catch(() => false);
     }
+    start();
+    return Promise.resolve(true);
   }
 
   disableGyro() {
@@ -4547,9 +4710,116 @@ class CyberDoomEngine {
     this.gyroLast = null;
   }
 
+  /* Short haptic pulses on fire start, successful use, and damage taken.
+     try/catch so a missing or blocked Vibration API cannot break a shot.
+     Honors prefers-reduced-motion. */
+  haptic(kind) {
+    try {
+      if (typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      if (!navigator.vibrate) return;
+      const pats = { fire: 15, use: 25, hit: [40, 30, 40] };
+      navigator.vibrate(pats[kind] || 15);
+    } catch (err) { /* no vibrator, or the UA refused */ }
+  }
+
+  /* Wake the chrome (undo the idle fade) and schedule a dim after quiet. */
+  pingTouchChrome() {
+    const root = document.getElementById('mobile-controls');
+    if (!root) return;
+    root.classList.remove('idle');
+    if (this._idleFadeTimer) clearTimeout(this._idleFadeTimer);
+    const reduced = typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this._idleFadeTimer = setTimeout(() => {
+      if (this.touchPointers && this.touchPointers.size > 0) return;
+      if (this.isFiring) return;
+      const el = document.getElementById('mobile-controls');
+      if (el) el.classList.add('idle');
+    }, reduced ? 4000 : 2500);
+  }
+
+  /* Dismissible "landscape preferred" chip. Session-only; portrait stays playable. */
+  initLandHint() {
+    const nudge = document.getElementById('rotate-nudge');
+    if (!nudge) return;
+    const dismiss = () => {
+      nudge.classList.add('dismissed');
+      try { sessionStorage.setItem('cyberhell.touch.landHint', '1'); } catch (err) {}
+    };
+    nudge.addEventListener('pointerdown', (e) => { e.preventDefault(); dismiss(); });
+    try {
+      if (sessionStorage.getItem('cyberhell.touch.landHint') === '1') nudge.classList.add('dismissed');
+    } catch (err) {}
+  }
+
+  /* One-time "tilt to aim?" offer on a first phone play. Default stays off.
+     YES is the user gesture iOS needs for DeviceOrientation permission.
+     Denied or missing sensor: look pad remains the full path. Never required. */
+  maybeOfferGyroPrompt() {
+    if (!this.isTouch || this._gyroPromptShown) return;
+    const o = this.touchOpts || (this.touchOpts = this.loadTouchOpts());
+    if (o.gyroAsked || o.gyro) { this._gyroPromptShown = true; return; }
+    const el = document.getElementById('tc-gyro-prompt');
+    if (!el) { this._gyroPromptShown = true; return; }
+    this._gyroPromptShown = true;
+    const syncBox = () => {
+      const cb = document.getElementById('tc-set-gyro');
+      if (cb) cb.checked = !!o.gyro;
+    };
+    const yes = document.getElementById('tc-gyro-yes');
+    const no = document.getElementById('tc-gyro-no');
+    if (yes) yes.onclick = () => {
+      o.gyroAsked = true;
+      o.gyro = true;
+      el.setAttribute('hidden', '');
+      const done = (ok) => {
+        if (!ok) {
+          o.gyro = false;
+          this.disableGyro();
+          this.showHudMessage('NO GYRO — LOOK PAD AIMS FOR YOU');
+        }
+        this.saveTouchOpts();
+        syncBox();
+      };
+      const p = this.enableGyro();
+      if (p && typeof p.then === 'function') p.then(done);
+      else done(!!this.gyroHandler);
+    };
+    if (no) no.onclick = () => {
+      o.gyroAsked = true;
+      o.gyro = false;
+      el.setAttribute('hidden', '');
+      this.saveTouchOpts();
+      syncBox();
+    };
+    el.removeAttribute('hidden');
+  }
+
+  /* First map only: highlight fire, then jump, then stop. Never a permanent coach. */
+  maybeTouchOnboard() {
+    if (!this.isTouch || this._touchOnboardStarted) return;
+    try { if (localStorage.getItem('cyberhell.touch.coached') === '1') return; } catch (err) {}
+    const idx = this.campaign && typeof this.campaign.index === 'number' ? this.campaign.index : 0;
+    if (idx !== 0) return;
+    this._touchOnboardStarted = true;
+    const fire = document.getElementById('tc-fire');
+    const jump = document.getElementById('tc-jump');
+    const mark = () => { try { localStorage.setItem('cyberhell.touch.coached', '1'); } catch (err) {} };
+    const pulse = (node, next) => {
+      if (!node) { if (next) next(); else mark(); return; }
+      node.classList.add('tc-hint');
+      setTimeout(() => {
+        node.classList.remove('tc-hint');
+        if (next) next(); else mark();
+      }, 2200);
+    };
+    setTimeout(() => pulse(fire, () => pulse(jump, mark)), 2800);
+  }
+
   /* ==========================================================================
      LOST FOCUS : pause the sim AND the music. Leaving Chrome, switching apps,
-     locking the phone, hiding the tab, or rotating out of landscape.
+     locking the phone, hiding the tab.
      ========================================================================== */
   initFocusPause() {
     const lost = (why) => {
@@ -4570,17 +4840,8 @@ class CyberDoomEngine {
     window.addEventListener('blur', () => lost("LOST FOCUS"));
     window.addEventListener('focus', regained);
     window.addEventListener('pagehide', () => lost("PAUSED IN BACKGROUND"));
-
-    // Landscape-only by design: freeze behind the rotate prompt rather than
-    // letting the run continue underneath a full-screen cover.
-    const portrait = window.matchMedia('(orientation: portrait)');
-    const onOrient = () => {
-      if (!this.isTouch) return;
-      if (portrait.matches) lost("ROTATE BACK TO LANDSCAPE");
-      else regained();
-    };
-    if (portrait.addEventListener) portrait.addEventListener('change', onOrient);
-    else portrait.addListener(onOrient); // older WebKit
+    // Portrait is a playable compact layout; rotating no longer pauses the run.
+    // Tab-hide / app-switch still parks via visibilitychange and pagehide above.
   }
 
   /* Weapons the player actually carries, in slot order. */
@@ -5125,6 +5386,7 @@ class CyberDoomEngine {
   interact() {
     const hitWall = this.wallUnderCrosshair(6.5);
     if (!hitWall) return;
+    let used = false;
 
     // Operate Door
     if (hitWall.isDoor) {
@@ -5134,12 +5396,14 @@ class CyberDoomEngine {
         hitWall.solid = false;
         if (hitWall.mesh) hitWall.mesh.position.y += hitWall.height - 0.5;
         this.showHudMessage("ACCESS PORTAL OPENED");
+        used = true;
       }
     }
 
     // Lift / raising floor / teleporter on this linedef.
     if (window.CyberTraversal && window.CyberTraversal.fire(this, hitWall, 'use')) {
       this.showHudMessage("MECHANISM ACTIVATED");
+      used = true;
     }
 
     // Operate Switch
@@ -5173,7 +5437,10 @@ class CyberDoomEngine {
       } else if (hitWall.switchId === 'sw_exit_game') {
         this.triggerVictory();
       }
+      used = true;
     }
+
+    if (used) this.haptic('use');
   }
 
   /* ==========================================================================
@@ -6349,6 +6616,7 @@ class CyberDoomEngine {
     this.player.health -= dmg;
     this.sound.playMonsterHurt();
     if (this.gamepad) this.gamepad.feel('hit');   // Crossfire rumble: hit
+    this.haptic('hit');
 
     const df = document.getElementById('damage-flash');
     df.style.opacity = '1';
