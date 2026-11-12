@@ -159,6 +159,7 @@ test('desktop pointer-lock start path and gamepad file are untouched', () => {
 
 test('live-check marker is present', () => {
   assert.match(html, /touch-controls-prod-20261111/);
+  assert.match(html, /touch-feel-prod-20261111/);
 });
 
 test('Play click auto-enters fullscreen on touch only, before any other work', () => {
@@ -187,4 +188,38 @@ test('Play click auto-enters fullscreen on touch only, before any other work', (
   }
   // REPLAY also auto-enters inside its click.
   assert.match(norm, /endReplayBtn\.addEventListener\('click', \(\) => \{ this\.autoEnterFullscreen\(\); this\.replayCurrentLevel\(\); \}\)/);
+});
+
+test('right-thumb cluster is raised off the bottom edge in both orientations', () => {
+  const norm = html.replace(/\r\n/g, '\n');
+  // Landscape defaults: 32% of height (~46% to the fire pad's center).
+  const fireRule = norm.match(/#tc-fire \{([^}]+)\}/);
+  assert.ok(fireRule, '#tc-fire rule missing');
+  assert.match(fireRule[1], /bottom:\s*32%/);
+  assert.doesNotMatch(fireRule[1], /bottom:\s*22px/);
+  assert.match(norm, /#tc-jump \{ right: 14px; bottom: 32%;/);
+  assert.match(norm, /#tc-use  \{ right: 14px; bottom: calc\(32% \+ 78px\);/);
+  assert.match(norm, /#tc-melee \{ right: 122px; bottom: calc\(32% \+ 128px\);/);
+  // Portrait: lower-middle third (~34% to the fire pad's center).
+  assert.match(norm, /html\.touch #tc-fire \{[\s\S]*?bottom:\s*28%/);
+  assert.match(norm, /html\.touch #tc-jump \{ right: 12px; bottom: 28%;/);
+  assert.match(norm, /html\.touch #tc-use  \{ right: 12px; bottom: calc\(28% \+ 80px\);/);
+  assert.match(norm, /html\.touch #tc-melee \{ right: 96px; bottom: calc\(28% \+ 120px\);/);
+  // Lefty still only mirrors the horizontal axis; bottoms come from the same rules.
+  assert.match(norm, /#mobile-controls\.lefty #tc-fire \{ right: auto; left: 148px; \}/);
+  assert.match(norm, /html\.touch #mobile-controls\.lefty #tc-fire \{ right: auto; left: 88px; \}/);
+});
+
+test('gyro up/down is a separate persisted setting defaulting to 48% of yaw', () => {
+  const norm = html.replace(/\r\n/g, '\n');
+  assert.match(norm, /gyroPitch: 48/);
+  assert.match(norm, /id="tc-set-gyro-pitch"/);
+  assert.match(norm, /GYRO UP\/DOWN/);
+  assert.match(norm, /bind\('tc-set-gyro-pitch', 'gyroPitch'/);
+  assert.match(norm, /CyberTouchGyro/);
+  assert.match(norm, /lookDeltas\(/);
+  // The helper is loaded as a classic script (and as a Node module).
+  assert.match(norm, /src="js\/cyber-touch-gyro\.js"/);
+  // Auto-fullscreen and gamepad wiring must still be present.
+  assert.match(norm, /this\.autoEnterFullscreen\(\);/);
 });
