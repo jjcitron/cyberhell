@@ -160,6 +160,7 @@ test('desktop pointer-lock start path and gamepad file are untouched', () => {
 test('live-check marker is present', () => {
   assert.match(html, /touch-controls-prod-20261111/);
   assert.match(html, /touch-feel-prod-20261111/);
+  assert.match(html, /touch-v3-20261111/);
 });
 
 test('Play click auto-enters fullscreen on touch only, before any other work', () => {
@@ -190,21 +191,22 @@ test('Play click auto-enters fullscreen on touch only, before any other work', (
   assert.match(norm, /endReplayBtn\.addEventListener\('click', \(\) => \{ this\.autoEnterFullscreen\(\); this\.replayCurrentLevel\(\); \}\)/);
 });
 
-test('right-thumb cluster is raised off the bottom edge in both orientations', () => {
+test('right-thumb cluster sits halfway between the original and the raised positions', () => {
   const norm = html.replace(/\r\n/g, '\n');
-  // Landscape defaults: 32% of height (~46% to the fire pad's center).
+  // Halfway: landscape 19% (was 32% after the raise, originally 22px ≈ 6%).
+  // Center ≈ 19% + 58px → ~34% of 390. Portrait 16% (was 28%), center ≈ 23%.
   const fireRule = norm.match(/#tc-fire \{([^}]+)\}/);
   assert.ok(fireRule, '#tc-fire rule missing');
-  assert.match(fireRule[1], /bottom:\s*32%/);
+  assert.match(fireRule[1], /bottom:\s*19%/);
   assert.doesNotMatch(fireRule[1], /bottom:\s*22px/);
-  assert.match(norm, /#tc-jump \{ right: 14px; bottom: 32%;/);
-  assert.match(norm, /#tc-use  \{ right: 14px; bottom: calc\(32% \+ 78px\);/);
-  assert.match(norm, /#tc-melee \{ right: 122px; bottom: calc\(32% \+ 128px\);/);
-  // Portrait: lower-middle third (~34% to the fire pad's center).
-  assert.match(norm, /html\.touch #tc-fire \{[\s\S]*?bottom:\s*28%/);
-  assert.match(norm, /html\.touch #tc-jump \{ right: 12px; bottom: 28%;/);
-  assert.match(norm, /html\.touch #tc-use  \{ right: 12px; bottom: calc\(28% \+ 80px\);/);
-  assert.match(norm, /html\.touch #tc-melee \{ right: 96px; bottom: calc\(28% \+ 120px\);/);
+  assert.doesNotMatch(fireRule[1], /bottom:\s*32%/);
+  assert.match(norm, /#tc-jump \{ right: 14px; bottom: 19%;/);
+  assert.match(norm, /#tc-use  \{ right: 14px; bottom: calc\(19% \+ 78px\);/);
+  assert.match(norm, /#tc-melee \{ right: 122px; bottom: calc\(19% \+ 128px\);/);
+  assert.match(norm, /html\.touch #tc-fire \{[\s\S]*?bottom:\s*16%/);
+  assert.match(norm, /html\.touch #tc-jump \{ right: 12px; bottom: 16%;/);
+  assert.match(norm, /html\.touch #tc-use  \{ right: 12px; bottom: calc\(16% \+ 80px\);/);
+  assert.match(norm, /html\.touch #tc-melee \{ right: 96px; bottom: calc\(16% \+ 120px\);/);
   // Lefty still only mirrors the horizontal axis; bottoms come from the same rules.
   assert.match(norm, /#mobile-controls\.lefty #tc-fire \{ right: auto; left: 148px; \}/);
   assert.match(norm, /html\.touch #mobile-controls\.lefty #tc-fire \{ right: auto; left: 88px; \}/);
@@ -222,4 +224,53 @@ test('gyro up/down is a separate persisted setting defaulting to 48% of yaw', ()
   assert.match(norm, /src="js\/cyber-touch-gyro\.js"/);
   // Auto-fullscreen and gamepad wiring must still be present.
   assert.match(norm, /this\.autoEnterFullscreen\(\);/);
+});
+
+test('standard controller layout is an opt-in, persisted, and routes through the existing pad map', () => {
+  const norm = html.replace(/\r\n/g, '\n');
+  assert.match(norm, /id="touch-std"/);
+  assert.match(norm, /id="std-a"/);
+  assert.match(norm, /id="std-b"/);
+  assert.match(norm, /id="std-x"/);
+  assert.match(norm, /id="std-y"/);
+  assert.match(norm, /id="std-lb"/);
+  assert.match(norm, /id="std-rb"/);
+  assert.match(norm, /id="std-lt"/);
+  assert.match(norm, /id="std-rt"/);
+  assert.match(norm, /id="std-lstick"/);
+  assert.match(norm, /id="std-rstick"/);
+  assert.match(norm, /id="std-start"/);
+  assert.match(norm, /id="std-select"/);
+  assert.match(norm, /id="std-du"/);
+  assert.match(norm, /STANDARD CONTROLLER/);
+  assert.match(norm, /id="tc-set-layout-std"/);
+  assert.match(norm, /id="tc-set-ctrl-size"/);
+  assert.match(norm, /layout: 'game', ctrlSize: 100/);
+  assert.match(norm, /_installVirtualPad/);
+  assert.match(norm, /_asGamepad/);
+  assert.match(norm, /mapping: 'standard'/);
+  // Xbox colours and lefty mirrors.
+  assert.match(norm, /#3ddc84/);
+  assert.match(norm, /#e81123/);
+  assert.match(norm, /layout-std/);
+  assert.match(norm, /lefty \.std-cluster\.left/);
+  // L3 / R3 / Home unused — not in the DOM.
+  assert.doesNotMatch(norm, /id="std-l3"/);
+  assert.doesNotMatch(norm, /id="std-r3"/);
+  assert.doesNotMatch(norm, /id="std-home"/);
+});
+
+test('drag-to-look is bound on every right-side action button', () => {
+  const norm = html.replace(/\r\n/g, '\n');
+  // Fire already looked; jump / use / melee / weapon arrows now do too.
+  assert.match(norm, /act === 'use'/);
+  assert.match(norm, /act === 'melee'/);
+  assert.match(norm, /act === 'jump'/);
+  assert.match(norm, /act === 'wprev'/);
+  assert.match(norm, /act === 'wnext'/);
+  assert.match(norm, /role: 'look'/);
+  // Pause / settings / map are not in the GoldenEye look list (they only fire touchAction).
+  const lookActs = norm.match(/act === 'use' \|\| act === 'melee' \|\| act === 'jump' \|\| act === 'wprev' \|\| act === 'wnext'/);
+  assert.ok(lookActs, 'look-act list');
+  assert.ok(!/pause|settings|map|autofire/.test(lookActs[0]));
 });

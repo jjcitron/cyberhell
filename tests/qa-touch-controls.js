@@ -195,7 +195,7 @@ async function runTouchViewport(browser, tag, width, height) {
   check(started.fsCalls >= 1, `${tag}: auto-enter delegated to enterLandscapeFullscreen (calls=${started.fsCalls})`);
   await page.waitForTimeout(500);
   const play = await padBoxes(page);
-  await shot(page, `${tag}-play.png`);
+  await shot(page, `${tag}-play-v3.png`);
 
   const need = ['tc-fire', 'tc-use', 'tc-jump', 'tc-stick', 'tc-look', 'tc-move'];
   for (const id of need) {
@@ -225,14 +225,14 @@ async function runTouchViewport(browser, tag, width, height) {
     const pct = centerFromBottom / play.vp.h;
     const landscape = play.vp.w > play.vp.h;
     if (landscape) {
-      check(pct >= 0.38 && pct <= 0.58,
-        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~40–55% in landscape)`);
+      check(pct >= 0.28 && pct <= 0.42,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~34% in landscape, halfway)`);
     } else {
-      check(pct >= 0.25 && pct <= 0.45,
-        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want lower-middle third in portrait)`);
+      check(pct >= 0.16 && pct <= 0.30,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~23% in portrait, halfway)`);
     }
     const bottomEdge = play.vp.h - (fire.y + fire.h);
-    check(bottomEdge / play.vp.h >= 0.20,
+    check(bottomEdge / play.vp.h >= 0.14,
       `${tag}: fire bottom is ${Math.round(bottomEdge)}px (${(bottomEdge / play.vp.h * 100).toFixed(0)}%) off the bottom edge`);
   }
   // Pads fully on screen.
@@ -258,6 +258,79 @@ async function runTouchViewport(browser, tag, width, height) {
       const after = await page.evaluate(() => document.getElementById('rotate-nudge').classList.contains('dismissed'));
       check(after === true, `${tag}: tapping the chip dismisses it`);
     }
+  }
+
+  // ---- drag-to-look from a right-side action button (game layout) ----
+  await page.evaluate(() => {
+    const eng = window.cyberEngine;
+    if (!eng || eng._qaHooked) return;
+    window.__qa = { jump: 0, fire: 0, use: 0, melee: 0 };
+    const wrap = (name, key) => {
+      if (typeof eng[name] !== 'function') return;
+      const orig = eng[name].bind(eng);
+      eng[name] = function () { window.__qa[key]++; return orig.apply(this, arguments); };
+    };
+    wrap('jump', 'jump');
+    wrap('interact', 'use');
+    wrap('melee', 'melee');
+    wrap('fireWeapon', 'fire');
+    eng._qaHooked = true;
+  });
+  const boxOf = async (id) => page.evaluate((id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, vis: r.width > 0 };
+  }, id);
+  async function dragFrom(sx, sy, dx, dy) {
+    const client = await page.context().newCDPSession(page);
+    const before = await page.evaluate(() => {
+      const eng = window.cyberEngine;
+      window.__qa = { jump: 0, fire: 0, use: 0, melee: 0 };
+      return { yaw: eng.yaw, pitch: eng.pitch };
+    });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: sx, y: sy, id: 1 }] });
+    await page.waitForTimeout(40);
+    const steps = 6;
+    for (let i = 1; i <= steps; i++) {
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: sx + dx * i / steps, y: sy + dy * i / steps, id: 1 }],
+      });
+      await page.waitForTimeout(25);
+    }
+    await page.waitForTimeout(80);
+    const mid = await page.evaluate(() => {
+      const eng = window.cyberEngine;
+      return { ...window.__qa, yaw: eng.yaw, pitch: eng.pitch, firing: !!eng.isFiring };
+    });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(40);
+    await client.detach().catch(() => {});
+    mid.dYaw = mid.yaw - before.yaw;
+    mid.dPitch = mid.pitch - before.pitch;
+    return mid;
+  }
+  const fireBox = await boxOf('tc-fire');
+  const jumpBox = await boxOf('tc-jump');
+  const useBox = await boxOf('tc-use');
+  if (fireBox && fireBox.vis) {
+    const fromFire = await dragFrom(fireBox.x, fireBox.y, 60, -20);
+    check(fromFire.fire >= 1 || fromFire.firing, `${tag}: fire fires on contact (count=${fromFire.fire} firing=${fromFire.firing})`);
+    check(Math.abs(fromFire.dYaw) + Math.abs(fromFire.dPitch) > 0.01,
+      `${tag}: dragging fire turns the camera (dYaw=${fromFire.dYaw.toFixed(3)}, dPitch=${fromFire.dPitch.toFixed(3)})`);
+  }
+  if (jumpBox && jumpBox.vis) {
+    const fromJump = await dragFrom(jumpBox.x, jumpBox.y, 50, 10);
+    check(fromJump.jump >= 1, `${tag}: jump fires on contact (count=${fromJump.jump})`);
+    check(Math.abs(fromJump.dYaw) + Math.abs(fromJump.dPitch) > 0.01,
+      `${tag}: dragging jump turns the camera (dYaw=${fromJump.dYaw.toFixed(3)}, dPitch=${fromJump.dPitch.toFixed(3)})`);
+  }
+  if (useBox && useBox.vis) {
+    const fromUse = await dragFrom(useBox.x, useBox.y, 45, -15);
+    check(fromUse.use >= 1, `${tag}: use fires on contact (count=${fromUse.use})`);
+    check(Math.abs(fromUse.dYaw) + Math.abs(fromUse.dPitch) > 0.01,
+      `${tag}: dragging use turns the camera (dYaw=${fromUse.dYaw.toFixed(3)}, dPitch=${fromUse.dPitch.toFixed(3)})`);
   }
 
   // Tab-hide pauses the run.
@@ -296,7 +369,116 @@ async function runTouchViewport(browser, tag, width, height) {
   if (lf && lf.visible) {
     check(lf.x + lf.w / 2 < lefty.vp.w / 2, `${tag}: lefty puts fire on the left (cx=${Math.round(lf.x + lf.w / 2)})`);
   }
-  await shot(page, `${tag}-lefty.png`);
+  await shot(page, `${tag}-lefty-v3.png`);
+
+  // ---- standard controller layout ----
+  await page.evaluate(() => {
+    const eng = window.cyberEngine;
+    if (!eng || !eng.touchOpts) return;
+    eng.touchOpts.lefty = false;
+    eng.touchOpts.layout = 'std';
+    eng.touchOpts.ctrlSize = 100;
+    if (typeof eng.saveTouchOpts === 'function') eng.saveTouchOpts();
+    eng.applyTouchOpts();
+  });
+  await page.waitForTimeout(250);
+  const std = await page.evaluate(() => {
+    const ids = ['std-a','std-b','std-x','std-y','std-lb','std-rb','std-lt','std-rt',
+      'std-lstick','std-rstick','std-dl','std-dr','std-du','std-dd','std-start','std-select',
+      'tc-fire','tc-jump','tc-use','tc-look','tc-move','tc-stick'];
+    const pads = {};
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (!el) { pads[id] = null; continue; }
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      const visible = s.display !== 'none' && s.visibility !== 'hidden' && !el.hidden
+        && r.width > 0 && r.height > 0 && s.opacity !== '0';
+      pads[id] = { id, x: r.left, y: r.top, w: r.width, h: r.height, visible,
+        cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    }
+    const root = document.getElementById('mobile-controls');
+    return {
+      vp: { w: innerWidth, h: innerHeight },
+      pads,
+      layout: !!(root && root.classList.contains('layout-std')),
+      hiddenAttr: document.getElementById('touch-std') && document.getElementById('touch-std').hidden,
+    };
+  });
+  check(std.layout && !std.hiddenAttr, `${tag}: layout-std is on (hiddenAttr=${std.hiddenAttr})`);
+  for (const id of ['std-a','std-b','std-x','std-y','std-lb','std-rb','std-lt','std-rt',
+                    'std-lstick','std-rstick','std-dl','std-dr','std-du','std-dd','std-start','std-select']) {
+    const p = std.pads[id];
+    check(p && p.visible, `${tag}: std ${id} is visible`);
+    if (p && p.visible && !id.includes('stick')) {
+      check(p.w >= 47.5 && p.h >= 47.5, `${tag}: std ${id} is >= 48px (${Math.round(p.w)}x${Math.round(p.h)})`);
+    }
+    if (p && p.visible) {
+      const off = p.x < -2 || p.y < -2 || p.x + p.w > std.vp.w + 2 || p.y + p.h > std.vp.h + 2;
+      check(!off, `${tag}: std ${id} is on screen (${Math.round(p.x)},${Math.round(p.y)} ${Math.round(p.w)}x${Math.round(p.h)} in ${std.vp.w}x${std.vp.h})`);
+    }
+  }
+  for (const id of ['tc-fire','tc-jump','tc-use','tc-look','tc-move','tc-stick']) {
+    const p = std.pads[id];
+    check(!p || !p.visible, `${tag}: game-layout ${id} is hidden in std`);
+  }
+  const sboxes = Object.values(std.pads).filter((p) => p && p.visible && String(p.id).startsWith('std-'));
+  for (let i = 0; i < sboxes.length; i++) for (let j = i + 1; j < sboxes.length; j++) {
+    const a = sboxes[i], b = sboxes[j];
+    const overlap = a.x < b.x + b.w - 3 && b.x < a.x + a.w - 3 && a.y < b.y + b.h - 3 && b.y < a.y + a.h - 3;
+    check(!overlap, `${tag}: std ${a.id} does not overlap ${b.id}`);
+  }
+  const A = std.pads['std-a'], B = std.pads['std-b'], X = std.pads['std-x'], Y = std.pads['std-y'];
+  if (A && B && X && Y && A.visible) {
+    check(A.cy > B.cy && A.cy > X.cy && A.cy > Y.cy, `${tag}: A is the bottom of the diamond`);
+    check(Y.cy < A.cy && Y.cy < B.cy && Y.cy < X.cy, `${tag}: Y is the top of the diamond`);
+    check(X.cx < A.cx && B.cx > A.cx, `${tag}: X is left and B is right of A`);
+  }
+  await shot(page, `${tag}-play-std.png`);
+
+  // Tap A (jump) through the virtual pad, and drag A to look.
+  if (A && A.visible) {
+    const fromA = await dragFrom(A.cx, A.cy, 55, -15);
+    check(fromA.jump >= 1, `${tag}: std A (jump) fires on contact (count=${fromA.jump})`);
+    check(Math.abs(fromA.dYaw) + Math.abs(fromA.dPitch) > 0.01,
+      `${tag}: dragging std A turns the camera (dYaw=${fromA.dYaw.toFixed(3)}, dPitch=${fromA.dPitch.toFixed(3)})`);
+  }
+
+  // lefty mirrors the std clusters
+  await page.evaluate(() => {
+    const eng = window.cyberEngine;
+    if (!eng || !eng.touchOpts) return;
+    eng.touchOpts.lefty = true;
+    eng.applyTouchOpts();
+  });
+  await page.waitForTimeout(150);
+  const stdLefty = await page.evaluate(() => {
+    const A = document.getElementById('std-a');
+    const L = document.getElementById('std-lstick');
+    if (!A || !L) return { ok: false };
+    const ar = A.getBoundingClientRect(), lr = L.getBoundingClientRect();
+    return {
+      ok: true,
+      aCx: ar.left + ar.width / 2,
+      lCx: lr.left + lr.width / 2,
+      mid: innerWidth / 2,
+    };
+  });
+  if (stdLefty.ok) {
+    check(stdLefty.aCx < stdLefty.mid, `${tag}: lefty puts std A on the left (cx=${Math.round(stdLefty.aCx)})`);
+    check(stdLefty.lCx > stdLefty.mid, `${tag}: lefty puts left stick on the right (cx=${Math.round(stdLefty.lCx)})`);
+  }
+  await shot(page, `${tag}-lefty-std.png`);
+
+  // Restore game layout + right-handed for the idle still.
+  await page.evaluate(() => {
+    const eng = window.cyberEngine;
+    if (!eng || !eng.touchOpts) return;
+    eng.touchOpts.lefty = false;
+    eng.touchOpts.layout = 'game';
+    eng.applyTouchOpts();
+  });
+  await page.waitForTimeout(150);
 
   // Idle fade: force the class and photograph.
   await page.evaluate(() => {
@@ -370,6 +552,7 @@ async function runDesktop(browser) {
   check(after.rootDisplay === 'none', `desktop: touch layer still hidden after START`);
   check(after.gyro && after.gyro.hidden === true, `desktop: gyro prompt stays hidden`);
   await shot(page, 'desktop-after-start.png');
+  await shot(page, 'desktop-v3.png');
   check(errors.length === 0, `desktop: no page errors${errors.length ? ': ' + errors.slice(0, 4).join(' | ') : ''}`);
   await context.close();
 }

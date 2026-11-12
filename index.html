@@ -523,7 +523,7 @@
     }
 
     /* ==========================================================================
-       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111 touch-feel-prod-20261111
+       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111 touch-feel-prod-20261111 touch-v3-20261111
        Layout follows Delta Touch / Quad Touch and the GDK touch-adaptation
        guide: the right half is a look surface, a translucent FIRE pad sits
        toward the center of that half and looks while it fires, the left third
@@ -607,9 +607,9 @@
     #tc-fire {
       /* Inset toward the center of the right half so a hard right-turn
          still has glass to travel (GDK guide). Jump/use stay outer-right.
-         Bottom is 32% so the pad sits at the natural right-thumb rest
+         Bottom is 19% — halfway between the original 22px rest and the 32% raise
          (~46% of height to the pad's center), not hugging the bottom edge. */
-      right: 148px; bottom: 32%;
+      right: 148px; bottom: 19%;
       width: 116px; height: 116px;
       border-color: rgba(255, 0, 85, 0.85);
       background: radial-gradient(circle, rgba(255,0,85,0.18) 45%, rgba(255,0,85,0.06) 100%);
@@ -640,10 +640,10 @@
     }
     #tc-lock.on { background: rgba(255, 0, 85, 0.75); color: #fff; border-color: #fff; }
 
-    #tc-use  { right: 14px; bottom: calc(32% + 78px); width: 70px; height: 70px; font-size: 14px; }
-    #tc-jump { right: 14px; bottom: 32%;  width: 70px; height: 70px; font-size: 13px; }
+    #tc-use  { right: 14px; bottom: calc(19% + 78px); width: 70px; height: 70px; font-size: 14px; }
+    #tc-jump { right: 14px; bottom: 19%;  width: 70px; height: 70px; font-size: 13px; }
     /* Over the fire pad, clear of the weapon arrows' column. */
-    #tc-melee { right: 122px; bottom: calc(32% + 128px); width: 64px; height: 64px; font-size: 12px; }
+    #tc-melee { right: 122px; bottom: calc(19% + 128px); width: 64px; height: 64px; font-size: 12px; }
 
     /* Weapon prev/next on the right edge: the left third is the stick zone. */
     .tc-arrow {
@@ -820,12 +820,12 @@
        of that half, jump/use in the outer-right cluster. */
     @media (orientation: portrait) {
       html.touch #tc-fire {
-        right: 88px; bottom: 28%;
+        right: 88px; bottom: 16%;
         width: 100px; height: 100px;
       }
-      html.touch #tc-use  { right: 12px; bottom: calc(28% + 80px); width: 68px; height: 68px; font-size: 13px; }
-      html.touch #tc-jump { right: 12px; bottom: 28%;  width: 68px; height: 68px; font-size: 12px; }
-      html.touch #tc-melee { right: 96px; bottom: calc(28% + 120px); width: 56px; height: 56px; font-size: 11px; }
+      html.touch #tc-use  { right: 12px; bottom: calc(16% + 80px); width: 68px; height: 68px; font-size: 13px; }
+      html.touch #tc-jump { right: 12px; bottom: 16%;  width: 68px; height: 68px; font-size: 12px; }
+      html.touch #tc-melee { right: 96px; bottom: calc(16% + 120px); width: 56px; height: 56px; font-size: 11px; }
       html.touch #mobile-controls.lefty #tc-fire { right: auto; left: 88px; }
       html.touch #mobile-controls.lefty #tc-use  { right: auto; left: 12px; }
       html.touch #mobile-controls.lefty #tc-jump { right: auto; left: 12px; }
@@ -950,6 +950,140 @@
         opacity: 1;
       }
     }
+
+    /* ---- standard controller layout (Xbox-style option) touch-v3-20261111 ---- */
+    html { --ctrl-size: 1; }
+    #touch-std { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+    #touch-std[hidden] { display: none; }
+    #mobile-controls:not(.layout-std) #touch-std { display: none; }
+    #mobile-controls.layout-std .tc-pad,
+    #mobile-controls.layout-std .tc-arrow,
+    #mobile-controls.layout-std #tc-wname,
+    #mobile-controls.layout-std #tc-move,
+    #mobile-controls.layout-std #tc-look { display: none !important; }
+    .tc-layout-btn {
+      pointer-events: auto; min-height: 48px; min-width: 48px; padding: 8px 12px;
+      background: rgba(0,229,255,0.12); color: #bffcff; border: 2px solid rgba(0,229,255,0.7);
+      letter-spacing: 1px; font-size: 12px;
+    }
+    .tc-layout-btn.on { background: #00e5ff; color: #000; }
+    .std-cluster { position: absolute; pointer-events: none; }
+    .std-cluster.left {
+      left: max(6px, env(safe-area-inset-left, 0px));
+      bottom: max(8px, env(safe-area-inset-bottom, 0px));
+      width: 300px; height: 300px;
+      transform: scale(var(--ctrl-size, 1));
+      transform-origin: bottom left;
+    }
+    .std-cluster.right {
+      right: max(6px, env(safe-area-inset-right, 0px));
+      bottom: max(8px, env(safe-area-inset-bottom, 0px));
+      width: 316px; height: 340px;
+      transform: scale(var(--ctrl-size, 1));
+      transform-origin: bottom right;
+    }
+    #mobile-controls.lefty .std-cluster.left {
+      left: auto; right: max(6px, env(safe-area-inset-right, 0px));
+      transform-origin: bottom right;
+    }
+    #mobile-controls.lefty .std-cluster.right {
+      right: auto; left: max(6px, env(safe-area-inset-left, 0px));
+      transform-origin: bottom left;
+    }
+    .std-stick {
+      position: absolute; width: 128px; height: 128px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.48); background: rgba(255,255,255,.08);
+      pointer-events: auto; touch-action: none;
+    }
+    .std-stick .std-knob {
+      position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
+      margin: -29px 0 0 -29px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.72); background: rgba(255,255,255,.14);
+      pointer-events: none;
+    }
+    .std-stick.on { background: rgba(255,255,255,.16); }
+    #std-lstick { left: 4px; bottom: 16px; }
+    #std-rstick { left: 8px; bottom: 8px; width: 104px; height: 104px; }
+    #std-rstick .std-knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; background: rgba(0,0,0,.45); }
+    .std-face {
+      position: absolute; width: 56px; height: 56px; min-width: 48px; min-height: 48px;
+      border-radius: 50%; pointer-events: auto; touch-action: none; padding: 0;
+      font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 18px;
+      letter-spacing: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(10,10,10,.5); color: #fff; line-height: 1;
+    }
+    .std-face.on { filter: brightness(1.35); }
+    .std-face.a { border: 2.5px solid #3ddc84; color: #3ddc84; left: 182px; bottom: 76px; }
+    .std-face.b { border: 2.5px solid #e81123; color: #ff5a5a; left: 246px; bottom: 140px; }
+    .std-face.x { border: 2.5px solid #0078d7; color: #4aa3f0; left: 118px; bottom: 140px; }
+    .std-face.y { border: 2.5px solid #ffb900; color: #ffd056; left: 182px; bottom: 204px; }
+    .std-bump {
+      position: absolute; width: 68px; height: 48px; min-width: 48px; min-height: 48px;
+      border-radius: 20px; pointer-events: auto; touch-action: none; padding: 0;
+      font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 12px;
+      letter-spacing: .08em; display: flex; align-items: center; justify-content: center;
+      background: rgba(10,10,10,.5); color: #f1ebdd; border: 2px solid rgba(255,255,255,.55); line-height: 1;
+    }
+    .std-bump.on { background: rgba(255,255,255,.2); }
+    .std-bump.trig { height: 52px; border-radius: 16px; }
+    #std-lt { left: 4px; bottom: 224px; }
+    #std-lb { left: 76px; bottom: 264px; }
+    #std-rt { left: 244px; bottom: 272px; }
+    #std-rb { left: 160px; bottom: 276px; }
+    .std-sys {
+      position: absolute; min-width: 48px; min-height: 48px; padding: 4px 10px;
+      border-radius: 10px; pointer-events: auto; touch-action: none;
+      font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: .1em;
+      background: rgba(10,10,10,.5); color: #f1ebdd; border: 2px solid rgba(255,255,255,.5);
+    }
+    #std-select { left: 156px; bottom: 176px; }
+    #std-start { left: 80px; bottom: 300px; }
+    .std-dpad {
+      position: absolute; left: 148px; bottom: 16px;
+      width: 148px; height: 148px; pointer-events: none;
+    }
+    .std-dpad .std-d {
+      position: absolute; width: 48px; height: 48px; min-width: 48px; min-height: 48px;
+      border-radius: 8px; pointer-events: auto; touch-action: none; padding: 0;
+      font-size: 14px; background: rgba(10,10,10,.5); color: #f1ebdd;
+      border: 2px solid rgba(255,255,255,.5);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .std-dpad .up { left: 50px; top: 0; }
+    .std-dpad .down { left: 50px; bottom: 0; }
+    .std-dpad .left { left: 0; top: 50px; }
+    .std-dpad .right { right: 0; top: 50px; }
+    .std-dpad .std-d.on { background: rgba(255,255,255,.2); }
+    #mobile-controls.idle .std-face,
+    #mobile-controls.idle .std-bump,
+    #mobile-controls.idle .std-stick,
+    #mobile-controls.idle .std-sys,
+    #mobile-controls.idle .std-d { opacity: .22; transition: opacity .55s; }
+    #mobile-controls.idle .std-face.on,
+    #mobile-controls.idle .std-bump.on,
+    #mobile-controls.idle .std-stick.on { opacity: .9; }
+    @media (orientation: portrait) {
+      .std-cluster.left { width: 180px; height: 400px; }
+      .std-cluster.right { width: 196px; height: 380px; }
+      .std-stick { width: 112px; height: 112px; }
+      #std-lstick { left: 8px; bottom: 160px; }
+      #std-rstick { left: 2px; bottom: 6px; width: 80px; height: 80px; }
+      .std-face { width: 52px; height: 52px; font-size: 16px; }
+      .std-face.a { left: 72px; bottom: 86px; }
+      .std-face.b { left: 128px; bottom: 142px; }
+      .std-face.x { left: 16px; bottom: 142px; }
+      .std-face.y { left: 72px; bottom: 198px; }
+      .std-bump { width: 60px; height: 48px; font-size: 11px; }
+      .std-bump.trig { height: 52px; }
+      #std-lt { left: 2px; bottom: 284px; }
+      #std-lb { left: 68px; bottom: 284px; }
+      #std-rt { left: 126px; bottom: 258px; }
+      #std-rb { left: 62px; bottom: 262px; }
+      #std-select { left: 8px; bottom: 348px; }
+      #std-start { left: 8px; bottom: 320px; }
+      .std-dpad { left: 8px; bottom: 8px; width: 148px; height: 148px; }
+    }
+
   </style>
   <!-- Three.js 3D Engine -->
   <!-- Vendored r128: no CDN dependency at runtime, and headless QA can load it offline. -->
@@ -1147,6 +1281,31 @@
       <div id="tc-wprev" class="tc-arrow" data-tc="btn" data-act="wprev">&#9650;</div>
       <div id="tc-wname">PISTOL</div>
       <div id="tc-wnext" class="tc-arrow" data-tc="btn" data-act="wnext">&#9660;</div>
+
+      <div id="touch-std" hidden>
+        <div class="std-cluster left">
+          <button type="button" id="std-lt" class="std-bump trig" data-btn="6" aria-label="LT">LT</button>
+          <button type="button" id="std-lb" class="std-bump" data-btn="4" aria-label="LB">LB</button>
+          <button type="button" id="std-select" class="std-sys" data-btn="8" aria-label="View">VIEW</button>
+          <div id="std-lstick" class="std-stick" aria-label="Left stick"><div class="std-knob"></div></div>
+          <div id="std-dpad" class="std-dpad">
+            <button type="button" id="std-du" class="std-d up" data-btn="12" aria-label="D-pad up">▲</button>
+            <button type="button" id="std-dl" class="std-d left" data-btn="14" aria-label="D-pad left">◀</button>
+            <button type="button" id="std-dr" class="std-d right" data-btn="15" aria-label="D-pad right">▶</button>
+            <button type="button" id="std-dd" class="std-d down" data-btn="13" aria-label="D-pad down">▼</button>
+          </div>
+        </div>
+        <div class="std-cluster right">
+          <button type="button" id="std-start" class="std-sys" data-btn="9" aria-label="Menu">MENU</button>
+          <button type="button" id="std-rb" class="std-bump" data-btn="5" aria-label="RB">RB</button>
+          <button type="button" id="std-rt" class="std-bump trig" data-btn="7" aria-label="RT">RT</button>
+          <button type="button" id="std-y" class="std-face y" data-btn="3" aria-label="Y">Y</button>
+          <button type="button" id="std-x" class="std-face x" data-btn="2" aria-label="X">X</button>
+          <button type="button" id="std-b" class="std-face b" data-btn="1" aria-label="B">B</button>
+          <button type="button" id="std-a" class="std-face a" data-btn="0" aria-label="A">A</button>
+          <div id="std-rstick" class="std-stick" aria-label="Right stick"><div class="std-knob"></div></div>
+        </div>
+      </div>
     </div>
 
     <!-- Touch settings sheet (gear icon). Sim is frozen while this is up. -->
@@ -1160,6 +1319,11 @@
       <div class="tc-row"><label>GYRO ASSIST</label><input id="tc-set-gyro" type="checkbox"></div>
       <div class="tc-row"><label>GYRO UP/DOWN</label><input id="tc-set-gyro-pitch" type="range" min="20" max="100" step="5"><span class="tc-val" id="tc-val-gyro-pitch">48%</span></div>
       <div class="tc-row"><label>LEFT-HANDED</label><input id="tc-set-lefty" type="checkbox"></div>
+      <div class="tc-row"><label>LAYOUT</label>
+        <button type="button" class="tc-layout-btn on" id="tc-set-layout-game">GAME</button>
+        <button type="button" class="tc-layout-btn" id="tc-set-layout-std">STANDARD CONTROLLER</button>
+      </div>
+      <div class="tc-row"><label>CONTROL SIZE</label><input id="tc-set-ctrl-size" type="range" min="100" max="140" step="5"><span class="tc-val" id="tc-val-ctrl-size">100%</span></div>
       <button id="tc-settings-close" type="button">BACK</button>
     </div>
 
@@ -4415,7 +4579,7 @@ class CyberDoomEngine {
   static get LOOK_BASE() { return 0.0105; }
 
   defaultTouchOpts() {
-    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, gyroAsked: false, gyroPitch: 48, lefty: false };
+    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, gyroAsked: false, gyroPitch: 48, lefty: false, layout: 'game', ctrlSize: 100 };
   }
 
   loadTouchOpts() {
@@ -4424,6 +4588,9 @@ class CyberDoomEngine {
       const saved = JSON.parse(localStorage.getItem('cyberhell.touch') || '{}');
       Object.keys(opts).forEach(k => { if (saved[k] != null) opts[k] = saved[k]; });
     } catch (err) { /* first run, or storage blocked: defaults stand */ }
+    opts.layout = opts.layout === 'std' ? 'std' : 'game';
+    const cs = Number(opts.ctrlSize);
+    opts.ctrlSize = (Number.isFinite(cs) ? Math.min(140, Math.max(100, cs)) : 100);
     return opts;
   }
 
@@ -4559,7 +4726,19 @@ class CyberDoomEngine {
       this.pingTouchChrome();
 
       const role = el.dataset.tc;
-      if (role === 'btn') { this.touchAction(el.dataset.act); return; }
+      if (role === 'btn') {
+        this.touchAction(el.dataset.act);
+        // GoldenEye: right-side action pads also turn the camera if the same
+        // finger then moves past the look-pad dead zone, at look-pad sensitivity.
+        const act = el.dataset.act;
+        if (this.isRunning && (act === 'use' || act === 'melee' || act === 'jump' || act === 'wprev' || act === 'wnext')) {
+          const p = { role: 'look', lx: e.clientX, ly: e.clientY, armed: false, ox: e.clientX, oy: e.clientY, el };
+          this.touchPointers.set(e.pointerId, p);
+          try { root.setPointerCapture(e.pointerId); } catch (err) {}
+          el.classList.add('on');
+        }
+        return;
+      }
       if (!this.isRunning) return;
 
       const p = { role, lx: e.clientX, ly: e.clientY, armed: false, ox: e.clientX, oy: e.clientY };
@@ -4587,7 +4766,8 @@ class CyberDoomEngine {
       if (p.role === 'move') { steer(e.clientX - p.ox, e.clientY - p.oy); return; }
       // 'look' and 'fire' both turn the camera: that is the whole point of the
       // fire pad, the thumb never has to leave the trigger to aim.
-      look(p, e);
+      // 'std' is a left-side / non-look standard-layout button — action only.
+      if (p.role === 'look' || p.role === 'fire') look(p, e);
     }, { passive: false });
 
     const release = (e) => {
@@ -4603,6 +4783,8 @@ class CyberDoomEngine {
         firePad.classList.remove('on');
         if (!this.touchOpts.autofire) this.isFiring = false;
       }
+      if (p.el) p.el.classList.remove('on');
+      if (p.vbtn != null) this._setVbtn(p.vbtn, false);
     };
     root.addEventListener('pointerup', release);
     root.addEventListener('pointercancel', release);
@@ -4614,11 +4796,168 @@ class CyberDoomEngine {
     });
 
     this.initTouchSettings();
+    this._installVirtualPad();
+    this._setupStdLayout(root);
     this.applyTouchOpts();
     this.updateTouchWeaponLabel();
     this.initLandHint();
     this.pingTouchChrome();
   }
+
+
+  _installVirtualPad() {
+    // Standard-controller buttons feed a virtual Gamepad so AcidGamepad +
+    // cyber-gamepad.js (untouched) apply the existing mapping.
+    this._vbtn = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+    this._vaxes = [0, 0, 0, 0];
+    CyberDoomEngine._vpadOwner = this;
+    if (CyberDoomEngine._vpadWrapped) return;
+    const native = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
+    const wrapped = () => {
+      const list = native ? (native() || []) : [];
+      const owner = CyberDoomEngine._vpadOwner;
+      if (!owner || owner.touchLayout !== 'std') return list;
+      const virt = owner._asGamepad();
+      const real = [];
+      for (let i = 0; i < list.length; i++) if (list[i]) real.push(list[i]);
+      if (real[0]) return [owner._mergePad(real[0], virt), ...real.slice(1)];
+      return [virt];
+    };
+    try {
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: wrapped });
+      CyberDoomEngine._vpadWrapped = true;
+    } catch (err) {
+      try { navigator.getGamepads = wrapped; CyberDoomEngine._vpadWrapped = true; } catch (err2) { /* can't wrap */ }
+    }
+  }
+  _asGamepad() {
+    const buttons = [];
+    for (let i = 0; i < 17; i++) {
+      const b = this._vbtn[i] || { pressed: false, value: 0 };
+      buttons.push({ pressed: !!b.pressed, touched: !!b.pressed, value: b.value || (b.pressed ? 1 : 0) });
+    }
+    return {
+      id: 'Cyberhell Touch Virtual Pad', index: 0, connected: true, mapping: 'standard',
+      timestamp: performance.now(), axes: this._vaxes.slice(), buttons,
+    };
+  }
+  _mergePad(real, virt) {
+    const n = Math.max(real.buttons.length, virt.buttons.length, 17);
+    const buttons = [];
+    for (let i = 0; i < n; i++) {
+      const r = real.buttons[i], v = virt.buttons[i];
+      const pressed = !!(r && r.pressed || v && v.pressed);
+      const value = Math.max((r && r.value) || 0, (v && v.value) || 0);
+      buttons.push({ pressed, touched: pressed, value });
+    }
+    const an = Math.max(real.axes.length, virt.axes.length, 4);
+    const axes = [];
+    for (let i = 0; i < an; i++) {
+      const r = real.axes[i] || 0, v = virt.axes[i] || 0;
+      axes.push(Math.abs(v) > Math.abs(r) ? v : r);
+    }
+    return {
+      id: real.id, index: real.index, connected: true, mapping: real.mapping || 'standard',
+      timestamp: performance.now(), axes, buttons,
+    };
+  }
+  _setVbtn(i, pressed) {
+    const b = this._vbtn[i];
+    if (!b) return;
+    b.pressed = !!pressed;
+    b.value = pressed ? 1 : 0;
+  }
+  /* Pulse unused Home (16) so AcidGamepad wakes on a button that has no
+     Cyberhell binding. The first real thumb press is then an action, not a wake. */
+  _wakeVirtualPad() {
+    if (!this._vbtn || this._vpadWaking) return;
+    this._vpadWaking = true;
+    this._setVbtn(16, true);
+    const done = () => {
+      if (!this._vpadWaking) return;
+      this._vpadWaking = false;
+      this._setVbtn(16, false);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(done));
+    setTimeout(done, 80);
+  }
+  _setupStdLayout(root) {
+    const LOOK_RIGHT = { 0: 1, 1: 1, 2: 1, 3: 1, 5: 1, 7: 1 }; // A B X Y RB RT
+    const ids = { 0: 'std-a', 1: 'std-b', 2: 'std-x', 3: 'std-y', 4: 'std-lb', 5: 'std-rb', 6: 'std-lt', 7: 'std-rt', 8: 'std-select', 9: 'std-start', 12: 'std-du', 13: 'std-dd', 14: 'std-dl', 15: 'std-dr' };
+    const self = this;
+    Object.keys(ids).forEach((k) => {
+      const i = Number(k);
+      const el = document.getElementById(ids[i]);
+      if (!el) return;
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        self.sound && self.sound.resume && self.sound.resume();
+        self.pingTouchChrome();
+        el.classList.add('on');
+        self._setVbtn(i, true);
+        if (LOOK_RIGHT[i] && self.isRunning) {
+          const p = { role: 'look', lx: e.clientX, ly: e.clientY, armed: false, ox: e.clientX, oy: e.clientY, el, vbtn: i };
+          self.touchPointers.set(e.pointerId, p);
+          try { root.setPointerCapture(e.pointerId); } catch (err) {}
+        } else {
+          const p = { role: 'std', el, vbtn: i };
+          self.touchPointers.set(e.pointerId, p);
+          try { root.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+      }, { passive: false });
+    });
+    // Per-element pointerup (root release also clears p.vbtn if capture is on root).
+    Object.keys(ids).forEach((k) => {
+      const i = Number(k);
+      const el = document.getElementById(ids[i]);
+      if (!el) return;
+      const up = (e) => { self._setVbtn(i, false); el.classList.remove('on'); };
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    });
+    this._bindStdStick('std-lstick', 'l');
+    this._bindStdStick('std-rstick', 'r');
+  }
+  _bindStdStick(id, which) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const knob = el.querySelector('.std-knob');
+    let pid = null, cx = 0, cy = 0, R = 50;
+    const center = () => {
+      const r = el.getBoundingClientRect();
+      cx = r.left + r.width / 2; cy = r.top + r.height / 2; R = Math.max(24, r.width / 2 - 8);
+    };
+    const apply = (x, y) => {
+      let dx = x - cx, dy = y - cy; const d = Math.hypot(dx, dy);
+      if (d > R) { dx *= R / d; dy *= R / d; }
+      if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      const ax = R ? dx / R : 0, ay = R ? dy / R : 0;
+      if (which === 'l') { this._vaxes[0] = ax; this._vaxes[1] = ay; }
+      else { this._vaxes[2] = ax; this._vaxes[3] = ay; }
+    };
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this.sound && this.sound.resume && this.sound.resume();
+      this.pingTouchChrome();
+      pid = e.pointerId; center(); el.classList.add('on'); apply(e.clientX, e.clientY);
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    }, { passive: false });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pid) return;
+      apply(e.clientX, e.clientY);
+      e.preventDefault();
+    }, { passive: false });
+    const fin = (e) => {
+      if (e.pointerId !== pid) return;
+      pid = null; el.classList.remove('on');
+      if (knob) knob.style.transform = '';
+      if (which === 'l') { this._vaxes[0] = 0; this._vaxes[1] = 0; }
+      else { this._vaxes[2] = 0; this._vaxes[3] = 0; }
+    };
+    el.addEventListener('pointerup', fin);
+    el.addEventListener('pointercancel', fin);
+  }
+
 
   /* ==========================================================================
      TOUCH SETTINGS SHEET
@@ -4628,10 +4967,23 @@ class CyberDoomEngine {
     const o = this.touchOpts;
     if (!root || !o) return;
     root.style.setProperty('--tc-op', String(o.op / 100));
+    root.style.setProperty('--ctrl-size', String((o.ctrlSize ?? 100) / 100));
+    document.documentElement.style.setProperty('--ctrl-size', String((o.ctrlSize ?? 100) / 100));
     root.classList.toggle('lefty', !!o.lefty);
+    root.classList.toggle('layout-std', o.layout === 'std');
+    const stdRoot = document.getElementById('touch-std');
+    if (stdRoot) stdRoot.hidden = o.layout !== 'std';
+    this.touchLayout = o.layout === 'std' ? 'std' : 'game';
+    if (this.touchLayout === 'std') this._wakeVirtualPad();
     const lock = document.getElementById('tc-lock');
     if (lock) lock.classList.toggle('on', !!o.autofire);
     if (o.gyro) this.enableGyro(); else this.disableGyro();
+    const lg = document.getElementById('tc-set-layout-game');
+    const ls = document.getElementById('tc-set-layout-std');
+    if (lg) lg.classList.toggle('on', o.layout !== 'std');
+    if (ls) ls.classList.toggle('on', o.layout === 'std');
+    const csv = document.getElementById('tc-val-ctrl-size');
+    if (csv) csv.innerText = (o.ctrlSize ?? 100) + '%';
   }
 
   initTouchSettings() {
@@ -4660,6 +5012,14 @@ class CyberDoomEngine {
     bind('tc-set-gyro', 'gyro');
     bind('tc-set-gyro-pitch', 'gyroPitch', 'tc-val-gyro-pitch', (v) => v + '%');
     bind('tc-set-lefty', 'lefty');
+    bind('tc-set-ctrl-size', 'ctrlSize', 'tc-val-ctrl-size', (v) => v + '%');
+    const setLayout = (v) => {
+      o.layout = v === 'std' ? 'std' : 'game';
+      this.applyTouchOpts();
+      this.saveTouchOpts();
+    };
+    document.getElementById('tc-set-layout-game')?.addEventListener('click', () => setLayout('game'));
+    document.getElementById('tc-set-layout-std')?.addEventListener('click', () => setLayout('std'));
     document.getElementById('tc-settings-close')?.addEventListener('click', () => this.closeTouchSettings());
   }
 
