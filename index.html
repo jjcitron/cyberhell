@@ -13,6 +13,7 @@
   <title>CYBER-ENTRY // MAP01 ENGINE</title>
   <!-- First script: sets html.touch / window.CYBER_TOUCH before any CSS rule or engine code reads it. -->
   <script src="js/cyber-input-mode.js"></script>
+  <script src="js/cyber-touch-gyro.js"></script>
   <script src="js/webaudio-tinysynth.js"></script>
   <script src="js/cyber-midi-player.js"></script>
   <script src="js/cyber-refine.js"></script>
@@ -522,7 +523,7 @@
     }
 
     /* ==========================================================================
-       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111
+       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111 touch-feel-prod-20261111
        Layout follows Delta Touch / Quad Touch and the GDK touch-adaptation
        guide: the right half is a look surface, a translucent FIRE pad sits
        toward the center of that half and looks while it fires, the left third
@@ -605,8 +606,10 @@
 
     #tc-fire {
       /* Inset toward the center of the right half so a hard right-turn
-         still has glass to travel (GDK guide). Jump/use stay outer-right. */
-      right: 148px; bottom: 22px;
+         still has glass to travel (GDK guide). Jump/use stay outer-right.
+         Bottom is 32% so the pad sits at the natural right-thumb rest
+         (~46% of height to the pad's center), not hugging the bottom edge. */
+      right: 148px; bottom: 32%;
       width: 116px; height: 116px;
       border-color: rgba(255, 0, 85, 0.85);
       background: radial-gradient(circle, rgba(255,0,85,0.18) 45%, rgba(255,0,85,0.06) 100%);
@@ -637,10 +640,10 @@
     }
     #tc-lock.on { background: rgba(255, 0, 85, 0.75); color: #fff; border-color: #fff; }
 
-    #tc-use  { right: 14px; bottom: 100px; width: 70px; height: 70px; font-size: 14px; }
-    #tc-jump { right: 14px; bottom: 22px;  width: 70px; height: 70px; font-size: 13px; }
+    #tc-use  { right: 14px; bottom: calc(32% + 78px); width: 70px; height: 70px; font-size: 14px; }
+    #tc-jump { right: 14px; bottom: 32%;  width: 70px; height: 70px; font-size: 13px; }
     /* Over the fire pad, clear of the weapon arrows' column. */
-    #tc-melee { right: 122px; bottom: 150px; width: 64px; height: 64px; font-size: 12px; }
+    #tc-melee { right: 122px; bottom: calc(32% + 128px); width: 64px; height: 64px; font-size: 12px; }
 
     /* Weapon prev/next on the right edge: the left third is the stick zone. */
     .tc-arrow {
@@ -790,7 +793,17 @@
     html.touch .weapon-selector { display: none; }
 
     /* Banner sat at top:24px, straight under the new HUD strip. */
-    html.touch #hud-message { top: auto; bottom: 34%; font-size: 14px; padding: 4px 12px; }
+    html.touch #hud-message {
+      top: 16%; bottom: auto; left: 38%;
+      font-size: 14px; padding: 4px 12px;
+      max-width: min(46vw, 420px);
+    }
+    @media (orientation: portrait) {
+      html.touch #hud-message {
+        top: calc(190px + env(safe-area-inset-top, 0px));
+        left: 50%; max-width: 80%;
+      }
+    }
 
     /* Start/pause overlay has to fit a ~360px-tall landscape viewport and
        stay scrollable, or the ENTER/RESUME button is unreachable. The same
@@ -807,12 +820,12 @@
        of that half, jump/use in the outer-right cluster. */
     @media (orientation: portrait) {
       html.touch #tc-fire {
-        right: 88px; bottom: 28px;
+        right: 88px; bottom: 28%;
         width: 100px; height: 100px;
       }
-      html.touch #tc-use  { right: 12px; bottom: 108px; width: 68px; height: 68px; font-size: 13px; }
-      html.touch #tc-jump { right: 12px; bottom: 28px;  width: 68px; height: 68px; font-size: 12px; }
-      html.touch #tc-melee { right: 96px; bottom: 148px; width: 56px; height: 56px; font-size: 11px; }
+      html.touch #tc-use  { right: 12px; bottom: calc(28% + 80px); width: 68px; height: 68px; font-size: 13px; }
+      html.touch #tc-jump { right: 12px; bottom: 28%;  width: 68px; height: 68px; font-size: 12px; }
+      html.touch #tc-melee { right: 96px; bottom: calc(28% + 120px); width: 56px; height: 56px; font-size: 11px; }
       html.touch #mobile-controls.lefty #tc-fire { right: auto; left: 88px; }
       html.touch #mobile-controls.lefty #tc-use  { right: auto; left: 12px; }
       html.touch #mobile-controls.lefty #tc-jump { right: auto; left: 12px; }
@@ -1145,6 +1158,7 @@
       <div class="tc-row"><label>INVERT Y</label><input id="tc-set-invert" type="checkbox"></div>
       <div class="tc-row"><label>AUTOFIRE LOCK</label><input id="tc-set-auto" type="checkbox"></div>
       <div class="tc-row"><label>GYRO ASSIST</label><input id="tc-set-gyro" type="checkbox"></div>
+      <div class="tc-row"><label>GYRO UP/DOWN</label><input id="tc-set-gyro-pitch" type="range" min="20" max="100" step="5"><span class="tc-val" id="tc-val-gyro-pitch">48%</span></div>
       <div class="tc-row"><label>LEFT-HANDED</label><input id="tc-set-lefty" type="checkbox"></div>
       <button id="tc-settings-close" type="button">BACK</button>
     </div>
@@ -4401,7 +4415,7 @@ class CyberDoomEngine {
   static get LOOK_BASE() { return 0.0105; }
 
   defaultTouchOpts() {
-    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, gyroAsked: false, lefty: false };
+    return { sens: 100, dead: 3, op: 55, invert: false, autofire: false, gyro: false, gyroAsked: false, gyroPitch: 48, lefty: false };
   }
 
   loadTouchOpts() {
@@ -4644,6 +4658,7 @@ class CyberDoomEngine {
     bind('tc-set-invert', 'invert');
     bind('tc-set-auto', 'autofire');
     bind('tc-set-gyro', 'gyro');
+    bind('tc-set-gyro-pitch', 'gyroPitch', 'tc-val-gyro-pitch', (v) => v + '%');
     bind('tc-set-lefty', 'lefty');
     document.getElementById('tc-settings-close')?.addEventListener('click', () => this.closeTouchSettings());
   }
@@ -4680,13 +4695,21 @@ class CyberDoomEngine {
         const a = e.alpha, b = e.beta;
         if (a == null || b == null) return;
         if (this.gyroLast) {
+          const G = window.CyberTouchGyro;
           let da = a - this.gyroLast.a;
-          if (da > 180) da -= 360;
-          if (da < -180) da += 360;
+          da = G ? G.wrapAlphaDelta(da) : (da > 180 ? da - 360 : da < -180 ? da + 360 : da);
           const db = b - this.gyroLast.b;
-          const RAD = Math.PI / 180, ASSIST = 0.6;
-          this.yaw += da * RAD * ASSIST;
-          this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch - db * RAD * ASSIST));
+          const scale = ((this.touchOpts && this.touchOpts.gyroPitch) != null
+            ? this.touchOpts.gyroPitch : 48) / 100;
+          if (G) {
+            const d = G.lookDeltas(da, db, scale);
+            this.yaw += d.yawDelta;
+            this.pitch = G.clampPitch(this.pitch - d.pitchDelta);
+          } else {
+            const RAD = Math.PI / 180, ASSIST = 0.6;
+            this.yaw += da * RAD * ASSIST;
+            this.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, this.pitch - db * RAD * ASSIST * scale));
+          }
           this.applyLook(0, 0, 0);   // re-derive the camera from yaw/pitch
         }
         this.gyroLast = { a, b };

@@ -3,7 +3,7 @@
  *
  *   PLAYWRIGHT_PATH=... QA_PORT=8161 node tests/qa-touch-controls.js
  *
- * Viewports: phone portrait 390x844, phone landscape 844x390, desktop 1280x800.
+ * Viewports: 390x844, 844x390, Pixel 9 Pro XL 412x915 / 915x412, desktop 1280x800.
  * Touch emulation on the phone passes. Saves stills next to this file's
  * --out dir (default .qa-touch/). Checks: no page errors, pads >= 48px,
  * portrait is playable (no full-screen rotate wall), fire is inset,
@@ -218,6 +218,22 @@ async function runTouchViewport(browser, tag, width, height) {
     // occupied by the jump/use cluster, at least 60px of glass past fire's right edge.
     const room = play.vp.w - (fire.x + fire.w);
     check(room >= 60, `${tag}: swipe room to the right of fire is ${Math.round(room)}px`);
+    // Height: fire's center should sit at the natural right-thumb rest,
+    // not hugging the bottom edge. Landscape 40–55% from the bottom;
+    // portrait in the lower-middle third (~25–45%).
+    const centerFromBottom = play.vp.h - (fire.y + fire.h / 2);
+    const pct = centerFromBottom / play.vp.h;
+    const landscape = play.vp.w > play.vp.h;
+    if (landscape) {
+      check(pct >= 0.38 && pct <= 0.58,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~40–55% in landscape)`);
+    } else {
+      check(pct >= 0.25 && pct <= 0.45,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want lower-middle third in portrait)`);
+    }
+    const bottomEdge = play.vp.h - (fire.y + fire.h);
+    check(bottomEdge / play.vp.h >= 0.20,
+      `${tag}: fire bottom is ${Math.round(bottomEdge)}px (${(bottomEdge / play.vp.h * 100).toFixed(0)}%) off the bottom edge`);
   }
   // Pads fully on screen.
   for (const p of Object.values(play.pads)) {
@@ -368,6 +384,9 @@ async function runDesktop(browser) {
   try {
     await runTouchViewport(browser, 'portrait', 390, 844);
     await runTouchViewport(browser, 'landscape', 844, 390);
+    // Pixel 9 Pro XL-like CSS viewports (Joel's playtest device).
+    await runTouchViewport(browser, 'portrait-p9', 412, 915);
+    await runTouchViewport(browser, 'landscape-p9', 915, 412);
     await runDesktop(browser);
   } finally {
     await browser.close();
