@@ -15,6 +15,8 @@ const EXPECTED_TYPES = {
   session_start: 'session',
   level_start: 'level',
   death: 'death',
+  first_input: 'first_input',
+  load_error: 'load_error',
 };
 
 function fakeReq(method, body, opts = {}) {
@@ -172,7 +174,7 @@ function assertRecord(parsed, name) {
 }
 
 test('client event names are exactly the names the server accepts', () => {
-  assert.deepEqual([...EVENT_NAMES], ['session_start', 'level_start', 'death']);
+  assert.deepEqual([...EVENT_NAMES], ['session_start', 'level_start', 'death', 'first_input', 'load_error']);
   assert.deepEqual([...EVENT_NAMES].sort(), [...ALLOWED_NAMES].sort());
   for (const name of EVENT_NAMES) assert.equal(ALLOWED_NAMES.has(name), true, name);
   assert.deepEqual([...ALLOWED_PROPS], [...ALLOWED_PROP_KEYS]);
@@ -419,7 +421,7 @@ test('client kit sends each event once-guarded, allowlisted, and the server acce
   assert.equal(tel.track('death', { level: 'json1', index: 0, difficulty: 'normal', cause: 'hp' }), true);
   assert.equal(tel.track('play'), false);
   assert.equal(emitted.length, 3);
-  assert.deepEqual(emitted.map((row) => row.name), [...EVENT_NAMES]);
+  assert.deepEqual(emitted.map((row) => row.name), ['session_start', 'level_start', 'death']);
 
   const level = emitted[1];
   assert.equal(level.props.level, 'json1');
@@ -442,6 +444,25 @@ test('client kit sends each event once-guarded, allowlisted, and the server acce
     assertRecord(rec, payload.name);
     assert.equal(rec.internal, false);
   }
+});
+
+test('first_input and load_error are one-shot, privacy-safe, and accepted', async () => {
+  const listeners = new Map();
+  const eventTarget = {
+    addEventListener(name, fn) { listeners.set(name, fn); },
+    removeEventListener(name) { listeners.delete(name); },
+    emit(name) { listeners.get(name)?.({ type: name, message: 'private text' }); },
+  };
+  const emitted = [];
+  createTelemetry({ ...pageEnv(), eventTarget, performance: { now: () => 88.8 },
+    qaMute: false, transport: (payload) => emitted.push(payload) });
+  eventTarget.emit('touchstart'); eventTarget.emit('pointerdown');
+  eventTarget.emit('unhandledrejection'); eventTarget.emit('error');
+  assert.deepEqual(emitted.map((row) => row.name), ['first_input', 'load_error']);
+  assert.equal(emitted[0].props.ms_since_load, 89);
+  assert.equal(emitted[1].props.error_kind, 'promise');
+  assert.equal(JSON.stringify(emitted).includes('private text'), false);
+  for (const payload of emitted) assert.equal((await prodCall(payload)).res.statusCode, 204);
 });
 
 test('?test=1 tags internal and still sends; hard mutes send nothing', () => {

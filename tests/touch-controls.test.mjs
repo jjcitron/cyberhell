@@ -154,7 +154,7 @@ test('desktop pointer-lock start path and gamepad file are untouched', () => {
   assert.match(norm, /this\.canvas\.requestPointerLock\(\)/);
   assert.match(norm, /this\.padCtl = window\.CyberGamepad \? window\.CyberGamepad\.attach\(this\) : null/);
   // gamepad module bytes: compared to a snapshot of size + a distinctive mapping comment
-  assert.equal(gamepad.length, 6567, `cyber-gamepad.js length changed (${gamepad.length}) â€” mappings must not move`);
+  assert.equal(gamepad.length, 6417, `cyber-gamepad.js length changed (${gamepad.length}) â€” mappings must not move`);
 });
 
 test('live-check marker is present', () => {

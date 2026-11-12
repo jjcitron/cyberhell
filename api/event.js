@@ -25,6 +25,8 @@ export const ALLOWED_NAMES = new Set([
   'session_start',
   'level_start',
   'death',
+  'first_input',
+  'load_error',
 ]);
 
 // Raw name → canonical growth type.
@@ -32,6 +34,8 @@ const TYPE_MAP = Object.freeze({
   session_start: 'session',
   level_start: 'level',
   death: 'death',
+  first_input: 'first_input',
+  load_error: 'load_error',
 });
 
 export const ALLOWED_PROP_KEYS = Object.freeze([
@@ -39,6 +43,8 @@ export const ALLOWED_PROP_KEYS = Object.freeze([
   'index',
   'difficulty',
   'cause',
+  'ms_since_load',
+  'error_kind',
 ]);
 
 const ALLOWED_PROPS = new Set(ALLOWED_PROP_KEYS);

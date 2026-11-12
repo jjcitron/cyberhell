@@ -17,6 +17,8 @@ const CANONICAL_HOSTS = Object.freeze([
   'brawler.acidlemon.com',
   'cyberhell.acidlemon.com',
   'cardclimb.acidlemon.com',
+  'sumicyberhell.acidlemon.com',
+  'sumiclash.acidlemon.com',
 ]);
 
 // Shared QA hooks. `test` (?test=1) tags internal and does not drop the event.

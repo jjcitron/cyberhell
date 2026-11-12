@@ -14,6 +14,8 @@
     'session_start',
     'level_start',
     'death',
+    'first_input',
+    'load_error',
   ]);
 
   var ALLOWED_PROPS = Object.freeze([
@@ -21,6 +23,8 @@
     'index',
     'difficulty',
     'cause',
+    'ms_since_load',
+    'error_kind',
   ]);
 
   var CLIENT_KEY = 'cyberhell.cid';
@@ -87,6 +91,8 @@
       }
     }
 
+    installLifecycleMetrics(track, env);
+
     // At most one send of this name for the page session.
     function once(name, props) {
       try {
@@ -109,6 +115,34 @@
       getInternal: function () { return { internal: detected.internal, reasons: detected.reasons.slice() }; },
       getClientId: function () { return clientId; },
       getSessionId: function () { return sessionId; },
+    };
+  }
+
+  function installLifecycleMetrics(track, env) {
+    env = env || {};
+    var target = env.eventTarget !== undefined ? env.eventTarget : root.window;
+    if (!target || typeof target.addEventListener !== 'function') return function () {};
+    var clock = env.performance || root.performance;
+    var inputSent = false;
+    var errorSent = false;
+    function firstInput() {
+      if (inputSent) return;
+      inputSent = true;
+      track('first_input', { ms_since_load: Math.max(0, Math.round((clock && clock.now && clock.now()) || 0)) });
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (name) { target.removeEventListener(name, firstInput); });
+    }
+    function loadError(event) {
+      if (errorSent) return;
+      errorSent = true;
+      track('load_error', { error_kind: event && event.type === 'unhandledrejection' ? 'promise' : 'runtime' });
+    }
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (name) { target.addEventListener(name, firstInput, { passive: true }); });
+    target.addEventListener('error', loadError, { once: true });
+    target.addEventListener('unhandledrejection', loadError, { once: true });
+    return function () {
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (name) { target.removeEventListener(name, firstInput); });
+      target.removeEventListener('error', loadError);
+      target.removeEventListener('unhandledrejection', loadError);
     };
   }
 
@@ -163,6 +197,7 @@
 
   var api = {
     createTelemetry: createTelemetry,
+    installLifecycleMetrics: installLifecycleMetrics,
     detectQaMute: detectQaMute,
     detectInternal: growth.detectInternal,
     EVENT_NAMES: EVENT_NAMES,
