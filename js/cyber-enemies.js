@@ -1640,6 +1640,9 @@
     } finally {
       buildAccents = null;
     }
+    // TRELLIS realistic mesh (js/cyber-trellis.js): hides the procedural
+    // meshes and rides the same pivots. Stock rigs only, never with a look.
+    if (!curLook && window.CyberTrellis) window.CyberTrellis.apply(id, root, parts, T);
 
     // Every rig lives in an inner body group, for two reasons:
     //  - the rigs are modelled facing -Z (eyes, toes, muzzles), but the AI's
