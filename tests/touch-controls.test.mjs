@@ -191,25 +191,47 @@ test('Play click auto-enters fullscreen on touch only, before any other work', (
   assert.match(norm, /endReplayBtn\.addEventListener\('click', \(\) => \{ this\.autoEnterFullscreen\(\); this\.replayCurrentLevel\(\); \}\)/);
 });
 
-test('right-thumb cluster sits halfway between the original and the raised positions', () => {
+test('JUMP sits centered under FIRE, USE stays in the outer-right corner', () => {
   const norm = html.replace(/\r\n/g, '\n');
-  // Halfway: landscape 19% (was 32% after the raise, originally 22px ≈ 6%).
-  // Center ≈ 19% + 58px → ~34% of 390. Portrait 16% (was 28%), center ≈ 23%.
+  // Landscape: FIRE is raised to leave a 12px + 70px JUMP + 10px gap under it.
+  // JUMP is horizontally centered on FIRE (Crossfire d-bottom placement).
   const fireRule = norm.match(/#tc-fire \{([^}]+)\}/);
   assert.ok(fireRule, '#tc-fire rule missing');
-  assert.match(fireRule[1], /bottom:\s*19%/);
+  assert.match(fireRule[1], /bottom:\s*calc\(12px \+ 70px \+ 10px\)/);
   assert.doesNotMatch(fireRule[1], /bottom:\s*22px/);
   assert.doesNotMatch(fireRule[1], /bottom:\s*32%/);
-  assert.match(norm, /#tc-jump \{ right: 14px; bottom: 19%;/);
-  assert.match(norm, /#tc-use  \{ right: 14px; bottom: calc\(19% \+ 78px\);/);
-  assert.match(norm, /#tc-melee \{ right: 122px; bottom: calc\(19% \+ 128px\);/);
-  assert.match(norm, /html\.touch #tc-fire \{[\s\S]*?bottom:\s*16%/);
-  assert.match(norm, /html\.touch #tc-jump \{ right: 12px; bottom: 16%;/);
-  assert.match(norm, /html\.touch #tc-use  \{ right: 12px; bottom: calc\(16% \+ 80px\);/);
-  assert.match(norm, /html\.touch #tc-melee \{ right: 96px; bottom: calc\(16% \+ 120px\);/);
+  assert.doesNotMatch(fireRule[1], /bottom:\s*19%/);
+  assert.match(norm, /#tc-jump \{ right: calc\(148px \+ \(116px - 70px\) \/ 2\); bottom: 12px;/);
+  assert.match(norm, /#tc-use  \{ right: 14px; bottom: 12px;/);
+  assert.match(norm, /#tc-melee \{ right: calc\(148px \+ \(116px - 64px\) \/ 2\); bottom: calc\(12px \+ 70px \+ 10px \+ 116px \+ 10px\);/);
+  // Portrait: same stack, compact sizes.
+  assert.match(norm, /html\.touch #tc-fire \{[\s\S]*?bottom:\s*calc\(12px \+ 68px \+ 10px\)/);
+  assert.match(norm, /html\.touch #tc-jump \{ right: calc\(88px \+ \(100px - 68px\) \/ 2\); bottom: 12px;/);
+  assert.match(norm, /html\.touch #tc-use  \{ right: 12px; bottom: 12px;/);
+  assert.match(norm, /html\.touch #tc-melee \{ right: calc\(88px \+ \(100px - 56px\) \/ 2\); bottom: calc\(12px \+ 68px \+ 10px \+ 100px \+ 10px\);/);
   // Lefty still only mirrors the horizontal axis; bottoms come from the same rules.
   assert.match(norm, /#mobile-controls\.lefty #tc-fire \{ right: auto; left: 148px; \}/);
+  assert.match(norm, /#mobile-controls\.lefty #tc-jump \{ right: auto; left: calc\(148px \+ \(116px - 70px\) \/ 2\); \}/);
   assert.match(norm, /html\.touch #mobile-controls\.lefty #tc-fire \{ right: auto; left: 88px; \}/);
+  assert.match(norm, /html\.touch #mobile-controls\.lefty #tc-jump \{ right: auto; left: calc\(88px \+ \(100px - 68px\) \/ 2\); \}/);
+});
+
+test('dead-end banner is tappable on touch and keeps desktop hold-E copy', () => {
+  const norm = html.replace(/\r\n/g, '\n');
+  assert.match(norm, /id="hud-deadend"/);
+  assert.match(norm, /DEAD END — TAP TO EXTRACT/);
+  assert.match(norm, /DEAD END — HOLD \[E\] TO EXTRACT/);
+  // Touch banner sits above the look surface and only accepts taps while shown.
+  assert.match(norm, /html\.touch #hud-deadend \{[\s\S]*?z-index:\s*21;/);
+  assert.match(norm, /html\.touch #hud-deadend\.is-on \{[\s\S]*?pointer-events:\s*auto;/);
+  assert.match(norm, /bindDeadEndExtract\(\)/);
+  assert.match(norm, /this\.bindDeadEndExtract\(\);/);
+  assert.match(norm, /CyberTraversal\.extract\(this\)/);
+  // Desktop default from the traversal net is unchanged.
+  const trav = readFileSync(join(ROOT, 'js/cyber-traversal.js'), 'utf8');
+  assert.match(trav, /return 'DEAD END — HOLD \[E\] TO EXTRACT';/);
+  // The HUD rewrites that exact string only on touch; other messages pass through.
+  assert.match(norm, /if \(touch && msg === 'DEAD END — HOLD \[E\] TO EXTRACT'\) text = 'DEAD END — TAP TO EXTRACT';/);
 });
 
 test('gyro up/down is a separate persisted setting defaulting to 48% of yaw', () => {

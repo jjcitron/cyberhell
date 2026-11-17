@@ -210,30 +210,40 @@ async function runTouchViewport(browser, tag, width, height) {
   if (play.fsHud && play.fsHud.display === 'flex') {
     check(play.fsHud.w >= 47.5 && play.fsHud.h >= 47.5, `${tag}: fs-hud-btn >= 48px (${Math.round(play.fsHud.w)}x${Math.round(play.fsHud.h)})`);
   }
-  // Fire sits inward of jump (outer-right cluster): fire.x < jump.x in right-handed layout.
+  // JUMP sits centered under FIRE (Sumi: Crossfire attack-diamond placement).
+  // USE keeps the outer-right corner, so there is still swipe room past FIRE.
   const fire = play.pads['tc-fire'], jump = play.pads['tc-jump'];
+  const use = play.pads['tc-use'], melee = play.pads['tc-melee'];
   if (fire && jump && fire.visible && jump.visible) {
-    check(fire.x + 8 < jump.x, `${tag}: fire is inward of jump (fire.x=${Math.round(fire.x)} jump.x=${Math.round(jump.x)})`);
-    // And not parked on the far right edge: there is swipe room to the right of fire,
-    // occupied by the jump/use cluster, at least 60px of glass past fire's right edge.
+    const fireCx = fire.x + fire.w / 2, jumpCx = jump.x + jump.w / 2;
+    check(Math.abs(fireCx - jumpCx) <= 8,
+      `${tag}: jump is centered under fire (fireCx=${Math.round(fireCx)} jumpCx=${Math.round(jumpCx)})`);
+    check(jump.y + 1 >= fire.y + fire.h,
+      `${tag}: jump sits under fire (fire bottom=${Math.round(fire.y + fire.h)} jump top=${Math.round(jump.y)})`);
     const room = play.vp.w - (fire.x + fire.w);
     check(room >= 60, `${tag}: swipe room to the right of fire is ${Math.round(room)}px`);
-    // Height: fire's center should sit at the natural right-thumb rest,
-    // not hugging the bottom edge. Landscape 40–55% from the bottom;
-    // portrait in the lower-middle third (~25–45%).
     const centerFromBottom = play.vp.h - (fire.y + fire.h / 2);
     const pct = centerFromBottom / play.vp.h;
     const landscape = play.vp.w > play.vp.h;
     if (landscape) {
-      check(pct >= 0.28 && pct <= 0.42,
-        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~34% in landscape, halfway)`);
+      check(pct >= 0.28 && pct <= 0.45,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~36–40% in landscape)`);
     } else {
-      check(pct >= 0.16 && pct <= 0.30,
-        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~23% in portrait, halfway)`);
+      check(pct >= 0.12 && pct <= 0.32,
+        `${tag}: fire center at ${(pct * 100).toFixed(1)}% from bottom (want ~15–22% in portrait)`);
     }
     const bottomEdge = play.vp.h - (fire.y + fire.h);
-    check(bottomEdge / play.vp.h >= 0.14,
-      `${tag}: fire bottom is ${Math.round(bottomEdge)}px (${(bottomEdge / play.vp.h * 100).toFixed(0)}%) off the bottom edge`);
+    check(bottomEdge >= 70,
+      `${tag}: fire bottom is ${Math.round(bottomEdge)}px off the bottom edge (room for JUMP under it)`);
+  }
+  // No overlap between the four action pads, in either orientation or handedness.
+  const cluster = [fire, jump, use, melee].filter(p => p && p.visible);
+  for (let i = 0; i < cluster.length; i++) {
+    for (let j = i + 1; j < cluster.length; j++) {
+      const a = cluster[i], b = cluster[j];
+      check(!overlaps(a, b, 0),
+        `${tag}: ${a.id} does not overlap ${b.id} (${Math.round(a.x)},${Math.round(a.y)} ${Math.round(a.w)}x${Math.round(a.h)} vs ${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}x${Math.round(b.h)})`);
+    }
   }
   // Pads fully on screen.
   for (const p of Object.values(play.pads)) {

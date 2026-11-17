@@ -149,6 +149,28 @@
       text-transform: uppercase;
       white-space: nowrap;
     }
+    /* On touch the banner is the extract control (there is no E key). It has
+       to sit above the look surface (#mobile-controls is z-index 15) and only
+       accept taps while it is actually showing. */
+    html.touch #hud-deadend {
+      z-index: 21;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 10px 18px;
+      /* Leave the weapon-arrow column (right ~62px) and a matching left
+         gutter free on narrow portrait, and wrap rather than cover them. */
+      max-width: calc(100% - 140px);
+      white-space: normal;
+      text-align: center;
+    }
+    html.touch #hud-deadend.is-on {
+      pointer-events: auto;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
 
     /* Message Banner */
     #hud-message {
@@ -524,13 +546,15 @@
     }
 
     /* ==========================================================================
-       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111 touch-feel-prod-20261111 touch-v3-20261111
+       TOUCH CONTROL LAYER (phones, both orientations) touch-controls-prod-20261111 touch-feel-prod-20261111 touch-v3-20261111 touch-jump-under-fire-20261117
        Layout follows Delta Touch / Quad Touch and the GDK touch-adaptation
        guide: the right half is a look surface, a translucent FIRE pad sits
        toward the center of that half and looks while it fires, the left third
-       spawns a floating move stick, jump/use live in the outer-right cluster,
-       and the utility icons sit along the top edge clear of the HUD corners.
-       Landscape is the preferred view; portrait uses a compact reflow.
+       spawns a floating move stick, JUMP sits directly under FIRE (Sumi:
+       Crossfire's attack-diamond placement: JUMP is the bottom button under
+       the main action), USE stays in the outer-right corner, MELEE sits
+       above FIRE, and the utility icons sit along the top edge clear of the
+       HUD corners. Landscape is the preferred view; portrait uses a compact reflow.
        Opacity is a single custom property so Settings can dim the whole layer.
        ========================================================================== */
     #mobile-controls {
@@ -607,10 +631,9 @@
 
     #tc-fire {
       /* Inset toward the center of the right half so a hard right-turn
-         still has glass to travel (GDK guide). Jump/use stay outer-right.
-         Bottom is 19% — halfway between the original 22px rest and the 32% raise
-         (~46% of height to the pad's center), not hugging the bottom edge. */
-      right: 148px; bottom: 19%;
+         still has glass to travel (GDK guide). Raised just enough that JUMP
+         can sit centered underneath (12px + 70px jump + 10px gap). */
+      right: 148px; bottom: calc(12px + 70px + 10px);
       width: 116px; height: 116px;
       border-color: rgba(255, 0, 85, 0.85);
       background: radial-gradient(circle, rgba(255,0,85,0.18) 45%, rgba(255,0,85,0.06) 100%);
@@ -641,10 +664,13 @@
     }
     #tc-lock.on { background: rgba(255, 0, 85, 0.75); color: #fff; border-color: #fff; }
 
-    #tc-use  { right: 14px; bottom: calc(19% + 78px); width: 70px; height: 70px; font-size: 14px; }
-    #tc-jump { right: 14px; bottom: 19%;  width: 70px; height: 70px; font-size: 13px; }
-    /* Over the fire pad, clear of the weapon arrows' column. */
-    #tc-melee { right: 122px; bottom: calc(19% + 128px); width: 64px; height: 64px; font-size: 12px; }
+    /* JUMP is centered under FIRE, same idea as Sumi: Crossfire's d-bottom
+       JUMP under the attack diamond. USE keeps the outer-right corner at the
+       same bottom so it stays reachable and clear of FIRE. MELEE sits centered
+       above FIRE, clear of the weapon-arrow column on the edge. */
+    #tc-jump { right: calc(148px + (116px - 70px) / 2); bottom: 12px; width: 70px; height: 70px; font-size: 13px; }
+    #tc-use  { right: 14px; bottom: 12px; width: 70px; height: 70px; font-size: 14px; }
+    #tc-melee { right: calc(148px + (116px - 64px) / 2); bottom: calc(12px + 70px + 10px + 116px + 10px); width: 64px; height: 64px; font-size: 12px; }
 
     /* Weapon prev/next on the right edge: the left third is the stick zone. */
     .tc-arrow {
@@ -715,8 +741,8 @@
     #mobile-controls.lefty #tc-move { left: auto; right: 0; }
     #mobile-controls.lefty #tc-fire { right: auto; left: 148px; }
     #mobile-controls.lefty #tc-use  { right: auto; left: 14px; }
-    #mobile-controls.lefty #tc-jump { right: auto; left: 14px; }
-    #mobile-controls.lefty #tc-melee { right: auto; left: 122px; }
+    #mobile-controls.lefty #tc-jump { right: auto; left: calc(148px + (116px - 70px) / 2); }
+    #mobile-controls.lefty #tc-melee { right: auto; left: calc(148px + (116px - 64px) / 2); }
     #mobile-controls.lefty .tc-arrow { right: auto; left: 10px; }
     #mobile-controls.lefty #tc-wname { right: auto; left: 4px; }
     #mobile-controls.lefty #tc-lock { left: auto; right: -6px; }
@@ -818,19 +844,19 @@
 
     /* Portrait: compact thumb layout. Stick lower-left (the rest-home already
        sits there), fire toward the center of the right half, look on the rest
-       of that half, jump/use in the outer-right cluster. */
+       of that half, JUMP under FIRE, USE in the outer-right corner. */
     @media (orientation: portrait) {
       html.touch #tc-fire {
-        right: 88px; bottom: 16%;
+        right: 88px; bottom: calc(12px + 68px + 10px);
         width: 100px; height: 100px;
       }
-      html.touch #tc-use  { right: 12px; bottom: calc(16% + 80px); width: 68px; height: 68px; font-size: 13px; }
-      html.touch #tc-jump { right: 12px; bottom: 16%;  width: 68px; height: 68px; font-size: 12px; }
-      html.touch #tc-melee { right: 96px; bottom: calc(16% + 120px); width: 56px; height: 56px; font-size: 11px; }
+      html.touch #tc-jump { right: calc(88px + (100px - 68px) / 2); bottom: 12px; width: 68px; height: 68px; font-size: 12px; }
+      html.touch #tc-use  { right: 12px; bottom: 12px; width: 68px; height: 68px; font-size: 13px; }
+      html.touch #tc-melee { right: calc(88px + (100px - 56px) / 2); bottom: calc(12px + 68px + 10px + 100px + 10px); width: 56px; height: 56px; font-size: 11px; }
       html.touch #mobile-controls.lefty #tc-fire { right: auto; left: 88px; }
       html.touch #mobile-controls.lefty #tc-use  { right: auto; left: 12px; }
-      html.touch #mobile-controls.lefty #tc-jump { right: auto; left: 12px; }
-      html.touch #mobile-controls.lefty #tc-melee { right: auto; left: 96px; }
+      html.touch #mobile-controls.lefty #tc-jump { right: auto; left: calc(88px + (100px - 68px) / 2); }
+      html.touch #mobile-controls.lefty #tc-melee { right: auto; left: calc(88px + (100px - 56px) / 2); }
     }
 
     /* Landscape-preferred chip. Dismissible; never a full-screen wall. */
@@ -4419,6 +4445,7 @@ class CyberDoomEngine {
     window.addEventListener('contextmenu', e => e.preventDefault());
 
     this.initTouchControls();
+    this.bindDeadEndExtract();
     this.initFocusPause();
     // Gamepad (Xbox / PlayStation / generic, hot-plug): js/cyber-gamepad.js.
     this.padCtl = window.CyberGamepad ? window.CyberGamepad.attach(this) : null;
@@ -7021,11 +7048,43 @@ class CyberDoomEngine {
   }
 
   // Persistent one-liner for the dead-end net. Null hides it.
+  // On touch there is no E key, so the banner itself is the extract control
+  // and the copy says TAP TO EXTRACT. Desktop still holds [E].
+  isTouchPrompt() {
+    return !!(this.isTouch || window.CYBER_TOUCH || document.documentElement.classList.contains('touch'));
+  }
+
+  bindDeadEndExtract() {
+    const el = document.getElementById('hud-deadend');
+    if (!el || el._extractBound) return;
+    el._extractBound = true;
+    const onTap = (ev) => {
+      if (!this.isTouchPrompt()) return;
+      if (!el.classList.contains('is-on')) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (window.CyberTraversal) window.CyberTraversal.extract(this);
+      this.showDeadEndHint(null);
+    };
+    el.addEventListener('pointerdown', onTap, { passive: false });
+  }
+
   showDeadEndHint(msg) {
     const el = document.getElementById('hud-deadend');
     if (!el) return;
-    if (msg) { el.innerText = msg; el.style.opacity = '1'; }
-    else if (el.style.opacity !== '0') { el.style.opacity = '0'; }
+    if (msg) {
+      const touch = this.isTouchPrompt();
+      let text = msg;
+      if (touch && msg === 'DEAD END — HOLD [E] TO EXTRACT') text = 'DEAD END — TAP TO EXTRACT';
+      el.innerText = text;
+      el.style.opacity = '1';
+      el.classList.toggle('is-on', touch);
+      el.setAttribute('role', touch ? 'button' : 'status');
+    } else if (el.style.opacity !== '0' || el.classList.contains('is-on')) {
+      el.style.opacity = '0';
+      el.classList.remove('is-on');
+      el.removeAttribute('role');
+    }
   }
 
   showHudMessage(msg) {
