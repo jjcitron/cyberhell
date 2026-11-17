@@ -32,23 +32,25 @@ const THREE = sandbox.THREE;
 
 const FILES = {
   3001: 'cinderlimb', 3004: 'rotgreen', 3002: 'gutmaw', 9: 'rustcoat',
-  65: 'twinbarrel', 3005: 'crimson_eye', 64: 'hollowflame', 69: 'chrome_warden',
+  65: 'twinbarrel', 64: 'hollowflame',
   3003: 'gilded_warlord', 66: 'bone_rocket', 16: 'coilspine',
   67: 'tankhulk', 68: 'silverleg', 58: 'glasswraith', 7: 'jarbrain'
 };
 // Must match js/cyber-trellis.js. Default (missing) is π.
-const YAW = { 64: Math.PI / 2, 16: Math.PI / 2, 3005: Math.PI / 2, 7: Math.PI / 2 };
+const YAW = { 64: Math.PI / 2, 16: Math.PI / 2, 7: Math.PI / 2 };
+// Kept on their original procedural rigs (Joel 2026-11-17).
+const PROCEDURAL = { 3005: 'crimson_eye', 69: 'chrome_warden' };
 const DEFAULT_YAW = Math.PI;
 // Visual front of the raw TRELLIS GLB, from studio stills (front = +Z camera).
 const RAW_FORWARD = {
   cinderlimb: [0, 0, 1], rotgreen: [0, 0, 1], gutmaw: [0, 0, 1], rustcoat: [0, 0, 1],
-  twinbarrel: [0, 0, 1], crimson_eye: [1, 0, 0], hollowflame: [1, 0, 0],
-  chrome_warden: [0, 0, 1], gilded_warlord: [0, 0, 1], bone_rocket: [0, 0, 1],
+  twinbarrel: [0, 0, 1], hollowflame: [1, 0, 0],
+  gilded_warlord: [0, 0, 1], bone_rocket: [0, 0, 1],
   coilspine: [1, 0, 0], tankhulk: [0, 0, 1], silverleg: [0, 0, 1],
   glasswraith: [0, 0, 1], jarbrain: [1, 0, 0]
 };
-const BIPEDS = [3001, 3004, 3002, 9, 65, 64, 69, 3003, 58]; // toe axis: fail only if flipped
-const APOSE = [3001, 3004, 3002, 9, 64, 69, 3003, 58, 66]; // A-pose: after travel, arms span X more than Z
+const BIPEDS = [3001, 3004, 3002, 9, 65, 64, 3003, 58]; // toe axis: fail only if flipped
+const APOSE = [3001, 3004, 3002, 9, 64, 3003, 58, 66]; // A-pose: after travel, arms span X more than Z
 
 function yawOf(id) { return YAW[id] != null ? YAW[id] : DEFAULT_YAW; }
 
@@ -141,7 +143,7 @@ test('CH-TRELLIS-YAW: test table matches js/cyber-trellis.js', () => {
     assert.match(src, re, `FILES ${id}:${name} missing from cyber-trellis.js`);
   }
   assert.match(src, /DEFAULT_YAW:\s*Math\.PI/);
-  for (const id of [64, 16, 3005, 7]) {
+  for (const id of [64, 16, 7]) {
     const re = new RegExp(String.raw`\b${id}:\s*Math\.PI\s*/\s*2`);
     assert.match(src, re, `YAW[${id}] should be π/2 in cyber-trellis.js`);
   }
@@ -209,4 +211,16 @@ test('every stylized mesh file is present and parseable', () => {
     const pts = readPositions(name + '.glb');
     assert.ok(pts.length > 100, `${name}: only ${pts.length} verts`);
   }
+});
+
+test('CH-TRELLIS-KEEP: Maw Oni (3005) and Tetsu Oni (69) stay procedural', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'js', 'cyber-trellis.js'), 'utf8');
+  const filesBlock = src.match(/var FILES = \{([^}]*)\}/);
+  assert.ok(filesBlock, 'FILES block missing');
+  for (const [id, name] of Object.entries(PROCEDURAL)) {
+    assert.equal(new RegExp(String.raw`\b${id}:`).test(filesBlock[1]), false, `${id} must not map to a TRELLIS mesh`);
+    assert.equal(src.includes(`'${name}'`), false, `${name} still referenced in cyber-trellis.js`);
+    assert.equal(fs.existsSync(path.join(DIR, name + '.glb')), false, `${name}.glb should be removed`);
+  }
+  assert.equal(Object.keys(FILES).length, 13);
 });

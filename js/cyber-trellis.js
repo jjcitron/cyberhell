@@ -19,17 +19,19 @@
 
   var FILES = {
     3001: 'cinderlimb', 3004: 'rotgreen', 3002: 'gutmaw', 9: 'rustcoat',
-    65: 'twinbarrel', 3005: 'crimson_eye', 64: 'hollowflame', 69: 'chrome_warden',
+    65: 'twinbarrel', 64: 'hollowflame',
     3003: 'gilded_warlord', 66: 'bone_rocket', 16: 'coilspine',
     67: 'tankhulk', 68: 'silverleg', 58: 'glasswraith', 7: 'jarbrain'
   };
-  var LEGS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 69: 1, 3003: 1, 16: 1, 58: 1, 64: 1 };
-  var ARMS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 69: 1, 3003: 1, 16: 1, 58: 1, 66: 1, 64: 1 };
+  // Joel 2026-11-17: Maw Oni (3005) and Tetsu Oni (69) keep their original
+  // procedural rigs; they are deliberately absent from FILES.
+  var LEGS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 3003: 1, 16: 1, 58: 1, 64: 1 };
+  var ARMS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 3003: 1, 16: 1, 58: 1, 66: 1, 64: 1 };
   var GHOST = { 58: 0.55 };   // Spectre stays see-through
   var TINT = { 58: [0.75, 0.95, 1.15] }; // Glasswraith: slight cyan glass
   // Radians around Y applied when mapping the GLB into rig space (rigs face -Z).
   // Default is π (TRELLIS +Z → rig -Z). Meshes that came out facing +X use π/2.
-  var YAW = { 64: Math.PI / 2, 16: Math.PI / 2, 3005: Math.PI / 2, 7: Math.PI / 2 };
+  var YAW = { 64: Math.PI / 2, 16: Math.PI / 2, 7: Math.PI / 2 };
 
   var BASE = 'models/trellis/';
   var data = {};      // id -> { parts: [{geo, mat}], ready }
