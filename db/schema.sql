@@ -92,3 +92,16 @@ CREATE TABLE IF NOT EXISTS midi_tracks (
   bpm        INTEGER,
   updated_at BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sumi_levels (
+  id              TEXT PRIMARY KEY,
+  owner_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  source_level_id TEXT,
+  blob_url        TEXT NOT NULL,
+  sha256          TEXT NOT NULL,
+  bytes           INTEGER NOT NULL,
+  created_at      BIGINT NOT NULL,
+  updated_at      BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sumi_levels_owner_idx ON sumi_levels (owner_id, updated_at DESC);

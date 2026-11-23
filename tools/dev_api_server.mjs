@@ -31,6 +31,8 @@ const ROUTES = [
   ['/api/levels/:id/json', 'api/levels/[id]/json.js'],
   ['/api/levels/:id/versions', 'api/levels/[id]/versions.js'],
   ['/api/levels/:id', 'api/levels/[id]/index.js'],
+  ['/api/sumi-levels', 'api/sumi-levels/index.js'],
+  ['/api/sumi-levels/:id', 'api/sumi-levels/[id].js'],
   ['/api/enemies', 'api/enemies/index.js'],
   ['/api/enemies/:id', 'api/enemies/[id].js'],
   ['/api/midi', 'api/midi/index.js'],

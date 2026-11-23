@@ -29,7 +29,7 @@ export const newId = (prefix) => `${prefix}_${crypto.randomBytes(8).toString('he
 // unprovisioned deployment still answers (read-only canonical list) instead of throwing EROFS.
 const DATA_DIR = () => process.env.EDITOR_DATA_DIR
   || (process.env.VERCEL ? path.join('/tmp', 'cyberhell-editor-data') : path.join(process.cwd(), '.editor-data'));
-const EMPTY_DB = { users: {}, usernames: {}, userApps: {}, tokens: {}, resend: {}, packs: {}, levels: {}, versions: {}, enemies: {}, midi: {} };
+const EMPTY_DB = { users: {}, usernames: {}, userApps: {}, tokens: {}, resend: {}, packs: {}, levels: {}, versions: {}, enemies: {}, midi: {}, sumiLevels: {} };
 
 function fsStore() {
   const dbPath = () => path.join(DATA_DIR(), 'db.json');
@@ -115,6 +115,28 @@ function fsStore() {
     async getPayload(sha) { const b = await getFile(`levels/${sha}.json`); return b ? b.toString('utf8') : null; },
     async putCanonical(pathname, text) { return putFile(pathname, text, 'application/json'); },
 
+    async listSumiLevels(ownerId) {
+      return Object.values((await read()).sumiLevels)
+        .filter((level) => level.ownerId === ownerId)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    async getSumiLevel(id) {
+      const rec = (await read()).sumiLevels[id];
+      if (!rec) return null;
+      const payload = await getFile(`sumi/${rec.sha256}.json`);
+      if (!payload) return null;
+      try { return { ...rec, level: JSON.parse(payload.toString('utf8')) }; } catch { return null; }
+    },
+    async putSumiLevel(rec, text) {
+      await putFile(`sumi/${rec.sha256}.json`, text, 'application/json');
+      return mutate((db) => {
+        const { level: _level, ...stored } = rec;
+        db.sumiLevels[rec.id] = { ...db.sumiLevels[rec.id], ...stored };
+        return { ...db.sumiLevels[rec.id], level: JSON.parse(text) };
+      });
+    },
+    async deleteSumiLevel(id) { return mutate((db) => { delete db.sumiLevels[id]; }); },
+
     async listEnemies(f = {}) {
       return Object.values((await read()).enemies).filter((e) =>
         (!f.ownerId || e.ownerId === f.ownerId) && (!f.packId || e.packId === f.packId));
@@ -174,6 +196,7 @@ function neonStore() {
   const verOut = (r) => r && ({ id: r.id, levelId: r.level_id, blobUrl: r.blob_url, sha256: r.sha256, bytes: r.bytes, sectors: r.sectors, walls: r.walls, entities: r.entities, authorId: r.author_id, note: r.note, createdAt: Number(r.created_at) });
   const enemyOut = (e) => e && ({ id: e.id, ownerId: e.owner_id, packId: e.pack_id, name: e.name, baseType: e.base_type, def: e.def, updatedAt: Number(e.updated_at) });
   const midiOut = (m) => m && ({ id: m.id, ownerId: m.owner_id, packId: m.pack_id, name: m.name, url: m.blob_url, bytes: m.bytes, bpm: m.bpm, updatedAt: Number(m.updated_at) });
+  const sumiOut = (r) => r && ({ id: r.id, ownerId: r.owner_id, name: r.name, sourceLevelId: r.source_level_id, blobUrl: r.blob_url, sha256: r.sha256, bytes: r.bytes, createdAt: Number(r.created_at), updatedAt: Number(r.updated_at) });
 
   async function putBlob(pathname, data, contentType) {
     const { put } = await blob();
@@ -256,6 +279,27 @@ function neonStore() {
     async putPayload(sha, text) { return putBlob(`levels/${sha}.json`, text, 'application/json'); },
     async getPayload(sha) { const b = await getBlob(`levels/${sha}.json`); return b ? b.toString('utf8') : null; },
     async putCanonical(pathname, text) { return putBlob(pathname, text, 'application/json'); },
+
+    async listSumiLevels(ownerId) {
+      return (await rows('SELECT * FROM sumi_levels WHERE owner_id=$1 ORDER BY updated_at DESC', [ownerId])).map(sumiOut);
+    },
+    async getSumiLevel(id) {
+      const rec = sumiOut(await one('SELECT * FROM sumi_levels WHERE id=$1', [id]));
+      if (!rec?.blobUrl) return null;
+      const response = await fetch(rec.blobUrl, { cache: 'no-store' }).catch(() => null);
+      if (!response?.ok) return null;
+      try { return { ...rec, level: JSON.parse(await response.text()) }; } catch { return null; }
+    },
+    async putSumiLevel(rec, text) {
+      const uploaded = await putBlob(`sumi/${rec.sha256}.json`, text, 'application/json');
+      await q(`INSERT INTO sumi_levels (id,owner_id,name,source_level_id,blob_url,sha256,bytes,created_at,updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, blob_url=EXCLUDED.blob_url,
+                 sha256=EXCLUDED.sha256, bytes=EXCLUDED.bytes, updated_at=EXCLUDED.updated_at`,
+        [rec.id, rec.ownerId, rec.name, rec.sourceLevelId ?? null, uploaded.url, rec.sha256, rec.bytes, rec.createdAt, rec.updatedAt]);
+      return { ...rec, blobUrl: uploaded.url, level: JSON.parse(text) };
+    },
+    async deleteSumiLevel(id) { await q('DELETE FROM sumi_levels WHERE id=$1', [id]); },
 
     async listEnemies(f = {}) {
       const r = await rows('SELECT * FROM enemies WHERE ($1::text IS NULL OR owner_id=$1) AND ($2::text IS NULL OR pack_id=$2) ORDER BY updated_at DESC', [f.ownerId ?? null, f.packId ?? null]);
