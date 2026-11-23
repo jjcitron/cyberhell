@@ -57,6 +57,14 @@ function sampleLevel(overrides = {}) {
   };
 }
 
+function rectangularMap(rows, columns) {
+  return Array.from({ length: rows }, (_, rowIndex) => {
+    if (rowIndex === 0 || rowIndex === rows - 1) return '#'.repeat(columns);
+    const marker = rowIndex === 1 ? 'S' : rowIndex === rows - 2 ? 'R' : '.';
+    return `#${marker}${'.'.repeat(columns - 3)}#`;
+  });
+}
+
 before(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cyberhell-sumi-api-'));
   child = spawn(process.execPath, [path.join(ROOT, 'tools', 'dev_api_server.mjs')], {
@@ -156,6 +164,27 @@ test('Sumi save names accept built-in titles and reject unsafe or out-of-range n
     const response = await req('POST', '/api/sumi-levels', { name, level: sampleLevel() });
     assert.equal(response.status, 400, `${JSON.stringify(name)}: ${response.text}`);
     assert.deepEqual(response.json.errors, ['Invalid level name.']);
+  }
+});
+
+test('validator accepts real Sumi map dimensions and enforces the row bounds', async () => {
+  const accepted = await req('POST', '/api/sumi-levels', {
+    name: 'Ash Rivers dimensions',
+    level: sampleLevel({ map: rectangularMap(162, 124) }),
+  });
+  assert.equal(accepted.status, 201, accepted.text);
+  assert.equal((await req('DELETE', `/api/sumi-levels/${accepted.json.id}`)).status, 200);
+
+  for (const [rows, expectedError] of [
+    [257, 'Level map must have 8 to 256 rows.'],
+    [7, 'Level map must have 8 to 256 rows.'],
+  ]) {
+    const response = await req('POST', '/api/sumi-levels', {
+      name: `${rows} row map`,
+      level: sampleLevel({ map: rectangularMap(rows, 124) }),
+    });
+    assert.equal(response.status, 400, response.text);
+    assert.ok(response.json.errors.includes(expectedError), response.text);
   }
 });
 

@@ -28,7 +28,7 @@ function validateMap(map, label, errors) {
     errors.push(`${label} must be an array of strings.`);
     return;
   }
-  if (map.length < 8 || map.length > 128) errors.push(`${label} must have 8 to 128 rows.`);
+  if (map.length < 8 || map.length > 256) errors.push(`${label} must have 8 to 256 rows.`);
 
   let width = null;
   let starts = 0;
@@ -48,7 +48,7 @@ function validateMap(map, label, errors) {
     }
   }
 
-  if (width != null && (width < 8 || width > 128)) errors.push(`${label} must have 8 to 128 columns.`);
+  if (width != null && (width < 8 || width > 256)) errors.push(`${label} must have 8 to 256 columns.`);
   if (!starts) errors.push(`${label} must contain a player start (S).`);
   if (!exits) errors.push(`${label} must contain a time-rift exit (R).`);
 }
