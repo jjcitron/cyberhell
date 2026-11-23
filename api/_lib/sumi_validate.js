@@ -1,15 +1,26 @@
 // Validation for the Sumi: Cyberhell grid editor. This deliberately owns a copy of the
 // editor legend: the classic Cyberhell validator describes an unrelated sector/wall format.
-import { requireName } from './validate.js';
+import { HttpError } from './json.js';
 
 export const SUMI_LEVEL_FORMAT = 'sumi-cyberhell-grid@1';
 export const MAX_SUMI_LEVEL_BYTES = 512 * 1024;
 export const SUMI_LEGEND_CHARS = '#.DGHJ%=_123OXYSR!K&@*MEB$PLTNCVW^{}~:;?hmyoxnqzw48suv9abcdefghijkl';
 
 const GLYPHS = new Set(SUMI_LEGEND_CHARS);
+const SUMI_LEVEL_NAME_RE = /^[\p{L}\p{N} ·—–:'()\-,.!?&#/+]+$/u;
 
 export function requireSumiLevelName(name) {
-  return requireName(name, 'level name');
+  const raw = String(name ?? '');
+  const clean = raw.trim();
+  if (
+    raw !== clean
+    || [...clean].length < 1
+    || [...clean].length > 96
+    || !SUMI_LEVEL_NAME_RE.test(clean)
+  ) {
+    throw new HttpError(400, 'Invalid level name.');
+  }
+  return clean;
 }
 
 function validateMap(map, label, errors) {

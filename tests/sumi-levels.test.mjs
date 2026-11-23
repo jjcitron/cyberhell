@@ -138,8 +138,29 @@ test('Save As creates a distinct id', async () => {
   assert.equal((await req('GET', '/api/sumi-levels')).json.length, 2);
 });
 
+test('Sumi save names accept built-in titles and reject unsafe or out-of-range names', async () => {
+  const accepted = [
+    'I · KUROGANE SHRINE',
+    'XII · NEON RIFT · UNDERCITY — Part 2: PART 2 · UNDERCITY 2090',
+    'XIV · KABUKI-CHŌ 2090',
+  ];
+  for (const name of accepted) {
+    const response = await req('POST', '/api/sumi-levels', { name, level: sampleLevel() });
+    assert.equal(response.status, 201, `${name}: ${response.text}`);
+    assert.equal(response.json.name, name);
+    assert.equal((await req('DELETE', `/api/sumi-levels/${response.json.id}`)).status, 200);
+  }
+
+  const rejected = ['<script>', 'bad\u0007name', '', 'x'.repeat(97)];
+  for (const name of rejected) {
+    const response = await req('POST', '/api/sumi-levels', { name, level: sampleLevel() });
+    assert.equal(response.status, 400, `${JSON.stringify(name)}: ${response.text}`);
+    assert.deepEqual(response.json.errors, ['Invalid level name.']);
+  }
+});
+
 test('validator rejects bad format, ragged rows, bad glyphs, missing endpoints, and oversize payloads', async () => {
-  const badName = await req('POST', '/api/sumi-levels', { name: '# invalid', level: sampleLevel() });
+  const badName = await req('POST', '/api/sumi-levels', { name: ' invalid', level: sampleLevel() });
   assert.equal(badName.status, 400);
   assert.ok(Array.isArray(badName.json.errors) && badName.json.errors.length);
 
