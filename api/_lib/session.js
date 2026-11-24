@@ -1,11 +1,21 @@
 // Stateless session tokens: HMAC-signed JSON in an httpOnly cookie. No storage, no deps.
-// Lifted from Sumi api/_lib/session.js.
+// Lifted from Sumi api/_lib/session.js, then folded onto the shared Acidlemon identity spine
+// (job 20260903-0836): one cookie on .acidlemon.com, one users table, per-title membership in
+// user_apps. Cyberhell is a consumer of that spine, not a login of its own.
 import crypto from 'node:crypto';
 import { HttpError } from './json.js';
 import { emailHash } from './store.js';
 
-const COOKIE = 'ch_session';
+// Shared across every Acidlemon title. Must match whatever the other titles set; changing it
+// here alone silently signs everyone out of this one. ch_session is the pre-spine Cyberhell
+// name, still read so the fold does not log existing editors out.
+const COOKIE = 'al_session';
+const LEGACY_COOKIE = 'ch_session';
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
+// Which title this deployment is. The row this writes into user_apps is what makes one account
+// span Cyberhell, Sumi, Space Runner and Clash instead of four disconnected accounts.
+export const APP_ID = process.env.APP_ID || 'cyberhell';
 
 // Fail closed in the cloud: a missing secret is only tolerated in the local fs dev server,
 // which sets CH_DEV=1 and has no real users to protect.
@@ -34,24 +44,47 @@ export function verifyToken(token) {
   try { return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
 }
 
-export function readSession(req) {
+function readCookie(req, name) {
   const raw = req.headers?.cookie || '';
-  const match = raw.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${COOKIE}=`));
-  if (!match) return null;
-  return verifyToken(decodeURIComponent(match.slice(COOKIE.length + 1)));
+  const match = raw.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }
 
-export function sessionCookie(payload) {
+export function readSession(req) {
+  const token = readCookie(req, COOKIE) || readCookie(req, LEGACY_COOKIE);
+  return token ? verifyToken(token) : null;
+}
+
+// The cookie is only scoped to .acidlemon.com on an acidlemon.com host. Vercel preview
+// deployments live on *.vercel.app, where a browser drops a Domain it does not own -- scoping
+// unconditionally would break sign-in on every preview.
+export function cookieDomain(req) {
+  const explicit = process.env.COOKIE_DOMAIN;
+  if (explicit) return explicit === 'none' ? null : explicit;
+  const host = String(req?.headers?.host || '').split(':')[0].toLowerCase();
+  return host === 'acidlemon.com' || host.endsWith('.acidlemon.com') ? '.acidlemon.com' : null;
+}
+
+export function sessionCookie(payload, req) {
   const attrs = [
     `${COOKIE}=${encodeURIComponent(signSession(payload))}`,
     'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${MAX_AGE}`,
   ];
   if (process.env.CH_DEV !== '1') attrs.splice(2, 0, 'Secure');
+  const domain = cookieDomain(req);
+  if (domain) attrs.push(`Domain=${domain}`);
   return attrs.join('; ');
 }
 
-export function clearCookie() {
-  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+// Clears both names, and clears the shared one on both scopes: a cookie set with a Domain is a
+// different cookie from one set without, so signing out has to name both or one survives.
+export function clearCookie(req) {
+  const domain = cookieDomain(req);
+  const kill = (name, dom) =>
+    `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${dom ? `; Domain=${dom}` : ''}`;
+  const out = [kill(COOKIE, null), kill(LEGACY_COOKIE, null)];
+  if (domain) out.push(kill(COOKIE, domain));
+  return out;
 }
 
 export function isAdminEmail(email) {

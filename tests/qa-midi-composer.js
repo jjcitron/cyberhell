@@ -8,7 +8,7 @@
  * synth (loadMIDI/playMIDI), not by sound.
  */
 const path = require('path');
-const { chromium } = require(process.env.PW || 'C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || process.env.PW || 'C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
 
 const PORT = process.env.QA_PORT || 5304;
 const URL = `http://localhost:${PORT}/tests/midi-composer-harness.html`;

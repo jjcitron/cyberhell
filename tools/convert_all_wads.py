@@ -910,7 +910,7 @@ def convert_all():
     print(f"\nALL WADs CONVERTED SUCCESSFUL! Master manifest saved to {master_path}")
     print("Sectors now carry real boundary polygons; the bounding rectangle is")
     print("kept only as a fallback for consumers that predate `polys`.")
-    print("Run  python patch_exit_switches.py  then  node tests/check-exits.js")
+    print("Run  python tools/patch_exit_switches.py  then  node tests/check-exits.js")
     print("to place a reachable exit on every level and prove it.")
 
 if __name__ == '__main__':

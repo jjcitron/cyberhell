@@ -1,4 +1,7 @@
 /* Account panel for the Cyberhell editor: email -> magic link -> username -> signed in.
+ * The account is the shared Acidlemon one (job 20260903-0836): users + user_apps behind a
+ * .acidlemon.com cookie, so signing in here signs you in across the other titles too. This
+ * panel is a view onto that spine, not a Cyberhell-only login.
  * Registered through CyberEditor.registerPanel like every other lane's panel. No fixed
  * elements, no overlay, nothing that can sit on top of the editor.
  *
@@ -74,8 +77,12 @@
       'the deployed site, or locally via node tools/dev_api_server.mjs (port 5305).'));
   }
 
+  var MAIL_FROM = 'Cyberhell@games.acidlemon.com';
+
   function screenSignIn() {
-    host.appendChild(el('div', { class: 'ed-hint' }, 'We email you a one-time link. No password.'));
+    host.appendChild(el('div', { class: 'ed-hint' },
+      'One Acidlemon account across every game. We email you a one-time link from ' +
+      MAIL_FROM + ' -- no password.'));
     var row = el('div', { class: 'ed-row' });
     row.appendChild(el('label', null, 'Email'));
     var input = el('input', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email' });
@@ -105,8 +112,8 @@
 
   function screenSent() {
     host.appendChild(el('div', { class: 'ed-hint' },
-      'A sign-in link is on its way to ' + state.email + '. It expires in 15 minutes. Open it in ' +
-      'this browser, then come back here.'));
+      'A sign-in link is on its way to ' + state.email + ' from ' + MAIL_FROM + '. It expires ' +
+      'in 15 minutes. Open it in this browser, then come back here.'));
     var btns = el('div', { class: 'ed-btns' });
     var again = el('button', null, 'I signed in');
     again.addEventListener('click', function () {
@@ -154,6 +161,12 @@
     host.appendChild(el('div', { class: 'ed-hint' }, u.isAdmin
       ? 'Admin — you can edit the canonical packs.'
       : 'Creator mode — your own packs.'));
+
+    // Shared-spine membership straight from /api/auth/me. Proof the account is Acidlemon-wide
+    // rather than Cyberhell-local; omitted rather than faked when the field is absent.
+    if (u.apps && u.apps.length) {
+      host.appendChild(el('div', { class: 'ed-hint' }, 'Acidlemon account — ' + u.apps.join(', ')));
+    }
 
     var btns = el('div', { class: 'ed-btns' });
     var rename = el('button', null, 'Change name');

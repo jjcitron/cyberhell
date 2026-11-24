@@ -49,7 +49,7 @@
 
   function geo(key, make) {
     var g = geoCache.get(key);
-    if (!g) { g = make(); geoCache.set(key, g); }
+    if (!g) { g = make(); g._shared = true; geoCache.set(key, g); }
     return g;
   }
 
@@ -167,6 +167,20 @@
     s = s || 8;
     return mesh(geo('c' + rt + ',' + rb + ',' + h + ',' + s, function () { return new T.CylinderGeometry(rt, rb, h, s); }), m, ns);
   }
+  // round 7 (beat 'em up): limb segment = 3 height rings so the refine taper pass (cyber-refine.js,
+  // userData.taper) can give it a muscle belly and a slim joint end; the pass is pure deformation
+  function limb(rt, rb, h, m, prof) {
+    var o = mesh(geo('L' + rt + ',' + rb + ',' + h, function () { return new T.CylinderGeometry(rt, rb, h, 6, 3); }), m);
+    o.userData.taper = { prof: prof };
+    return o;
+  }
+  var TAPER = {
+    upper: [[0, 1], [0.35, 0.97], [1, 0.8]],
+    fore: [[0, 0.98], [0.33, 1.06], [1, 0.78]],
+    thigh: [[0, 1.03], [0.35, 0.97], [1, 0.8]],
+    shin: [[0, 0.95], [0.33, 1.07], [1, 0.76]],
+    torso: [[0, 1], [0.35, 0.98], [0.8, 0.84], [1, 0.84]]
+  };
   function cone(r, h, m, s, ns) {
     s = s || 8;
     return mesh(geo('n' + r + ',' + h + ',' + s, function () { return new T.ConeGeometry(r, h, s); }), m, ns);
@@ -219,6 +233,7 @@
       vm = src.clone();
       vm.color.setHex(0xffffff);
       vm.vertexColors = true;
+      vm._shared = true;
       vgradMats.set(src.uuid, vm);
     }
     o.material = vm;
@@ -235,6 +250,7 @@
         col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
       }
       g.setAttribute('color', new T.BufferAttribute(col, 3));
+      g._shared = true;
       geoCache.set(key, g);
     }
     o.geometry = g;
@@ -276,6 +292,9 @@
   //      shoulderW, upper, fore, armMat, handMat,
   //      thigh, shin, legMat, legR, footMat, armZ }
 
+  // joint filler pieces stay 12x8 (the refine pass still textures their shared material)
+  function jp(m) { m.userData.noRefine = true; return m; }
+
   function humanoid(root, o) {
     var p = {};
     var hipY = o.hipY, tW = o.torsoW, tH = o.torsoH, tD = o.torsoD;
@@ -283,16 +302,34 @@
     p.torso = grp(root, 0, hipY, 0);
     var chest = add(p.torso, o.torsoOct ? oct(tW, tH, tD, o.torsoMat) : box(tW, tH, tD, o.torsoMat), 0, tH / 2, 0);
     if (o.torsoGrad) vgrad(chest, o.torsoGrad[0], o.torsoGrad[1]);
+    chest.userData.taper = { prof: TAPER.torso, wx: 1, wz: 0.45 };   // round 7: pulls in at the waist (shoulders along X)
     p.chest = chest;
     // pelvis
     add(p.torso, box(tW * 0.86, 0.16, tD * 0.92, o.legMat || o.torsoMat), 0, 0.02, 0);
 
     if (o.headSize) {
-      p.neck = add(p.torso, cyl(tD * 0.2, tD * 0.22, 0.1, o.armMat || o.torsoMat, 6), 0, tH + 0.04, 0);
+      var nR = o.neckR || tD * 0.2;
       p.head = grp(p.torso, 0, tH + 0.09 + o.headSize / 2, 0);
-      var skull = add(p.head, oct(o.headSize, o.headSize, o.headSize * 0.9, o.headMat || o.torsoMat), 0, 0, 0);
-      if (o.headGrad) vgrad(skull, o.headGrad[0], o.headGrad[1]);
-      p.skull = skull;
+      var H3 = typeof window !== 'undefined' && window.Head3;
+      if (H3) {
+        // three-shape head (beat 'em up, Oct 13): cranium with flat side planes + brow, jaw wedge off the front-bottom,
+        // neck angled back (+Z here: these rigs face -Z) and up into the skull base. Creature heads keep their horns/masks.
+        var hs = o.headSize, hp = H3.head3Params('cy' + (o.headSeed || hs + ':' + tW), Object.assign({ R: hs * 0.47, crD: 0.9, jawX: 0.3, chinFwd: 0.34, jawLen: 0.72, jawD: 0.7 }, o.head3 || {}));
+        // sculpted face (Oct 13 pm) on the human former-soldiers only; demons keep their creature heads. Their own glowing
+        // eye meshes stay, so the face skips eyeballs and builds ridge/brows/cheeks/nose/lips/ears around them.
+        var human = o.face !== false && (o.face || HUMAN_FACE[buildTypeId]);
+        var hd = H3.buildHead(T, o.headMat || o.torsoMat, hp, { fwd: '-z', face: human ? Object.assign({ eyes: false, params: H3.faceParams('cy' + (o.headSeed || hs), o.faceParams) }, o.face || {}) : false });
+        p.head.add(hd.group); hd.group.position.set(0, hs * 0.04, 0);
+        if (o.headGrad) { vgrad(hd.cranium, o.headGrad[0], o.headGrad[1]); vgrad(hd.jaw, o.headGrad[0], o.headGrad[1]); }
+        p.neck = H3.buildNeck(T, o.neckMat || o.armMat || o.torsoMat, { r: nR, len: 0.09 + hs * 0.5, tilt: 0.3, fwd: '-z' });
+        p.neck.position.set(0, tH - 0.02, -hs * 0.08); p.torso.add(p.neck);
+        p.skull = hd.cranium; p.jaw3 = hd.jaw;
+      } else {
+        p.neck = add(p.torso, cyl(nR, nR * 1.1, 0.1, o.neckMat || o.armMat || o.torsoMat, 6), 0, tH + 0.04, 0);
+        var skull = add(p.head, oct(o.headSize, o.headSize, o.headSize * 0.9, o.headMat || o.torsoMat), 0, 0, 0);
+        if (o.headGrad) vgrad(skull, o.headGrad[0], o.headGrad[1]);
+        p.skull = skull;
+      }
     }
 
     var limbs = {};
@@ -300,10 +337,16 @@
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
       var sh = grp(p.torso, sgn * sw, tH - 0.08, o.armZ || 0);
-      add(sh, cyl(aR * 1.35, aR * 1.15, uA, o.armMat, 6), 0, -uA / 2, 0);
+      add(sh, limb(aR * 1.35, aR * 1.15, uA, o.armMat, TAPER.upper), 0, -uA / 2, 0);
       var el = grp(sh, 0, -uA, 0);
-      add(el, cyl(aR * 1.05, aR * 0.9, fA, o.armMat, 6), 0, -fA / 2, 0);
+      add(el, limb(aR * 1.05, aR * 0.9, fA, o.armMat, TAPER.fore), 0, -fA / 2, 0);
       var hand = add(el, box(aR * 2.2, aR * 2.0, aR * 2.4, o.handMat || o.armMat), 0, -fA - aR * 0.8, 0);
+      // shoulder joint (beat 'em up round 6): a deltoid cap that rides with the arm, plus a
+      // torso-side trapezius/pec bridge out to the joint, so the arm never floats off the body
+      jp(add(sh, sph(Math.min(aR * 1.75, aR + 0.07), o.capMat || o.armMat, 12, 8), 0, -aR * 0.15, 0)).scale.set(1.05, 0.9, 1.05);
+      var bx0 = tW * 0.32, bhl = Math.max(0.02, (sw - bx0) / 2);
+      jp(add(p.torso, sph(1, o.torsoMat, 12, 8), sgn * (bx0 + bhl), tH - 0.08 - aR * 0.2, o.armZ || 0)
+        ).scale.set(bhl + aR * 0.9, aR * 1.45, Math.min(tD * 0.48, aR * 1.8));
       sh.userData.lower = el;
       el.userData.hand = hand;
       limbs[side + 'Arm'] = sh;
@@ -317,16 +360,21 @@
       ['left', 'right'].forEach(function (side) {
         var sgn = side === 'left' ? -1 : 1;
         var hp = grp(root, sgn * (tW * 0.26), hipY, 0);
-        add(hp, cyl(lR * 1.2, lR, th, o.legMat, 6), 0, -th / 2, 0);
+        add(hp, limb(lR * 1.2, lR, th, o.legMat, TAPER.thigh), 0, -th / 2, 0);
         var kn = grp(hp, 0, -th, 0);
-        add(kn, cyl(lR * 0.95, lR * 0.8, sn, o.legMat, 6), 0, -sn / 2, 0);
+        add(kn, limb(lR * 0.95, lR * 0.8, sn, o.legMat, TAPER.shin), 0, -sn / 2, 0);
         add(kn, box(lR * 2.1, 0.09, lR * 3.2, o.footMat || o.legMat), 0, -sn - 0.04, -lR * 0.6);
+        // hip joint (round 6): ball cap riding with the thigh
+        jp(add(hp, sph(lR * 1.35, o.legMat, 12, 8), 0, -lR * 0.1, 0));
         hp.userData.lower = kn;
         limbs[side + 'Leg'] = hp;
         p[side + 'Hip'] = hp;
       });
     }
 
+    if (th) {   // groin: fills the crotch between the two hip caps, under the pelvis
+      jp(add(p.torso, sph(1, o.legMat || o.torsoMat, 12, 8), 0, -0.04, 0)).scale.set(tW * 0.3 + lR * 0.3, lR * 0.8 + 0.03, tD * 0.4);
+    }
     p.limbs = limbs.leftLeg ? limbs : null;
     return p;
   }
@@ -408,7 +456,7 @@
     zflash.visible = false;
     A.extraPivots = [gun];
     A.attackFn = function (w, s) {
-      addRot(gun, -0.55 * w + 0.40 * s, 0, 0);
+      addRot(gun, -0.55 * w + 0.40 * s - (w || s ? A.aimKink || 0 : 0), 0, 0);
       zflash.visible = s > 0.5;
       zflash.scale.set(0.7 + s * 0.7, 0.6 + s * 0.8, 0.7 + s * 0.7);
       zflash.rotation.z = s * 9.1;
@@ -551,18 +599,16 @@
       hipY: 0.92, torsoW: 0.38, torsoH: 0.62, torsoD: 0.26, torsoMat: hide,
       headSize: 0.28, headMat: hide, shoulderW: 0.26, upper: 0.52, fore: 0.50,
       armMat: dark, handMat: dark, armR: 0.055, thigh: 0.50, shin: 0.44,
-      legMat: dark, footMat: horn, legR: 0.07,
+      legMat: dark, footMat: horn, legR: 0.07, neckR: 0.088, neckMat: hide,
       torsoGrad: [0xa85e3c, 0x3d2013], headGrad: [0xa85e3c, 0x421f12]
     });
     // ribs and a glowing furnace in the chest
     for (var i = 0; i < 4; i++) add(p.torso, box(0.40 - i * 0.02, 0.035, 0.28, dark), 0, 0.16 + i * 0.11, 0);
-    var core = add(p.torso, sph(0.10, org, 8, 6, true), 0, 0.34, -0.13);
+    var core = add(p.torso, sph(0.06, org, 8, 6, true), 0, 0.30, -0.125);   // the furnace now sits inside the chest hole
     // furnace vents cut into the belly, and a spine of small plates
     for (var vv = 0; vv < 3; vv++) {
-      add(p.torso, box(0.16, 0.022, 0.03, org, true), 0, 0.14 + vv * 0.06, -0.12);
       add(p.torso, box(0.10, 0.05, 0.04, horn), 0, 0.24 + vv * 0.13, 0.12);
     }
-    add(p.torso, box(0.30, 0.05, 0.03, org, true), 0, 0.52, -0.14);
     // long clawed hands
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
@@ -578,9 +624,29 @@
       add(p[side + 'Shoulder'], cone(0.05, 0.16, horn, 5), sgn * 0.06, 0.04, 0, 0, 0, sgn * 0.7);
       add(p[side + 'Hip'], cone(0.04, 0.12, horn, 4), sgn * 0.05, -0.46, -0.02, -0.6);
     });
-    // long snouted head, yellow eyes, horns
-    add(p.head, box(0.18, 0.12, 0.16, dark), 0, -0.05, -0.16);
-    teeth(p.head, { n: 4, w: 0.16, mat: rough(0xdedac8), h: 0.05, y: -0.08, z: -0.22 });
+    var pit = rough(0x0d0604), char = rough(0x24120a);
+    // no snout (Joel, beat 'em up round 5): a gaping caved-in hole from the nose down through the
+    // sternum to the diaphragm, charred rim, embers burning inside; the fireball is born in there.
+    var emb = E(0xff4a00, 1.6), emb2 = E(0xffb020, 1.8);
+    add(p.head, box(0.11, 0.13, 0.03, pit, true), 0, -0.075, -0.135);            // nose-to-chin cavity
+    // round 6 (Joel): the neck is now thick enough that the throat slot is a narrow inset with
+    // neck all round it, instead of a gap that ate the neck silhouette
+    add(p.torso, box(0.07, 0.13, 0.03, pit, true), 0, 0.665, -0.077);            // through the throat
+    [-1, 1].forEach(function (sg) { add(p.torso, box(0.012, 0.13, 0.02, char, true), sg * 0.041, 0.665, -0.083); });
+    var cav = add(p.torso, box(0.17, 0.44, 0.03, pit, true), 0, 0.38, -0.135);   // sternum to diaphragm
+    // ragged charred rim: shards pointing into the hole, both sides, top to bottom
+    for (var rs = 0; rs < 7; rs++) [-1, 1].forEach(function (sg) {
+      add(p.torso, cone(0.022, 0.07 + (rs % 3) * 0.02, char, 4), sg * 0.095, 0.18 + rs * 0.07, -0.145, 0, 0, sg * Math.PI / 2 + (rs % 2 ? 0.25 : -0.25));
+    });
+    for (var hs = -1; hs <= 1; hs++) add(p.head, cone(0.018, 0.05, char, 4), hs * 0.04, -0.005, -0.14, 0, 0, Math.PI);
+    // embers inside the cavity: they flicker (A.pulse) and swell + climb when it winds up a throw
+    var embers = [];
+    for (var eb = 0; eb < 9; eb++) {
+      var em = add(p.torso, sph(0.022 + (eb % 3) * 0.008, eb % 2 ? emb : emb2, 6, 4, true), ((eb * 37) % 7 - 3) * 0.018, 0.2 + (eb * 0.043) % 0.38, -0.14);
+      em.userData.y0 = em.position.y; em.userData.ph = eb * 1.7; embers.push(em);
+    }
+    A.pulse.push({ m: emb, base: 1.6, amp: 1.1, f: 9.0, ph: 0 }, { m: emb2, base: 1.8, amp: 1.0, f: 7.3, ph: 1.3 });
+    A.chestFire = { embers: embers, core: null };
     A.eyeMeshes = eyes(p.head, { mat: ylw, y: 0.05, z: -0.13, dx: 0.075, size: 0.075, tall: 0.6 });
     add(p.head, cone(0.045, 0.24, horn, 5), -0.11, 0.20, 0.02, -0.35);
     add(p.head, cone(0.045, 0.24, horn, 5), 0.11, 0.20, 0.02, -0.35);
@@ -593,6 +659,15 @@
       var g2 = 1 + w * 0.9 + s * 0.3;
       core.scale.setScalar(g2);
       core.material.emissiveIntensity = 2.0 + w * 3.4 + s * 1.2;
+      // chest fire builds: embers swell, brighten and climb toward the hole's mouth, then blow out on the throw
+      var t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+      for (var q = 0; q < embers.length; q++) {
+        var e2 = embers[q], b = 1 + w * 1.6 + s * 0.8;
+        e2.scale.setScalar(b * (0.8 + 0.3 * Math.sin(t * 13 + e2.userData.ph)));
+        e2.position.y = e2.userData.y0 + w * 0.05 * Math.sin(t * 9 + e2.userData.ph);
+        e2.position.z = -0.14 - s * 0.05;
+      }
+      emb.emissiveIntensity = 1.6 + w * 4 + s * 2; emb2.emissiveIntensity = 1.8 + w * 4 + s * 2;
     };
     A.blink.push({ o: A.eyeMeshes[0] }, { o: A.eyeMeshes[1] });
     return p;
@@ -622,17 +697,45 @@
     for (var sp = 0; sp < 4; sp++) add(p.torso, cone(0.045, 0.15, gum, 4), 0, 0.30 + sp * 0.13, 0.28, -0.35);
     // the face: two eyes high on the chest, hinged jaw below
     A.eyeMeshes = eyes(p.torso, { mat: ylw, y: 0.58, z: -0.32, dx: 0.16, size: 0.11, tall: 0.8 });
-    add(p.torso, box(0.44, 0.06, 0.05, gum, true), 0, 0.44, -0.31);
-    var mouth = grp(p.torso, 0, 0.42, -0.28);
-    add(mouth, box(0.46, 0.26, 0.10, gum, true), 0, -0.13, 0.0);
-    teeth(mouth, { n: 6, w: 0.42, mat: rough(0xf0ead6), h: 0.09, y: -0.03, z: -0.05, down: true });
-    var jaw = grp(p.torso, 0, 0.28, -0.28);
-    add(jaw, box(0.46, 0.16, 0.20, deep), 0, -0.08, 0.06);
-    teeth(jaw, { n: 6, w: 0.42, mat: rough(0xf0ead6), h: 0.09, y: -0.02, z: -0.02 });
+    // round 6 (Joel, ref: industrial dual-shaft scrap shredder): a boxy steel hopper for a mouth with
+    // two parallel horizontal shafts of interleaved hooked cutter discs that counter-rotate (A.spin,
+    // axis x) and rev with the bite (see animate()). The lower hopper lip is the hinged jaw.
+    var steel = new T.MeshStandardMaterial({ color: 0xa9a397, metalness: 0.78, roughness: 0.42 });
+    var edge = new T.MeshStandardMaterial({ color: 0xd9d3c4, metalness: 0.85, roughness: 0.3 });
+    var iron = new T.MeshStandardMaterial({ color: 0x4d4741, metalness: 0.7, roughness: 0.55 });
+    var pit = rough(0x080304);
+    var maw = grp(p.torso, 0, 0.32, -0.30);
+    add(maw, box(0.44, 0.24, 0.05, pit, true), 0, 0, 0.06);                         // the throat behind the shafts
+    add(maw, box(0.54, 0.055, 0.17, iron), 0, 0.145, -0.03);                        // hopper top plate
+    add(maw, box(0.50, 0.03, 0.05, steel), 0, 0.115, -0.10, -0.5);                  // its worn feed lip, angled in
+    [-1, 1].forEach(function (sg) {
+      add(maw, box(0.055, 0.31, 0.17, iron), sg * 0.25, 0, -0.03);                  // side cheeks (bearing housings)
+      add(maw, cyl(0.035, 0.035, 0.02, steel, 10), sg * 0.28, 0.055, -0.03, 0, 0, Math.PI / 2);   // bearing caps
+      add(maw, cyl(0.035, 0.035, 0.02, steel, 10), sg * 0.28, -0.055, -0.03, 0, 0, Math.PI / 2);
+      for (var bt = 0; bt < 2; bt++) add(maw, cyl(0.012, 0.012, 0.015, edge, 6), sg * 0.20, 0.145, -0.115 + bt * 0.0, 0, 0, 0);
+    });
+    var NDISC = 9, PITCH = 0.048, X0 = -(NDISC - 1) * PITCH / 2;
+    [[0.055, 6.0], [-0.055, -6.0]].forEach(function (S, k) {
+      var shaft = grp(maw, 0, S[0], -0.03);
+      add(shaft, cyl(0.02, 0.02, 0.47, iron, 8), 0, 0, 0, 0, 0, Math.PI / 2);         // hex shaft
+      for (var d = 0; d < NDISC; d++) {
+        var dx = X0 + d * PITCH + (k ? PITCH / 2 : 0) - PITCH / 4;                 // interleave the two stacks
+        var disc = grp(shaft, dx, 0, 0, (d * 0.7 + k) % (Math.PI * 2));
+        add(disc, cyl(0.058, 0.058, 0.02, steel, 12), 0, 0, 0, 0, 0, Math.PI / 2);
+        for (var hk = 0; hk < 3; hk++) {
+          var an = hk / 3 * Math.PI * 2;
+          // hooked cutter tooth, raked forward in this shaft's direction of rotation
+          add(disc, cone(0.02, 0.05, edge, 4), 0, Math.cos(an) * 0.064, Math.sin(an) * 0.064, an + (k ? -0.95 : 0.95));
+        }
+      }
+      A.spin.push({ o: shaft, axis: 'x', rate: S[1], base: S[1], grinder: true });
+    });
+    A.grinder = maw;
+    var jaw = grp(p.torso, 0, 0.165, -0.30);                                        // lower hopper lip = hinged jaw
+    add(jaw, box(0.54, 0.10, 0.22, deep), 0, -0.06, 0.04);
+    add(jaw, box(0.52, 0.04, 0.17, iron), 0, -0.005, -0.03);
+    add(jaw, box(0.50, 0.03, 0.05, steel), 0, 0.02, -0.10, 0.5);
     A.jaw = { o: jaw, closed: 0, open: 0.55 };
-    // upper gums and two tusks that clear the lower jaw
-    add(p.torso, cone(0.05, 0.20, rough(0xf0ead6), 4), -0.16, 0.34, -0.30, Math.PI);
-    add(p.torso, cone(0.05, 0.20, rough(0xf0ead6), 4), 0.16, 0.34, -0.30, Math.PI);
     // gorilla arms: knuckles on the floor, spiked
     ['left', 'right'].forEach(function (side) {
       var sgn = side === 'left' ? -1 : 1;
@@ -908,6 +1011,9 @@
     return p;
   };
 
+  // Looming scale for the big ones (Mancubus, Arachnotron, Spider Mastermind).
+  var LOOM = { 67: 1.6, 68: 1.75, 7: 1.7 };
+
   // --- 11. Mancubus (67): cyborg torso on a tank bottom ----------------
   BUILDERS[67] = function (root, A) {
     var fat = flesh(0x8f6144), hull = M(0x2e3a40, 0.4, 0.5), rim = metal(0x717c82);
@@ -988,6 +1094,7 @@
     treads.forEach(function (o, i) { A.spin.push({ o: o, axis: 'y', rate: 3.0, tread: true, i: i }); });
     A.pulse.push({ m: org, base: 2.2, amp: 0.9, f: 2.4, ph: 0 });
     A.treads = treads;
+    root.scale.setScalar(LOOM[67]);
     return p;
   };
 
@@ -1059,6 +1166,7 @@
     };
     p.dome = dome;
     p.gun = gun;
+    root.scale.setScalar(LOOM[68]);
     return p;
   };
 
@@ -1301,6 +1409,7 @@
       brain.scale.setScalar(1 + w * 0.10 + s * 0.06);
       mag.emissiveIntensity += w * 1.2 + s * 2.4;
     };
+    root.scale.setScalar(LOOM[7]);
     return { base: base, jar: jarG, brain: brain, treads: treads, chin: chin, limbs: null };
   };
 
@@ -1331,22 +1440,23 @@
     69:   { hp: 300,  speed: 3.4, attack: 'fireball', range: 24, cooldown: 2.0, damage: 22, scale: 1.0 },
     3003: { hp: 500,  speed: 3.2, attack: 'fireball', range: 26, cooldown: 1.8, damage: 28, scale: 1.25 },
     66:   { hp: 220,  speed: 4.2, attack: 'fireball', range: 28, cooldown: 2.0, damage: 20, scale: 1.0, fly: true },
-    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.0 },
-    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.0 },
+    67:   { hp: 400,  speed: 2.4, attack: 'fireball', range: 22, cooldown: 1.6, damage: 24, scale: 1.6 },
+    68:   { hp: 350,  speed: 3.0, attack: 'fireball', range: 24, cooldown: 1.0, damage: 14, scale: 1.75 },
     64:   { hp: 450,  speed: 3.8, attack: 'fireball', range: 26, cooldown: 2.6, damage: 30, scale: 1.0 },
     16:   { hp: 1000, speed: 2.5, attack: 'fireball', range: 30, cooldown: 1.6, damage: 40, scale: 1.0 },
-    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.0 }
+    7:    { hp: 1200, speed: 2.5, attack: 'hitscan', range: 30, cooldown: 0.9, damage: 14, scale: 1.7 }
   };
   // fly: hovers above the floor, crosses ledges freely, still stopped by walls
   // (index.html: moveEnemy / ENEMY_HOVER). Cacodemon and Revenant only; the
   // converter does not spawn Lost Souls (3006) or Pain Elementals (71).
   var DEFAULT_STATS = { hp: 50, speed: 3.5, attack: 'melee', range: 2.5, cooldown: 1.6, damage: 10, scale: 1.0 };
 
+  var buildTypeId = 0, HUMAN_FACE = { 3004: 1, 9: 1, 65: 1 };   // sculpted faces only on the human former-soldiers
   var NAMES = {
-    3004: 'Zombieman', 9: 'Shotgun Guy', 65: 'Chaingunner', 3001: 'Imp',
-    3002: 'Demon', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
-    3003: 'Baron of Hell', 66: 'Revenant', 67: 'Mancubus', 68: 'Arachnotron',
-    64: 'Archvile', 16: 'Cyberdemon', 7: 'Spider Mastermind'
+    3004: 'Gun Shitai', 9: 'Sandan Shitai', 65: 'Gatling Shitai', 3001: 'Kaen Oni',
+    3002: 'Momo Oni', 58: 'Yurei', 3005: 'Maw Oni', 69: 'Tetsu Oni',
+    3003: 'Oni Daimyo', 66: 'Rocket Shitai', 67: 'Hara Oni', 68: 'Kumo Oni',
+    64: 'Kaen Bozu', 16: 'Cyber Oni', 7: 'Kumo Shogun'
   };
 
   // -------------------------------------------------------------------
@@ -1446,6 +1556,7 @@
       curLook = null; curSlots = null; slotSeq = null;
     }
     g.userData.lookSlots = slots;
+    if (window.CyberRefine) window.CyberRefine.apply(g, THREE);   // refinement pass (cyber-refine.js)
     if (look) {
       if (look.parts) {
         g.traverse(function (o) {
@@ -1491,9 +1602,10 @@
 
   /** Public build: resolves custom:<id> to its base + look, else the stock rig. */
   function build(typeId, ent, THREE) {
-    if (!isCustom(typeId)) return buildBase(typeId, ent, THREE);
+    var R = window.CyberRefine ? function (g) { return window.CyberRefine.apply(g, THREE); } : function (g) { return g; };   // refinement pass (cyber-refine.js)
+    if (!isCustom(typeId)) return R(buildBase(typeId, ent, THREE));
     var def = customDef(typeId);
-    if (!def) return buildBase(0, ent, THREE);
+    if (!def) return R(buildBase(0, ent, THREE));
     var look = null, k;
     if (def.look) { look = {}; for (k in def.look) look[k] = def.look[k]; }
     // A stat-panel `scale` scales the rig relative to its base's own scale.
@@ -1523,30 +1635,36 @@
       bob: [], sway: [], spin: [], pulse: [], blink: [], flame: [], slide: [],
       jaw: null, legs: null, eyeMeshes: [], t: 0, flashT: 0,
       // pose-layer state
-      pose: null, pivots: [], walk: 0, gait: 0, prevCd: 0,
+      pose: null, pivots: [], walk: 0, gait: 0, run: 0, vel: 0, prevCd: 0,
       ownAtk: 0, ownPain: 0, deadT: 0, frag: null, attackFn: null
     };
     var accents = [];
     buildAccents = accents;
     var parts;
+    buildTypeId = id;
     try {
       parts = BUILDERS[id](root, A) || {};
     } finally {
       buildAccents = null;
     }
+    // TRELLIS stylized mesh (js/cyber-trellis.js): hides the procedural
+    // meshes and rides the same pivots. Stock rigs only, never with a look.
+    if (!curLook && window.CyberTrellis) window.CyberTrellis.apply(id, root, parts, T);
 
-    // A bob on the ROOT group would write an absolute world y over whatever
-    // the engine placed the body at this frame — the baked rest height is 0,
-    // so flyers got dragged to the floor and through walls. Wrap the body in
-    // an inner group and bob that: the root stays owned by whoever places it,
-    // and the bob is a local offset that needs no ordering with the AI.
-    if (A.bob.some(function (b) { return b.o === root; })) {
-      var body = new T.Group();
-      while (root.children.length) body.add(root.children[0]);
-      root.add(body);
-      A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
-      A.bobRoot = body;
-    }
+    // Every rig lives in an inner body group, for two reasons:
+    //  - the rigs are modelled facing -Z (eyes, toes, muzzles), but the AI's
+    //    face() and vision cone point the ROOT's +Z at the target, so the body
+    //    turns half a revolution inside the root and monsters stop walking at
+    //    the player backwards;
+    //  - a bob on the ROOT would write an absolute world y over wherever the
+    //    engine placed the body this frame, so flyers bob the inner group and
+    //    the root stays owned by whoever places it.
+    var body = new T.Group();
+    body.rotation.y = Math.PI;
+    while (root.children.length) body.add(root.children[0]);
+    root.add(body);
+    A.bob.forEach(function (b) { if (b.o === root) b.o = body; });
+    A.bobRoot = body;
 
     // bake rest positions so animate() never accumulates drift
     A.bob.forEach(function (b) { b.y0 = b.o.position.y; });
@@ -1586,6 +1704,7 @@
     root.userData.limbs = parts.limbs || null;
     root.userData.eyes = A.eyeMeshes;
     root.userData.jaw = A.jaw ? A.jaw.o : null;
+    root.userData.parts = parts;   // round 6: lets tools pose the rig
     root.userData.arms = parts.leftShoulder ? [parts.leftShoulder, parts.rightShoulder] : [];
     root.userData.rotor = A.spin.length ? A.spin[0].o : null;
     root.userData.tankTreads = A.treads || null;
@@ -1688,8 +1807,12 @@
       // hip-carried sidearm needs it; a gunner already holding the weapon
       // level does not.
       var aim = (A.pose.aim || 0) * Math.min(1, w * 2 + s);
-      addRot(AR, aim - 0.22 * w - 0.14 * s * big, 0, 0);
-      addRot(lower(AR), -aim * 0.35, 0, 0);
+      // The upper arm only comes part way up; the elbow kinks to bring the
+      // forearm level, so the gun arm reads as braced, not a straight stick.
+      // A.aimKink lets the builder's attackFn counter-pitch the weapon.
+      A.aimKink = aim * 0.55;
+      addRot(AR, aim * 0.75 - 0.22 * w - 0.14 * s * big, 0, 0);
+      addRot(lower(AR), aim * 0.45, 0, 0);
       addRot(AL, aim * 0.45 - 0.18 * w - 0.12 * s * big, 0, 0);
       addRot(P.torso, -0.06 * w + 0.10 * s * big, 0, 0);
       addRot(P.head, -0.05 * w, 0, 0);
@@ -1727,6 +1850,9 @@
     var kind = A.pose.death, s0 = A.s0 || 1;
 
     if (kind === 'explode') {
+      // deathSpread (engine, 0..1): how far the parts may fly (and spin)
+      // before the nearest wall; unset keeps the full burst.
+      var sp = enemy.deathSpread === undefined ? 1 : num(enemy.deathSpread);
       if (!A.frag) {
         A.frag = [];
         var host = A.bobRoot || g;
@@ -1740,8 +1866,11 @@
       var fall = e * e * 2.4;
       for (var j = 0; j < A.frag.length; j++) {
         var f = A.frag[j], p0 = f.o.userData.p0, r0 = f.o.userData.r0;
-        f.o.position.set(p0.x + f.dx * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * e * 1.9);
-        f.o.rotation.set(r0.x + f.sx * e, r0.y + f.sy * e, r0.z + f.sx * e * 0.6);
+        f.o.position.set(p0.x + f.dx * sp * e * 1.9, p0.y + f.dy * e * 1.7 - fall, p0.z + f.dz * sp * e * 1.9);
+        // A cornered rig spins its parts less too: a long arm spun about its
+        // shoulder reaches through the wall the burst was held back from.
+        var spin = e * (0.25 + 0.75 * sp);
+        f.o.rotation.set(r0.x + f.sx * spin, r0.y + f.sy * spin, r0.z + f.sx * spin * 0.6);
       }
       g.position.y = A.deathY;
       g.scale.setScalar(Math.max(0.001, s0 * (1 - e * 0.6)));
@@ -1756,22 +1885,36 @@
       return;
     }
     // crumple (soft, folds) / topple (stiff, falls in one piece with a bounce)
-    // ponytail: the fall is around the world X axis like the engine's old
-    // snap, not around the enemy's facing — reordering the euler is the
-    // upgrade if corpses ever need to fall away from the shot.
+    // The engine picks the fall (planDeath): fallYaw turns the body so it
+    // tips onto its back along a heading with room, fallMax caps the tip
+    // where no heading has room for the whole body. Without them the body
+    // falls around world X as it always did.
     var over = Math.sin(e * Math.PI) * (kind === 'topple' ? 0.20 : 0.05);
-    g.rotation.x = e * (Math.PI / 2) + over;
+    var tipMax = enemy.fallMax === undefined ? Math.PI / 2 : num(enemy.fallMax);
+    if (enemy.fallYaw === undefined) {
+      g.rotation.x = e * tipMax + over;
+    } else {
+      if (A.yaw0 === undefined) A.yaw0 = g.rotation.y;
+      var dy = Math.atan2(Math.sin(enemy.fallYaw - A.yaw0), Math.cos(enemy.fallYaw - A.yaw0));
+      g.rotation.order = 'YXZ';
+      g.rotation.y = A.yaw0 + dy * Math.min(1, k * 4);
+      g.rotation.x = -(e * tipMax + over * tipMax / (Math.PI / 2));
+    }
     g.position.y = A.deathY + e * 0.28;
     if (kind === 'crumple') {
+      // The arms swing out as the body folds; a body with no room to lie down
+      // (tip capped) only slumps, so it folds and swings its arms that much less.
+      var fold = e * Math.max(0.3, tipMax / (Math.PI / 2));
       addRot(P.torso, -0.5 * e, 0, 0.18 * e);
       addRot(P.head, 0.7 * e, 0, 0);
-      addRot(P.leftShoulder, -0.6 * e, 0, -0.45 * e);
-      addRot(P.rightShoulder, -0.5 * e, 0, 0.45 * e);
+      addRot(P.leftShoulder, -0.6 * fold, 0, -0.45 * fold);
+      addRot(P.rightShoulder, -0.5 * fold, 0, 0.45 * fold);
       if (L) {
-        addRot(L.leftLeg, 0.9 * e, 0, 0);
-        addRot(L.rightLeg, 0.7 * e, 0, 0);
-        addRot(lower(L.leftLeg), 1.5 * e, 0, 0);
-        addRot(lower(L.rightLeg), 1.2 * e, 0, 0);
+        var legFold = e * Math.min(1, Math.max(0.2, tipMax / (Math.PI / 2)));
+        addRot(L.leftLeg, 0.9 * legFold, 0, 0);
+        addRot(L.rightLeg, 0.7 * legFold, 0, 0);
+        addRot(lower(L.leftLeg), -1.5 * legFold, 0, 0);
+        addRot(lower(L.rightLeg), -1.2 * legFold, 0, 0);
       }
     }
   }
@@ -1796,7 +1939,7 @@
 
     // ---- resolve the four drivers, defensively -------------------------
     if (dead) A.deadT = Math.min(1, (A.deadT || 0) + delta / A.pose.deathDur);
-    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; g.visible = true; g.scale.setScalar(A.s0 || 1); }
+    else if (A.deadT) { A.deadT = 0; A.frag = null; A.deathY = undefined; A.yaw0 = undefined; g.rotation.order = 'XYZ'; g.rotation.x = 0; g.visible = true; g.scale.setScalar(A.s0 || 1); }
     var deathK = Math.max(num(enemy.deathT), A.deadT || 0);
 
     // Either cooldown jumping back up means a shot just went off. The AI winds
@@ -1840,6 +1983,7 @@
       o = A.spin[i];
       // treads only roll while the thing is actually driving at you
       var rate = o.tread ? (moving ? o.rate : 0) : o.rate;
+      if (o.grinder && A.jaw) rate *= 1 + 3.5 * (A.jaw.bite || 0);   // shredder shafts rev up with the bite
       o.o.rotation[o.axis] += rate * delta;
     }
     for (i = 0; i < A.slide.length; i++) {
@@ -1887,23 +2031,45 @@
       Math.sin(t * 0.9) * 0.02 * idle);
     addRot(P.head, Math.sin(t * 1.15 + 1.2) * 0.03 * idle, Math.sin(t * 0.41) * 0.12 * idle, 0);
 
-    // walk cycle — legs from the shared rig, arms counter-swinging
+    // Ground speed actually covered, smoothed: a charging Demon runs, a
+    // Zombieman shuffling round a corner walks. Capped so a teleport or a
+    // spawn snap does not read as a sprint.
+    var gx = g.position.x, gz = g.position.z;
+    if (A.px !== undefined) {
+      var inst = Math.min(12, Math.sqrt((gx - A.px) * (gx - A.px) + (gz - A.pz) * (gz - A.pz)) / delta);
+      A.vel += (inst - A.vel) * Math.min(1, delta * 6);
+    }
+    A.px = gx; A.pz = gz;
+
+    // walk / run cycle — legs from the shared rig, arms counter-swinging
     if (A.gait > 0.01) {
-      var spd = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
-      A.walk += delta * spd * 2.3 * A.gait;
-      var sw = Math.sin(A.walk), amp = A.gait;
+      var stat = num(enemy.speed) || (enemy.stats && enemy.stats.speed) || 3.5;
+      var spd = A.vel > 0.5 ? A.vel : stat;
+      A.run += (clamp01((spd - 4.0) / 1.6) - A.run) * Math.min(1, delta * 4);
+      var run = A.run, amp = A.gait;
+      // longer strides, not just faster ones, as the gait opens into a run
+      A.walk += delta * spd * (2.3 - 0.5 * run) * amp;
+      var sw = Math.sin(A.walk), cw = Math.cos(A.walk);
       if (L) {
-        addRot(L.leftLeg, sw * 0.62 * amp, 0, 0);
-        addRot(L.rightLeg, -sw * 0.62 * amp, 0, 0);
-        addRot(lower(L.leftLeg), Math.max(0, sw) * 0.85 * amp, 0, 0);
-        addRot(lower(L.rightLeg), Math.max(0, -sw) * 0.85 * amp, 0, 0);
+        // Knees bend the human way (shin trails, -x) and fold hardest while
+        // the leg swings through under the hip (cw > 0 is the left leg's
+        // swing); the planted leg keeps a soft knee. A run swings the thighs
+        // wider, carries them a little forward and folds the swing knee deep.
+        var hip = (0.55 + 0.25 * run) * amp, knee = (0.8 + 0.75 * run) * amp;
+        addRot(L.leftLeg, sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(L.rightLeg, -sw * hip + 0.12 * run * amp, 0, 0);
+        addRot(lower(L.leftLeg), -(Math.max(0, cw) * knee + 0.10 * amp), 0, 0);
+        addRot(lower(L.rightLeg), -(Math.max(0, -cw) * knee + 0.10 * amp), 0, 0);
       }
-      addRot(P.leftShoulder, -sw * 0.34 * amp, 0, 0);
-      addRot(P.rightShoulder, sw * 0.34 * amp, 0, 0);
-      addRot(lower(P.leftShoulder), Math.max(0, -sw) * 0.4 * amp, 0, 0);
-      addRot(lower(P.rightShoulder), Math.max(0, sw) * 0.4 * amp, 0, 0);
-      // torso counter-rotates and the whole body rocks on each footfall
-      addRot(P.torso, Math.abs(Math.cos(A.walk)) * 0.05 * amp, -sw * 0.10 * amp, 0);
+      // arms pump harder and hold a deeper elbow bend at a run
+      var arm = (0.34 + 0.24 * run) * amp, bend = (0.18 + 0.85 * run) * amp;
+      addRot(P.leftShoulder, -sw * arm, 0, 0);
+      addRot(P.rightShoulder, sw * arm, 0, 0);
+      addRot(lower(P.leftShoulder), bend + Math.max(0, -sw) * 0.4 * amp, 0, 0);
+      addRot(lower(P.rightShoulder), bend + Math.max(0, sw) * 0.4 * amp, 0, 0);
+      // torso counter-rotates, leans into a run, and the whole body rocks on
+      // each footfall
+      addRot(P.torso, Math.abs(cw) * 0.05 * amp - 0.20 * run * amp, -sw * 0.10 * amp, 0);
       root.z += Math.sin(A.walk * 2) * 0.03 * amp;
     }
 

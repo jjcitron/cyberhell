@@ -21,7 +21,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.QA_PORT || 8153);

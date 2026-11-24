@@ -32,6 +32,9 @@
   /* ------------------------------------------------------------------ model */
 
   const P_RADIUS = 0.55;
+  // How far the engine keeps the player off a ledge riser too tall to climb
+  // (RISER_R in index.html).
+  const RISER_R = 0.35;
   // Doom's free auto-climb is 24 map units; the WAD->engine scale is 0.05.
   // Same constant as STEP_UP_MAX in index.html.  Drops are unlimited, so the
   // walk graph is DIRECTED.
@@ -204,6 +207,55 @@
             if (segDist(this.wx(i), this.wz(j), ax, az, bx, bz) < P_RADIUS) this.free[k] = 0;
           }
         }
+      }
+
+      // Tall ledge risers, as the engine plays them: a body below one is kept
+      // RISER_R off it, and a body walking off one hangs on the lip until it
+      // is clear. So a low cell that close to a static riser it could never
+      // climb takes the high floor: reachable by dropping in from above,
+      // never by walking in from below. Lift risers (either side moves, or
+      // the line has a special) are left to canStep's envelope.
+      // Half a cell short of RISER_R: cell centres are sampled, and at the
+      // full radius a corridor the engine fits through can have no cell that
+      // clears both the riser and the wall opposite.
+      const bandR = RISER_R - CELL / 2;
+      const band = [];
+      for (const w of bandR > 0 ? (level.walls || []) : []) {
+        if (w.solid || !(w.ledge || w.stepUp) || w.act) continue;
+        const [ax, az, bx, bz] = wallPoints(w);
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 1e-6) continue;
+        const x0 = this.cx(Math.min(ax, bx)) - pad, x1 = this.cx(Math.max(ax, bx)) + pad;
+        const z0 = this.cz(Math.min(az, bz)) - pad, z1 = this.cz(Math.max(az, bz)) + pad;
+        for (let j = Math.max(0, z0); j <= Math.min(this.h - 1, z1); j++) {
+          for (let i = Math.max(0, x0); i <= Math.min(this.w - 1, x1); i++) {
+            const k = j * this.w + i;
+            if (!this.free[k] || this.lo[k] !== this.hi[k]) continue;
+            const px = this.wx(i), pz = this.wz(j);
+            if (segDist(px, pz, ax, az, bx, bz) >= bandR) continue;
+            // The floor across the line: step past the closest point on it.
+            const t = Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (pz - az) * (bz - az)) / (L * L)));
+            const qx = ax + t * (bx - ax), qz = az + t * (bz - az);
+            let ux = qx - px, uz = qz - pz;
+            const ul = Math.hypot(ux, uz);
+            if (ul < 1e-6) {
+              // On the line: the high side is whichever normal side is higher.
+              ux = -(bz - az) / L; uz = (bx - ax) / L;
+            } else { ux /= ul; uz /= ul; }
+            let best = -Infinity;
+            for (const s of ul < 1e-6 ? [1, -1] : [1]) {
+              const i2 = this.cx(qx + s * ux * 0.3), j2 = this.cz(qz + s * uz * 0.3);
+              if (!this.isFree(i2, j2)) continue;
+              const k2 = j2 * this.w + i2;
+              if (this.lo[k2] === this.hi[k2] && this.lo[k2] > best) best = this.lo[k2];
+            }
+            if (best > this.hi[k] + STEP_UP_MAX + 1e-3) band.push(k, best);
+          }
+        }
+      }
+      for (let n = 0; n < band.length; n += 2) {
+        const k = band[n];
+        if (band[n + 1] > this.hi[k]) { this.lo[k] = band[n + 1]; this.hi[k] = band[n + 1]; }
       }
 
       // Teleport edges: any free cell you can stand on while touching the

@@ -24,8 +24,12 @@
   // Touch devices get a third of the dressing: the props are instanced so
   // they are cheap to draw, but each one is still a matrix and a shadow
   // caster, and a phone has neither the fill rate nor the memory to spare.
-  var MOBILE = (typeof window !== 'undefined' && window.matchMedia)
-    ? window.matchMedia('(pointer: coarse)').matches : false;
+  // Same decision as the engine (js/cyber-input-mode.js), so a stylus tablet
+  // that reports pointer: fine still gets the touch-sized prop budget.
+  var MOBILE = (typeof window !== 'undefined')
+    ? (typeof window.CYBER_TOUCH === 'boolean' ? window.CYBER_TOUCH
+      : (window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false))
+    : false;
   // Quality tier owns the dressing budget now. MOBILE stays as the floor for
   // a build where cyber-quality.js failed to load, and the tier's own Low
   // preset is what a coarse pointer resolves to anyway.
@@ -253,6 +257,9 @@
     _mat.cable = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 0.9 });
     _geo.sign = new THREE.PlaneGeometry(0.5, 0.5);
     _mat.sign = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xff9900, emissiveIntensity: 0.6, roughness: 0.6, side: THREE.DoubleSide });
+    // Cached for the life of the page, so level teardown must not dispose them.
+    Object.keys(_geo).forEach(function (k) { _geo[k]._shared = true; });
+    Object.keys(_mat).forEach(function (k) { _mat[k]._shared = true; });
   }
 
   // Converted levels carry x/z/width/depth on the sector itself. The
