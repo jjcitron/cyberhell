@@ -49,7 +49,7 @@
 
   function geo(key, make) {
     var g = geoCache.get(key);
-    if (!g) { g = make(); geoCache.set(key, g); }
+    if (!g) { g = make(); g._shared = true; geoCache.set(key, g); }
     return g;
   }
 
@@ -114,6 +114,11 @@
       var def = { color: color, metalness: metalness, roughness: roughness };
       for (var k in opts) def[k] = opts[k];
       m = new T.MeshStandardMaterial(def);
+      // Cached for the page, so the engine's level teardown must not dispose
+      // it -- see disposeObject3D in index.html. Without the flag the cache
+      // handed back materials whose GPU program had already been released and
+      // every level change recompiled the whole bestiary.
+      m._shared = true;
       matCache.set(key, m);
     }
     if (lk.slot) slotOfMat.set(m, lk.slot);
@@ -228,6 +233,7 @@
       vm = src.clone();
       vm.color.setHex(0xffffff);
       vm.vertexColors = true;
+      vm._shared = true;
       vgradMats.set(src.uuid, vm);
     }
     o.material = vm;
@@ -244,6 +250,7 @@
         col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
       }
       g.setAttribute('color', new T.BufferAttribute(col, 3));
+      g._shared = true;
       geoCache.set(key, g);
     }
     o.geometry = g;

@@ -16,7 +16,10 @@ function head3Params(seed, over) {
   if (over) for (const k in over) if (over[k] !== undefined) o[k] = over[k];
   return o;
 }
+const CRANIUM_CACHE = {}, JAW_CACHE = {}, NECK_CACHE = {}, FACE_GEO_CACHE = {};
 function craniumGeo(THREE, p) {
+  const key = JSON.stringify(p);
+  if (CRANIUM_CACHE[key]) return CRANIUM_CACHE[key];
   const g = new THREE.SphereGeometry(1, Math.round(22 * p.seg), Math.round(16 * p.seg)), a = g.attributes.position;
   for (let i = 0; i < a.count; i++) {
     let x = a.getX(i), y = a.getY(i), z = a.getZ(i);
@@ -26,9 +29,12 @@ function craniumGeo(THREE, p) {
     if (y < -0.55 && x > 0) x *= 0.82;                                                                     // underside tucks in where the jaw takes over
     a.setXYZ(i, x * p.crD * p.R, y * p.crH * p.R, z * p.crW * p.R);
   }
-  g.computeVertexNormals(); g.type = 'Head3Geometry'; return g;   // own type: the refine passes rebuild stock Sphere/Cylinder geometry from parameters
+  g.computeVertexNormals(); g.type = 'Head3Geometry'; g._shared = true;   // own type: the refine passes rebuild stock Sphere/Cylinder geometry from parameters
+  return (CRANIUM_CACHE[key] = g);
 }
 function jawGeo(THREE, p) {
+  const key = JSON.stringify(p);
+  if (JAW_CACHE[key]) return JAW_CACHE[key];
   const g = new THREE.SphereGeometry(1, Math.round(18 * p.seg), Math.round(12 * p.seg)), a = g.attributes.position;
   for (let i = 0; i < a.count; i++) {
     let x = a.getX(i), y = a.getY(i), z = a.getZ(i);
@@ -39,7 +45,8 @@ function jawGeo(THREE, p) {
     if (x > 0.5 && t > 0.75) y -= (t - 0.75) * 0.25;          // chin point
     a.setXYZ(i, (x * p.jawD + p.jawX) * p.R, (y * p.jawLen + p.jawY) * p.R, z * p.jawW * p.R);
   }
-  g.computeVertexNormals(); g.type = 'Head3Geometry'; return g;
+  g.computeVertexNormals(); g.type = 'Head3Geometry'; g._shared = true;
+  return (JAW_CACHE[key] = g);
 }
 /** {group, cranium, jaw}. mat: the old skull material (textures/vertex colours kept); jawMat optional (beards, masks). */
 function buildHead(THREE, mat, params, opts) {
@@ -56,7 +63,12 @@ function buildHead(THREE, mat, params, opts) {
 /** Neck cylinder: base at the origin, rising `len` while leaning back by `tilt` rad, top sunk into the skull base. */
 function buildNeck(THREE, mat, o) {
   o = o || {}; const r = o.r || 0.06, len = o.len || 0.2, tilt = o.tilt === undefined ? 0.3 : o.tilt;
-  const geo = new THREE.CylinderGeometry(r * 0.92, r * 1.08, len, 16, 3); geo.translate(0, len / 2, 0); geo.type = 'Head3Geometry';
+  const nk = r + '|' + len;
+  let geo = NECK_CACHE[nk];
+  if (!geo) {
+    geo = new THREE.CylinderGeometry(r * 0.92, r * 1.08, len, 16, 3); geo.translate(0, len / 2, 0); geo.type = 'Head3Geometry'; geo._shared = true;
+    NECK_CACHE[nk] = geo;
+  }
   const m = new THREE.Mesh(geo, mat); m.name = 'head3-neck'; m.castShadow = true; m.userData.head3 = true;
   const g = new THREE.Group(); g.add(m); m.rotation.z = tilt;                      // +tilt leans the top toward -X (back)
   if (o.fwd === '-z') g.rotation.y = Math.PI / 2;
@@ -82,10 +94,10 @@ const FACE_MATS = {};
 function faceMat(THREE, key, hex, rough, extra) {
   const k = key + hex; if (FACE_MATS[k]) return FACE_MATS[k];
   const m = new THREE.MeshStandardMaterial(Object.assign({ color: hex, roughness: rough, metalness: 0 }, extra || {}));
-  m.userData.keep = true; m.userData.refined = true; return (FACE_MATS[k] = m);
+  m.userData.keep = true; m.userData.refined = true; m._shared = true; return (FACE_MATS[k] = m);
 }
 function mergeGeos(THREE, list) {   // [{geo, m: Matrix4}] -> one non-indexed geometry (position/normal/uv)
-  const pos = [], nor = [], uv = [], nm = new THREE.Matrix3();
+  const pos = [], nor = [], uv = [];
   for (const { geo, m } of list) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone(); g.applyMatrix4(m);
     pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array);
@@ -93,61 +105,69 @@ function mergeGeos(THREE, list) {   // [{geo, m: Matrix4}] -> one non-indexed ge
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  out.type = 'Head3Geometry'; return out;
+  out.type = 'Head3Geometry'; out._shared = true; return out;
 }
 function buildFace(THREE, group, cranium, jaw, skin, hp, fo) {
   const R = hp.R, f = Object.assign({}, FACE_DEFAULT, fo.params || {}), want = (k) => fo[k] !== false;
-  group.updateMatrixWorld(true);
-  const rc = new THREE.Raycaster(), V = (x, y, z) => new THREE.Vector3(x, y, z);
-  const surf = (y, z) => { rc.set(V(4 * R, y * R, z * R), V(-1, 0, 0)); const h = rc.intersectObjects([cranium, jaw], false)[0]; return h ? h.point.x : hp.crD * R; };
-  const side = (y, x, s) => { rc.set(V(x * R, y * R, s * 4 * R), V(0, 0, -s)); const h = rc.intersectObject(cranium, false)[0]; return h ? h.point.z : s * hp.flat * hp.crW * R; };
-  const SPH = new THREE.SphereGeometry(1, 9, 6), CYL = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
-  const bins = {};
-  const put = (bin, geo, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => {
-    const m = new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
-    (bins[bin] = bins[bin] || []).push({ geo, m });
-  };
   const dark = faceMat(THREE, 'dark', 0x120d0e, 0.6), white = faceMat(THREE, 'white', fo.eyeWhite || 0xe9e2d3, 0.35);
   const lipM = faceMat(THREE, 'lip', fo.lipColor || 0x8a4a3e, 0.55), browM = faceMat(THREE, 'brow', fo.brow || 0x1e1612, 0.85);
   const skinKeep = skin;
-  const ex = f.eyeSp, ey = f.eyeY, er = f.eyeR;
-  // brow ridge across the forehead (over the sockets) + cheekbones below them: the eyes sit in between
-  if (want('ridge')) put('skin', SPH, surf(f.browY, 0) - 0.05 * R, f.browY * R, 0, 0.11 * R, 0.075 * R * (0.8 + 0.4 * f.brow), (ex + er * 1.9) * R);
-  if (want('cheeks')) for (const s of [-1, 1]) put('skin', SPH, surf(-0.06, s * 0.42) - 0.07 * R, -0.06 * R, s * 0.43 * R, 0.13 * R * f.cheek, 0.085 * R * f.cheek, 0.15 * R * f.cheek, 0, 0, -0.2);
-  if (want('eyes')) for (const s of [-1, 1]) {
-    const z = s * ex * R, cx = surf(ey, s * ex) - er * R * 0.25, cy = ey * R;
-    put('white', SPH, cx, cy, z, er * R, er * R * 0.92, er * R * 1.05);
-    put('dark', SPH, cx + er * R * 0.9, cy - er * R * 0.08, z, er * R * 0.25, er * R * f.pupil, er * R * f.pupil * 0.95);             // iris/pupil
-    put('skin', new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.36), cx - er * R * 0.05, cy + er * R * 0.12, z, er * R * 1.14, er * R * 1.0, er * R * 1.16, 0, 0, -0.3);   // upper lid
-    put('dark', SPH, cx + er * R * 0.62, cy + er * R * 0.6, z, er * R * 0.26, er * R * 0.2, er * R * 1.15, 0, 0, -0.5);       // lash line
-  }
-  if (want('brows')) for (const s of [-1, 1]) put('brow', SPH, surf(f.browY + 0.04, s * ex) + 0.012 * R, (f.browY + 0.05) * R, s * ex * R, 0.06 * R, 0.055 * R * f.brow, 0.19 * R, s * f.browTilt, 0, 0);
-  if (want('nose')) {
-    const ty = -0.12 - 0.06 * (f.noseLen - 1), tx = surf(ty, 0) + 0.15 * R * f.noseLen, bx = surf(0.24, 0) - 0.01 * R, by = 0.24 * R;
-    const top = V(bx, by, 0), tip = V(tx, ty * R, 0), mid = top.clone().lerp(tip, 0.5), len = top.distanceTo(tip);
-    const ang = Math.atan2(tip.x - top.x, top.y - tip.y);                                          // lean of the bridge toward the tip
-    put('nose', new THREE.CylinderGeometry(0.045 * R, 0.07 * R * f.noseW, 1, 8, 2), mid.x + f.noseHook * 0.02 * R, mid.y, 0, 1, len, 1, 0, 0, ang);
-    put('nose', SPH, tip.x - 0.01 * R, tip.y, 0, 0.075 * R * f.noseW, 0.07 * R, 0.08 * R * f.noseW);
-    for (const s of [-1, 1]) {
-      put('nose', SPH, tip.x - 0.06 * R, tip.y - 0.02 * R, s * 0.075 * R * f.noseW, 0.055 * R, 0.048 * R, 0.045 * R);         // alar wings
-      put('dark', SPH, tip.x - 0.035 * R, tip.y - 0.055 * R, s * 0.035 * R * f.noseW, 0.03 * R, 0.014 * R, 0.022 * R);         // nostrils
+  const mats = { skin: skinKeep, nose: skinKeep, white, dark, lip: lipM, brow: browM };
+  const fKey = JSON.stringify([hp, f, want('ridge'), want('cheeks'), want('eyes'), want('brows'), want('nose'), want('mouth'), want('ears')]);
+  let cached = FACE_GEO_CACHE[fKey];
+  if (!cached) {
+    group.updateMatrixWorld(true);
+    const rc = new THREE.Raycaster(), V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const surf = (y, z) => { rc.set(V(4 * R, y * R, z * R), V(-1, 0, 0)); const h = rc.intersectObjects([cranium, jaw], false)[0]; return h ? h.point.x : hp.crD * R; };
+    const side = (y, x, s) => { rc.set(V(x * R, y * R, s * 4 * R), V(0, 0, -s)); const h = rc.intersectObject(cranium, false)[0]; return h ? h.point.z : s * hp.flat * hp.crW * R; };
+    const SPH = new THREE.SphereGeometry(1, 9, 6);
+    const bins = {};
+    const put = (bin, geo, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => {
+      const m = new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
+      (bins[bin] = bins[bin] || []).push({ geo, m });
+    };
+    const ex = f.eyeSp, ey = f.eyeY, er = f.eyeR;
+    // brow ridge across the forehead (over the sockets) + cheekbones below them: the eyes sit in between
+    if (want('ridge')) put('skin', SPH, surf(f.browY, 0) - 0.05 * R, f.browY * R, 0, 0.11 * R, 0.075 * R * (0.8 + 0.4 * f.brow), (ex + er * 1.9) * R);
+    if (want('cheeks')) for (const s of [-1, 1]) put('skin', SPH, surf(-0.06, s * 0.42) - 0.07 * R, -0.06 * R, s * 0.43 * R, 0.13 * R * f.cheek, 0.085 * R * f.cheek, 0.15 * R * f.cheek, 0, 0, -0.2);
+    if (want('eyes')) for (const s of [-1, 1]) {
+      const z = s * ex * R, cx = surf(ey, s * ex) - er * R * 0.25, cy = ey * R;
+      put('white', SPH, cx, cy, z, er * R, er * R * 0.92, er * R * 1.05);
+      put('dark', SPH, cx + er * R * 0.9, cy - er * R * 0.08, z, er * R * 0.25, er * R * f.pupil, er * R * f.pupil * 0.95);             // iris/pupil
+      put('skin', new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.36), cx - er * R * 0.05, cy + er * R * 0.12, z, er * R * 1.14, er * R * 1.0, er * R * 1.16, 0, 0, -0.3);   // upper lid
+      put('dark', SPH, cx + er * R * 0.62, cy + er * R * 0.6, z, er * R * 0.26, er * R * 0.2, er * R * 1.15, 0, 0, -0.5);       // lash line
     }
+    if (want('brows')) for (const s of [-1, 1]) put('brow', SPH, surf(f.browY + 0.04, s * ex) + 0.012 * R, (f.browY + 0.05) * R, s * ex * R, 0.06 * R, 0.055 * R * f.brow, 0.19 * R, s * f.browTilt, 0, 0);
+    if (want('nose')) {
+      const ty = -0.12 - 0.06 * (f.noseLen - 1), tx = surf(ty, 0) + 0.15 * R * f.noseLen, bx = surf(0.24, 0) - 0.01 * R, by = 0.24 * R;
+      const top = V(bx, by, 0), tip = V(tx, ty * R, 0), mid = top.clone().lerp(tip, 0.5), len = top.distanceTo(tip);
+      const ang = Math.atan2(tip.x - top.x, top.y - tip.y);                                          // lean of the bridge toward the tip
+      put('nose', new THREE.CylinderGeometry(0.045 * R, 0.07 * R * f.noseW, 1, 8, 2), mid.x + f.noseHook * 0.02 * R, mid.y, 0, 1, len, 1, 0, 0, ang);
+      put('nose', SPH, tip.x - 0.01 * R, tip.y, 0, 0.075 * R * f.noseW, 0.07 * R, 0.08 * R * f.noseW);
+      for (const s of [-1, 1]) {
+        put('nose', SPH, tip.x - 0.06 * R, tip.y - 0.02 * R, s * 0.075 * R * f.noseW, 0.055 * R, 0.048 * R, 0.045 * R);         // alar wings
+        put('dark', SPH, tip.x - 0.035 * R, tip.y - 0.055 * R, s * 0.035 * R * f.noseW, 0.03 * R, 0.014 * R, 0.022 * R);         // nostrils
+      }
+    }
+    if (want('mouth')) {
+      const my = f.mouthY, mx = surf(my, 0);
+      put('lip', SPH, surf(my + 0.06, 0) - 0.015 * R, (my + 0.055) * R, 0, 0.05 * R, 0.035 * R * f.lip, 0.19 * R * f.mouthW);
+      put('lip', SPH, surf(my - 0.07, 0) - 0.02 * R, (my - 0.065) * R, 0, 0.055 * R, 0.045 * R * f.lip, 0.16 * R * f.mouthW);
+      put('dark', SPH, mx + 0.02 * R, my * R, 0, 0.035 * R, 0.018 * R, 0.21 * R * f.mouthW);
+    }
+    if (want('ears')) for (const s of [-1, 1]) {
+      const z = side(0.02, -0.12, s) + s * 0.025 * R;
+      put('skin', SPH, -0.12 * R, 0.02 * R, z, 0.15 * R * f.ear, 0.24 * R * f.ear, 0.05 * R, 0, 0, 0.2);
+      put('skin', SPH, -0.1 * R, -0.18 * R * f.ear, z, 0.06 * R, 0.07 * R, 0.045 * R);                                           // lobe
+      put('dark', SPH, -0.1 * R, 0.03 * R, z + s * 0.035 * R, 0.07 * R * f.ear, 0.12 * R * f.ear, 0.012 * R);                       // concha shadow
+    }
+    cached = {};
+    for (const k in bins) cached[k] = mergeGeos(THREE, bins[k]);
+    FACE_GEO_CACHE[fKey] = cached;
   }
-  if (want('mouth')) {
-    const my = f.mouthY, mx = surf(my, 0);
-    put('lip', SPH, surf(my + 0.06, 0) - 0.015 * R, (my + 0.055) * R, 0, 0.05 * R, 0.035 * R * f.lip, 0.19 * R * f.mouthW);
-    put('lip', SPH, surf(my - 0.07, 0) - 0.02 * R, (my - 0.065) * R, 0, 0.055 * R, 0.045 * R * f.lip, 0.16 * R * f.mouthW);
-    put('dark', SPH, mx + 0.02 * R, my * R, 0, 0.035 * R, 0.018 * R, 0.21 * R * f.mouthW);
-  }
-  if (want('ears')) for (const s of [-1, 1]) {
-    const z = side(0.02, -0.12, s) + s * 0.025 * R;
-    put('skin', SPH, -0.12 * R, 0.02 * R, z, 0.15 * R * f.ear, 0.24 * R * f.ear, 0.05 * R, 0, 0, 0.2);
-    put('skin', SPH, -0.1 * R, -0.18 * R * f.ear, z, 0.06 * R, 0.07 * R, 0.045 * R);                                           // lobe
-    put('dark', SPH, -0.1 * R, 0.03 * R, z + s * 0.035 * R, 0.07 * R * f.ear, 0.12 * R * f.ear, 0.012 * R);                       // concha shadow
-  }
-  const mats = { skin: skinKeep, nose: skinKeep, white, dark, lip: lipM, brow: browM }, out = {};
-  for (const k in bins) {
-    const m = new THREE.Mesh(mergeGeos(THREE, bins[k]), mats[k]); m.name = 'face-' + k; m.userData.noOutline = true; m.userData.head3 = true; m.userData.noRefine = k !== 'skin' && k !== 'nose';
+  const out = {};
+  for (const k in cached) {
+    const m = new THREE.Mesh(cached[k], mats[k]); m.name = 'face-' + k; m.userData.noOutline = true; m.userData.head3 = true; m.userData.noRefine = k !== 'skin' && k !== 'nose';
     m.castShadow = false; group.add(m); out[k] = m;
   }
   return out;

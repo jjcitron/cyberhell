@@ -14,7 +14,7 @@
   //    lip in a darker shade of the part's own colour) so the outline breaks up.
   // Idempotent; skips meshes whose geometry carries vertex colours or morph targets.
   // T.level: 1 = round-3 pass (rounded boxes 3x3, 14 sides, normal maps), 2 = this pass.
-  var geoCache = new Map(), texCache = new Map(), trimMats = new Map();
+  var geoCache = new Map(), texCache = new Map(), trimMats = new Map(), taperCache = new Map();
   function roundedBox(THREE, w, h, d, seg) {
     var r = Math.min(w, h, d) * 0.22;
     var g = new THREE.BoxGeometry(w, h, d, seg, seg, seg);
@@ -37,6 +37,7 @@
     else if (g.type === 'CylinderGeometry' && P.radialSegments < rs) out = new THREE.CylinderGeometry(P.radiusTop, P.radiusBottom, P.height, rs, Math.max(P.heightSegments, L >= 2 ? 2 : 1), P.openEnded, P.thetaStart, P.thetaLength);
     else if (g.type === 'ConeGeometry' && P.radialSegments < rs && P.radialSegments > 5) out = new THREE.ConeGeometry(P.radius, P.height, rs, Math.max(P.heightSegments, L >= 2 ? 2 : 1), P.openEnded, P.thetaStart, P.thetaLength);
     else if (g.type === 'SphereGeometry' && P.widthSegments < (L >= 2 ? 24 : 14)) out = new THREE.SphereGeometry(P.radius, L >= 2 ? 24 : 16, L >= 2 ? 16 : 12, P.phiStart, P.phiLength, P.thetaStart, P.thetaLength);
+    if (out) out._shared = true;
     geoCache.set(key, out); return out;
   }
   function tex(THREE, url, srgb) {
@@ -45,6 +46,7 @@
     if (typeof document !== 'undefined' && !t.image) { var c = document.createElement('canvas'); c.width = c.height = 1; var x = c.getContext('2d'); x.fillStyle = srgb ? '#ffffff' : '#8080ff'; x.fillRect(0, 0, 1, 1); t.image = c; t.needsUpdate = true; }   // no black flash before load
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2);
     if (srgb) { if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; else t.encoding = 3001; }
+    t._shared = true;
     texCache.set(url, t); return t;
   }
   function refineMat(THREE, m, T) {
@@ -66,7 +68,7 @@
   function trimFor(THREE, m) {
     if (!m || !m.color || m.transparent) return null;
     if (trimMats.has(m)) return trimMats.get(m);
-    var t = m.clone(); t.color = m.color.clone().multiplyScalar(0.55); t.userData = { refined: true, trim: true };
+    var t = m.clone(); t.color = m.color.clone().multiplyScalar(0.55); t.userData = { refined: true, trim: true }; t._shared = true;
     trimMats.set(m, t); return t;
   }
   function addTrim(THREE, o, L) {
@@ -109,9 +111,11 @@
     return prof[prof.length - 1][1];
   }
   function taperMesh(THREE, m, frame, S) {
-    if (m.userData.tapered || !m.geometry || !m.geometry.attributes.position || m.isInstancedMesh || m.isSkinnedMesh) return;
+    if (m.userData.tapered || m.userData.noTaper || !m.geometry || !m.geometry.attributes.position || m.isInstancedMesh || m.isSkinnedMesh) return;
     var GP = m.geometry.parameters; if (GP && GP.openEnded) return;   // skirts / hakama / open greaves keep their flare
     m.userData.tapered = true;
+    var selfKey = (frame === m) ? (m.geometry.uuid + '|' + S.y0 + '|' + S.len + '|' + S.wx + '|' + S.wz + '|' + JSON.stringify(S.prof)) : null;
+    if (selfKey && taperCache.has(selfKey)) { m.geometry = taperCache.get(selfKey); return; }
     var M = new THREE.Matrix4().copy(frame.matrixWorld).invert().multiply(m.matrixWorld);
     var Mi = new THREE.Matrix4().copy(M).invert();
     var N = new THREE.Matrix3().getNormalMatrix(M), Ni = new THREE.Matrix3().getNormalMatrix(Mi);
@@ -129,11 +133,12 @@
       v.set(v.x * sx, v.y, v.z * sz).applyMatrix4(Mi); p.setXYZ(i, v.x, v.y, v.z);
     }
     g.computeBoundingBox(); g.computeBoundingSphere();
+    if (selfKey) { g._shared = true; taperCache.set(selfKey, g); }
     m.geometry = g;
   }
   function taperTree(THREE, root) {
     var tagged = [];
-    root.traverse(function (o) { if (o.userData.taper && !o.userData.taperDone) tagged.push(o); });
+    root.traverse(function (o) { if (o.userData.taper && !o.userData.taperDone && !o.userData.noTaper && !o.userData.tapered) tagged.push(o); });
     if (!tagged.length) return;
     root.updateMatrixWorld(true);
     tagged.forEach(function (f) {

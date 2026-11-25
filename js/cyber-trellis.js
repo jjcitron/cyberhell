@@ -53,7 +53,14 @@
     var Arr = CT[a.componentType], n = NC[a.type], el = Arr.BYTES_PER_ELEMENT;
     var off = (bv.byteOffset || 0) + (a.byteOffset || 0);
     var stride = bv.byteStride || n * el;
-    var out = toFloat ? new Float32Array(a.count * n) : new Arr(a.count * n);
+    var total = a.count * n;
+    // Fast zero-copy view for tightly packed unnormalized buffers (all TRELLIS GLBs).
+    if (!a.normalized && stride === n * el && ((bin.byteOffset + off) % el === 0)) {
+      if (!toFloat || a.componentType === 5126) {
+        return new Arr(bin.buffer, bin.byteOffset + off, total);
+      }
+    }
+    var out = toFloat ? new Float32Array(total) : new Arr(total);
     var dv = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
     var get = { 5120: 'getInt8', 5121: 'getUint8', 5122: 'getInt16', 5123: 'getUint16', 5125: 'getUint32', 5126: 'getFloat32' }[a.componentType];
     var k = (toFloat && a.normalized) ? 1 / NORM[a.componentType] : 1;
@@ -88,22 +95,41 @@
     }
     var scene = json.scenes[json.scene || 0];
     scene.nodes.forEach(function (n) { walk(n, new THREE.Matrix4()); });
-    var tris = [], uvs = [], matIdx = null;
-    var v = new THREE.Vector3();
-    prims.forEach(function (pp) {
-      var p = pp.p, at = p.attributes;
+    var matIdx = null, totalCount = 0;
+    var decoded = [];
+    for (var pi = 0; pi < prims.length; pi++) {
+      var pp = prims[pi], p = pp.p, at = p.attributes;
       var pos = readAccessor(json, bin, at.POSITION, true);
       var uv = at.TEXCOORD_0 !== undefined ? readAccessor(json, bin, at.TEXCOORD_0, true) : null;
       var ind = p.indices !== undefined ? readAccessor(json, bin, p.indices, false) : null;
       var count = ind ? ind.length : pos.length / 3;
-      for (var i = 0; i < count; i++) {
-        var j = ind ? ind[i] : i;
-        v.set(pos[j * 3], pos[j * 3 + 1], pos[j * 3 + 2]).applyMatrix4(pp.M);
-        tris.push(v.x, v.y, v.z);
-        uvs.push(uv ? uv[j * 2] : 0, uv ? uv[j * 2 + 1] : 0);
-      }
+      totalCount += count;
+      decoded.push({ pos: pos, uv: uv, ind: ind, count: count, e: pp.M.elements });
       if (matIdx === null && p.material !== undefined) matIdx = p.material;
-    });
+    }
+    var tris = new Float32Array(totalCount * 3);
+    var uvs = new Float32Array(totalCount * 2);
+    var pOff = 0, uOff = 0;
+    for (var di = 0; di < decoded.length; di++) {
+      var dp = decoded[di], pos2 = dp.pos, uv2 = dp.uv, ind2 = dp.ind, cnt = dp.count, e = dp.e;
+      var e0 = e[0], e1 = e[1], e2 = e[2], e4 = e[4], e5 = e[5], e6 = e[6];
+      var e8 = e[8], e9 = e[9], e10 = e[10], e12 = e[12], e13 = e[13], e14 = e[14];
+      for (var i = 0; i < cnt; i++) {
+        var j = ind2 ? ind2[i] : i;
+        var j3 = j * 3;
+        var vx = pos2[j3], vy = pos2[j3 + 1], vz = pos2[j3 + 2];
+        tris[pOff++] = e0 * vx + e4 * vy + e8 * vz + e12;
+        tris[pOff++] = e1 * vx + e5 * vy + e9 * vz + e13;
+        tris[pOff++] = e2 * vx + e6 * vy + e10 * vz + e14;
+        if (uv2) {
+          var j2 = j * 2;
+          uvs[uOff++] = uv2[j2];
+          uvs[uOff++] = uv2[j2 + 1];
+        } else {
+          uOff += 2;
+        }
+      }
+    }
     var image = null, color = [1, 1, 1, 1];
     if (matIdx !== null) {
       var mt = json.materials[matIdx], pbr = mt.pbrMetallicRoughness || {};
@@ -115,7 +141,7 @@
         image = new Blob([new Uint8Array(bin.buffer, bin.byteOffset + (ibv.byteOffset || 0), ibv.byteLength)], { type: im.mimeType || 'image/png' });
       }
     }
-    return { pos: new Float32Array(tris), uv: new Float32Array(uvs), image: image, color: color };
+    return { pos: tris, uv: uvs, image: image, color: color };
   }
 
   function makeMaterial(THREE, d, id) {
@@ -126,11 +152,13 @@
     if (d.image) {
       var t = new THREE.Texture();
       t.flipY = false;
+      t._shared = true;
       var img = new Image();
       img.onload = function () { t.image = img; t.needsUpdate = true; };
       img.src = URL.createObjectURL(d.image);
       m.map = t;
     }
+    m._shared = true;
     m.userData.refined = true;
     return m;
   }
@@ -213,86 +241,127 @@
     var shX = (at.lS && at.rS) ? Math.abs(at.lS.x - at.rS.x) / 2 : 0;
     var torsoHalf = shX * 0.72;
     var headY = at.head ? at.head.y : 1e9;
-    function sideKey(x, l, r) { if (!at[l] || !at[r]) return null; return Math.abs(x - at[l].x) < Math.abs(x - at[r].x) ? l : r; }
-    var assign = new Array(n / 3), armMax = { lS: 0, rS: 0 };
-    var t, x, y, z, key;
-    function tcen(t3) { return [(W[t3 * 9] + W[t3 * 9 + 3] + W[t3 * 9 + 6]) / 3, (W[t3 * 9 + 1] + W[t3 * 9 + 4] + W[t3 * 9 + 7]) / 3, (W[t3 * 9 + 2] + W[t3 * 9 + 5] + W[t3 * 9 + 8]) / 3]; }
+    var nTris = (n / 3) | 0;
+    var tcx = new Float32Array(nTris), tcy = new Float32Array(nTris), tcz = new Float32Array(nTris);
+    var inv3 = 1 / 3;
+    for (var ti = 0; ti < nTris; ti++) {
+      var b9 = ti * 9;
+      tcx[ti] = (W[b9] + W[b9 + 3] + W[b9 + 6]) * inv3;
+      tcy[ti] = (W[b9 + 1] + W[b9 + 4] + W[b9 + 7]) * inv3;
+      tcz[ti] = (W[b9 + 2] + W[b9 + 5] + W[b9 + 8]) * inv3;
+    }
+    var KEY_LIST = ['root', 'torso', 'head', 'lS', 'rS', 'lE', 'rE', 'lL', 'rL', 'lK', 'rK'];
+    var KEY_ID = { root: 0, torso: 1, head: 2, lS: 3, rS: 4, lE: 5, rE: 6, lL: 7, rL: 8, lK: 9, rK: 10 };
+    var assignK = new Uint8Array(nTris), assignD = new Float32Array(nTris);
+    var armMaxL = 0, armMaxR = 0;
     // Arm cone per side: from the shoulder, the A-pose arm leaves the body at
     // an angle (measured to the farthest clearly-outside point, the hand);
     // anything outward of half that angle is arm, the flank stays torso.
-    var cone = {};
+    var coneL = null, coneR = null;
     ['lS', 'rS'].forEach(function (k) {
       if (!at[k] || !shX) return;
-      var sgn = Math.sign(at[k].x - cx) || 1, best = null, bd = 0;
-      for (var q = 0; q < n / 3; q++) {
-        var c3 = tcen(q), out = (c3[0] - cx) * sgn;
-        if (out < shX * 1.15 || c3[1] < box.min.y + H * 0.12) continue;
-        var dd = Math.hypot(c3[0] - at[k].x, c3[1] - at[k].y, c3[2] - at[k].z);
-        if (dd > bd) { bd = dd; best = c3; }
+      var ak = at[k], ax = ak.x, ay = ak.y, az = ak.z;
+      var sgn = Math.sign(ax - cx) || 1, bestX = 0, bestY = 0, hasBest = false, bd = 0;
+      var minOut = shX * 1.15, minY = box.min.y + H * 0.12;
+      for (var q = 0; q < nTris; q++) {
+        var qx = tcx[q], qy = tcy[q];
+        if ((qx - cx) * sgn < minOut || qy < minY) continue;
+        var dx = qx - ax, dy = qy - ay, dz = tcz[q] - az;
+        var dd2 = dx * dx + dy * dy + dz * dz;
+        if (dd2 > bd) { bd = dd2; bestX = qx; bestY = qy; hasBest = true; }
       }
-      if (!best) return;
-      var ang = Math.atan2((best[0] - cx) * sgn - shX, Math.max(1e-4, at[k].y - best[1]));
+      if (!hasBest) return;
+      var ang = Math.atan2((bestX - cx) * sgn - shX, Math.max(1e-4, ay - bestY));
       if (ang < 0.12) return;   // arms hugging the body: leave them on the torso
-      cone[k] = { sgn: sgn, half: ang * 0.5 };
+      var cObj = { sgn: sgn, half: ang * 0.5, x: ax, y: ay, z: az };
+      if (k === 'lS') coneL = cObj; else coneR = cObj;
     });
-    for (t = 0; t < n / 3; t++) {
-      var c3 = tcen(t); x = c3[0]; y = c3[1]; z = c3[2];
-      key = null;
-      for (var kk in cone) {
-        var C = cone[kk], o2 = (x - cx) * C.sgn;
-        if (o2 <= 0) continue;
-        var below = at[kk].y + H * 0.03 - y;
-        var a2 = Math.atan2(o2 - shX * 0.85, Math.max(1e-4, below));
-        if ((below > 0 && a2 > C.half && o2 > shX * 0.85) || (below <= 0 && o2 > shX * 1.05)) { key = kk; break; }
+    var hasLegs = !!(at.lL && at.rL), lLx = hasLegs ? at.lL.x : 0, rLx = hasLegs ? at.rL.x : 0;
+    var legDead = shX * 0.04, headHalf = Math.max(torsoHalf, H * 0.12);
+    var sh85 = shX * 0.85, sh105 = shX * 1.05, h03 = H * 0.03;
+    var hasHead = !!at.head;
+    var idLL = piv.lK ? 9 : 7, idRL = piv.rK ? 10 : 8;
+    for (var t = 0; t < nTris; t++) {
+      var x = tcx[t], y = tcy[t], z = tcz[t];
+      var hit = 0;
+      if (coneL) {
+        var o2 = (x - cx) * coneL.sgn;
+        if (o2 > 0) {
+          var below = coneL.y + h03 - y;
+          if ((below > 0 && o2 > sh85 && Math.atan2(o2 - sh85, below > 1e-4 ? below : 1e-4) > coneL.half) || (below <= 0 && o2 > sh105)) {
+            hit = 3;
+          }
+        }
       }
-      if (key) {
-        var dd2 = Math.hypot(x - at[key].x, y - at[key].y, z - at[key].z);
-        if (dd2 > armMax[key]) armMax[key] = dd2;
-        assign[t] = { k: key, d: dd2 }; continue;
+      if (!hit && coneR) {
+        var o2r = (x - cx) * coneR.sgn;
+        if (o2r > 0) {
+          var belowR = coneR.y + h03 - y;
+          if ((belowR > 0 && o2r > sh85 && Math.atan2(o2r - sh85, belowR > 1e-4 ? belowR : 1e-4) > coneR.half) || (belowR <= 0 && o2r > sh105)) {
+            hit = 4;
+          }
+        }
       }
-      key = 'torso';
-      if (at.lL && at.rL && y < hipY && Math.abs(x - cx) > shX * 0.04) {
-        var lk = sideKey(x, 'lL', 'rL');
-        key = y < kneeY ? (lk === 'lL' ? (piv.lK ? 'lK' : 'lL') : (piv.rK ? 'rK' : 'rL')) : lk;
-      } else if (at.head && y > headY && Math.abs(x - cx) < Math.max(torsoHalf, H * 0.12)) {
-        key = 'head';
+      if (hit) {
+        var ac = hit === 3 ? coneL : coneR;
+        var dd = Math.hypot(x - ac.x, y - ac.y, z - ac.z);
+        if (hit === 3) { if (dd > armMaxL) armMaxL = dd; }
+        else { if (dd > armMaxR) armMaxR = dd; }
+        assignK[t] = hit; assignD[t] = dd;
+        continue;
       }
-      assign[t] = { k: key };
+      var ki = 1; // torso
+      if (hasLegs && y < hipY && Math.abs(x - cx) > legDead) {
+        var isLeft = Math.abs(x - lLx) < Math.abs(x - rLx);
+        ki = y < kneeY ? (isLeft ? idLL : idRL) : (isLeft ? 7 : 8);
+      } else if (hasHead && y > headY && Math.abs(x - cx) < headHalf) {
+        ki = 2; // head
+      }
+      assignK[t] = ki;
     }
     var buckets = {};
-    for (t = 0; t < n / 3; t++) {
-      key = assign[t].k;
-      if ((key === 'lS' || key === 'rS') && assign[t].d > armMax[key] * 0.48) {
-        var ek = key === 'lS' ? 'lE' : 'rE'; if (piv[ek]) key = ek;
-      }
-      if (!piv[key] && (key === 'lE' || key === 'rE')) key = key[0] + 'S';
-      if (!piv[key] && (key === 'lK' || key === 'rK')) key = key[0] + 'L';
-      if (!piv[key]) key = piv.torso ? 'torso' : 'root';
-      (buckets[key] = buckets[key] || []).push(t);
+    var armCutL = armMaxL * 0.48, armCutR = armMaxR * 0.48;
+    var hasLE = !!piv.lE, hasRE = !!piv.rE, hasFallback = piv.torso ? 'torso' : 'root';
+    var key;
+    for (var t2 = 0; t2 < nTris; t2++) {
+      var ki2 = assignK[t2];
+      if (ki2 === 3 && assignD[t2] > armCutL && hasLE) ki2 = 5;
+      else if (ki2 === 4 && assignD[t2] > armCutR && hasRE) ki2 = 6;
+      key = KEY_LIST[ki2];
+      if (!piv[key] && (ki2 === 5 || ki2 === 6)) key = key[0] + 'S';
+      if (!piv[key] && (ki2 === 9 || ki2 === 10)) key = key[0] + 'L';
+      if (!piv[key]) key = hasFallback;
+      (buckets[key] = buckets[key] || []).push(t2);
     }
     // joints measured on the mesh itself, so the procedural pivots can be
     // moved onto them and limbs swing about the mesh's own shoulders/hips.
     function cen(list, keep) {
       var sx = 0, sy = 0, sz = 0, m = 0;
-      for (var q = 0; q < list.length; q++) { if (!keep(list[q])) continue; var b = list[q] * 9;
-        sx += W[b] + W[b + 3] + W[b + 6]; sy += W[b + 1] + W[b + 4] + W[b + 7]; sz += W[b + 2] + W[b + 5] + W[b + 8]; m += 3; }
+      for (var q = 0; q < list.length; q++) {
+        var t3 = list[q];
+        if (!keep(t3)) continue;
+        var b = t3 * 9;
+        sx += W[b] + W[b + 3] + W[b + 6]; sy += W[b + 1] + W[b + 4] + W[b + 7]; sz += W[b + 2] + W[b + 5] + W[b + 8]; m += 3;
+      }
       return m ? new THREE.Vector3(sx / m, sy / m, sz / m) : null;
     }
-    function tc(t3, c3) { return (W[t3 * 9 + c3] + W[t3 * 9 + 3 + c3] + W[t3 * 9 + 6 + c3]) / 3; }
     var joints = {};
     ['l', 'r'].forEach(function (sd) {
       var S = sd + 'S', E = sd + 'E', L = sd + 'L', K = sd + 'K';
       var arm = (buckets[S] || []).concat(buckets[E] || []);
       if (arm.length && at[S]) {
-        var ax = arm.map(function (t3) { return Math.abs(tc(t3, 0) - cx); }).sort(function (a2, b2) { return a2 - b2; });
+        var ax = new Float32Array(arm.length);
+        for (var ai = 0; ai < arm.length; ai++) ax[ai] = Math.abs(tcx[arm[ai]] - cx);
+        ax.sort();
         var lim = ax[Math.floor(ax.length * 0.06)];
-        joints[S] = cen(arm, function (t3) { return Math.abs(tc(t3, 0) - cx) <= lim; });
-        if (buckets[E] && piv[E]) joints[E] = cen(arm, function (t3) { var dd = assign[t3].d; return dd > armMax[S] * 0.42 && dd < armMax[S] * 0.54; });
+        var amax = sd === 'l' ? armMaxL : armMaxR;
+        joints[S] = cen(arm, function (t3) { return Math.abs(tcx[t3] - cx) <= lim; });
+        if (buckets[E] && piv[E]) joints[E] = cen(arm, function (t3) { var dd = assignD[t3]; return dd > amax * 0.42 && dd < amax * 0.54; });
       }
       var leg = (buckets[L] || []).concat(buckets[K] || []);
       if (leg.length && at[L]) {
-        joints[L] = cen(leg, function (t3) { return tc(t3, 1) > hipY - H * 0.05; });
-        if (buckets[K] && piv[K]) joints[K] = cen(leg, function (t3) { return Math.abs(tc(t3, 1) - kneeY) < H * 0.03; });
+        joints[L] = cen(leg, function (t3) { return tcy[t3] > hipY - H * 0.05; });
+        if (buckets[K] && piv[K]) joints[K] = cen(leg, function (t3) { return Math.abs(tcy[t3] - kneeY) < H * 0.03; });
       }
     });
     var out = { _joints: joints };
@@ -306,6 +375,7 @@
       g.setAttribute('position', new THREE.BufferAttribute(pa, 3));
       g.setAttribute('uv', new THREE.BufferAttribute(ua, 2));
       g.computeVertexNormals();
+      g._shared = true;
       out[key] = { geo: g, pivotKey: key };
     }
     root.position.copy(sp); root.quaternion.copy(sq); root.scale.copy(ss);
@@ -331,7 +401,16 @@
         lE: armPiv(parts, 'left', 1), rE: armPiv(parts, 'right', 1), lL: limbs.leftLeg, rL: limbs.rightLeg,
         lK: limbs.leftLeg && limbs.leftLeg.userData.lower, rK: limbs.rightLeg && limbs.rightLeg.userData.lower
       };
-      root.traverse(function (o) { if (o.isMesh) { o.visible = false; o.userData.noRefine = true; } });
+      root.traverse(function (o) {
+        if (o.isMesh) {
+          o.visible = false;
+          o.userData.noRefine = true;
+          o.userData.tapered = true;
+          o.userData.taperDone = true;
+          o.userData.noTaper = true;
+          o.userData.trellisHidden = true;
+        }
+      });
       var sp = root.position.clone(), sq = root.quaternion.clone(), ss = root.scale.clone();
       root.position.set(0, 0, 0); root.quaternion.identity(); root.scale.set(1, 1, 1);
       root.updateMatrixWorld(true);
@@ -368,7 +447,9 @@
   }
 
   function ready() { var n = 0; for (var k in FILES) if (data[k] || bufs[k]) n++; return { ready: n, total: Object.keys(FILES).length }; }
+  function needsParse(id) { return !!(enabled() && FILES[id] && !data[id] && bufs[id]); }
+  function prepare(THREE, id) { return !!(enabled() && FILES[id] && get(THREE || window.THREE, id)); }
 
-  window.CyberTrellis = { preload: preload, apply: apply, ready: ready, FILES: FILES, YAW: YAW, DEFAULT_YAW: Math.PI };
+  window.CyberTrellis = { preload: preload, apply: apply, ready: ready, needsParse: needsParse, prepare: prepare, FILES: FILES, YAW: YAW, DEFAULT_YAW: Math.PI };
   preload();
 })();
