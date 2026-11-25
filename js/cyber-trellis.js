@@ -20,15 +20,16 @@
   var FILES = {
     3001: 'cinderlimb', 3004: 'rotgreen', 3002: 'gutmaw', 9: 'rustcoat',
     65: 'twinbarrel', 64: 'hollowflame',
-    3003: 'gilded_warlord', 66: 'bone_rocket', 16: 'coilspine',
-    67: 'tankhulk', 68: 'silverleg', 58: 'glasswraith', 7: 'jarbrain'
+    66: 'bone_rocket', 16: 'coilspine',
+    67: 'tankhulk', 68: 'silverleg', 7: 'jarbrain'
   };
-  // Joel 2026-11-17: Maw Oni (3005) and Tetsu Oni (69) keep their original
-  // procedural rigs; they are deliberately absent from FILES.
-  var LEGS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 3003: 1, 16: 1, 58: 1, 64: 1 };
-  var ARMS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 3003: 1, 16: 1, 58: 1, 66: 1, 64: 1 };
-  var GHOST = { 58: 0.55 };   // Spectre stays see-through
-  var TINT = { 58: [0.75, 0.95, 1.15] }; // Glasswraith: slight cyan glass
+  // Maw Oni (3005) and Tetsu Oni (69), plus Yurei (58) and Oni Daimyo (3003),
+  // keep their bespoke procedural rigs (studio decision 2026-11-25, PR #20 QA).
+  // Their retained legacy GLBs are 58: 'glasswraith' and 3003: 'gilded_warlord'.
+  var LEGS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 16: 1, 64: 1 };
+  var ARMS = { 3001: 1, 3004: 1, 3002: 1, 9: 1, 65: 1, 16: 1, 66: 1, 64: 1 };
+  var GHOST = {};
+  var TINT = {};
   // Radians around Y applied when mapping the GLB into rig space (rigs face -Z).
   // Default is π (TRELLIS +Z → rig -Z). Meshes that came out facing +X use π/2.
   var YAW = { 64: Math.PI / 2, 16: Math.PI / 2, 7: Math.PI / 2 };
