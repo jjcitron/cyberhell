@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-const gamepad = readFileSync(join(ROOT, 'js/cyber-gamepad.js'));
+const gamepad = readFileSync(join(ROOT, 'js/cyber-gamepad.js'), 'utf8');
 
 const TOGGLE_FS = `  toggleFullscreen() {
     const doc = document;
@@ -47,9 +47,6 @@ const ENTER_FS = `  enterLandscapeFullscreen() {
       /* unsupported: the portrait prompt covers it */
     }
   }`;
-
-// Baseline at origin/master 5f3730e (js/cyber-gamepad.js was not part of this pass).
-const GAMEPAD_SHA = 'keep-if-unchanged'; // filled at runtime vs a known length; see test
 
 test('auto-fullscreen methods are byte-identical to origin/master', () => {
   // Normalize CRLF so the literal matches either checkout.
@@ -147,14 +144,23 @@ test('tappable targets declare at least 48px', () => {
   assert.match(norm, /env\(safe-area-inset-top/);
 });
 
-test('desktop pointer-lock start path and gamepad file are untouched', () => {
+test('desktop pointer-lock start path and gamepad mappings are unchanged', () => {
   const norm = html.replace(/\r\n/g, '\n');
   // The pointer-lock startRun branch must still exist verbatim in spirit.
   assert.match(norm, /Pointer lock is desktop-only/);
   assert.match(norm, /this\.canvas\.requestPointerLock\(\)/);
   assert.match(norm, /this\.padCtl = window\.CyberGamepad \? window\.CyberGamepad\.attach\(this\) : null/);
-  // gamepad module bytes: compared to a snapshot of size + a distinctive mapping comment
-  assert.equal(gamepad.length, 6417, `cyber-gamepad.js length changed (${gamepad.length}) â€” mappings must not move`);
+  // Controller mappings must remain in their established positions and the public API must remain stable.
+  assert.match(gamepad, /Left stick \/ D-pad\s+move/);
+  assert.match(gamepad, /X \/ Square\s+fire/);
+  assert.match(gamepad, /A \/ Cross\s+jump/);
+  assert.match(gamepad, /RB\s+fire/);
+  assert.match(gamepad, /Y \/ LB\s+use \/ open/);
+  assert.match(gamepad, /RT \/ LT\s+next \/ prev weapon/);
+  assert.match(gamepad, /B \/ Circle\s+back/);
+  assert.match(gamepad, /View \/ Share\s+automap/);
+  assert.match(gamepad, /Start\s+pause \/ resume/);
+  assert.match(gamepad, /root\.CyberGamepad = \{ attach: attach \}/);
 });
 
 test('live-check marker is present', () => {

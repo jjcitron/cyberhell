@@ -31,6 +31,32 @@ function makeEnv() {
     }
   };
 }
+
+function makeFadeDom() {
+  const elements = new Map();
+  const classNames = new Set();
+  const controls = { id: 'mobile-controls', classList: {
+    add: (name) => classNames.add(name), remove: (name) => classNames.delete(name),
+    contains: (name) => classNames.has(name)
+  } };
+  elements.set(controls.id, controls);
+  const eventTarget = () => {
+    const listeners = new Map();
+    return {
+      addEventListener(type, fn) { const list = listeners.get(type) || []; list.push(fn); listeners.set(type, list); },
+      emit(type, event = {}) { for (const fn of listeners.get(type) || []) fn(event); },
+      count(type) { return (listeners.get(type) || []).length; }
+    };
+  };
+  const doc = { ...eventTarget(),
+    head: { children: [], appendChild(el) { this.children.push(el); if (el.id) elements.set(el.id, el); } },
+    body: { classList: { add() {}, remove() {} } },
+    createElement: (tagName) => ({ tagName: tagName.toUpperCase(), id: '', textContent: '' }),
+    getElementById: (id) => elements.get(id) || null
+  };
+  const win = { ...eventTarget() };
+  return { doc, win, controls };
+}
 /** A pad that is already awake (its waking press released). */
 function awake(env, pad, opts = {}) {
   env.pads.push(pad);
@@ -322,6 +348,80 @@ function glueEnv(extra = {}) {
   pad.buttons[16] = btn(0); ctl.update(0.016);
   return { env, pad, toasts, eng, ctl };
 }
+
+function fadeEnv(pad = makePad()) {
+  const env = makeEnv();
+  const dom = makeFadeDom();
+  const eng = fakeEngine();
+  const ctl = CyberGamepad.attach(eng, {
+    AcidGamepad: G, nav: env.nav, win: dom.win, doc: dom.doc,
+    timer: false, toast() {}
+  });
+  env.pads.push(pad);
+  ctl.update(0.016); // establish an idle baseline; connection alone must not fade
+  return { env, dom, eng, ctl, pad };
+}
+
+test('touch fade: new physical gamepad input fades mobile controls', () => {
+  const { dom, ctl, pad } = fadeEnv();
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false);
+  pad.buttons[0] = btn(1);
+  ctl.update(0.016);
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), true);
+});
+
+test('touch fade: touchstart restores and held or idle polling cannot re-fade without a new edge', () => {
+  const { dom, ctl, pad } = fadeEnv();
+  pad.buttons[0] = btn(1); ctl.update(0.016);
+  dom.doc.emit('touchstart');
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false);
+  for (let i = 0; i < 16; i++) ctl.update(0.016);
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false, 'a held pre-touch button is not fresh input');
+  pad.buttons[0] = btn(0);
+  for (let i = 0; i < 16; i++) ctl.update(0.016);
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false, 'an idle connected pad stays touch-visible');
+  pad.axes[0] = 0.8; ctl.update(0.016);
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), true, 'a new deadzone crossing fades again');
+});
+
+test('touch fade: touch pointer restores, while mouse pointer does not', () => {
+  const { dom, ctl, pad } = fadeEnv();
+  pad.buttons[0] = btn(1); ctl.update(0.016);
+  dom.doc.emit('pointerdown', { pointerType: 'mouse' });
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), true);
+  dom.doc.emit('pointerdown', { pointerType: 'touch' });
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false);
+});
+
+test('touch fade: physical gamepad disconnect restores mobile controls', () => {
+  const { dom, ctl, pad } = fadeEnv();
+  pad.buttons[0] = btn(1); ctl.update(0.016);
+  dom.win.emit('gamepaddisconnected', { gamepad: pad });
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false);
+});
+
+test('touch fade: Cyberhell Touch Virtual Pad input never fades mobile controls', () => {
+  const virtual = makePad({ id: 'Cyberhell Touch Virtual Pad', axes: [1, -1, 1, -1] });
+  virtual.buttons[0] = btn(1);
+  const { dom, ctl } = fadeEnv(virtual);
+  for (let i = 0; i < 16; i++) ctl.update(0.016);
+  assert.equal(dom.controls.classList.contains('cyber-pad-touch-faded'), false);
+});
+
+test('touch fade: style and listeners are idempotent across attach calls', () => {
+  const env = makeEnv();
+  const dom = makeFadeDom();
+  const quietG = { ...G, createMenuNavigator: () => ({ update() {} }) };
+  const sharedPad = { connected: false };
+  const opts = { AcidGamepad: quietG, pad: sharedPad, nav: env.nav, win: dom.win, doc: dom.doc, timer: false, toast() {} };
+  CyberGamepad.attach(fakeEngine(), opts);
+  CyberGamepad.attach(fakeEngine(), opts);
+  assert.equal(dom.doc.head.children.filter((el) => el.id === 'cyber-pad-touch-fade-style').length, 1);
+  const style = dom.doc.getElementById('cyber-pad-touch-fade-style').textContent;
+  assert.match(style, /#mobile-controls\.cyber-pad-touch-faded,#mobile-controls\.cyber-pad-touch-faded \*\{pointer-events:none !important;\}/);
+  assert.equal(dom.doc.count('touchstart'), 1);
+  assert.equal(dom.doc.count('pointerdown'), 1);
+});
 
 test('cyber glue: stick moves (analog + key mirror), right stick looks, X holds fire', () => {
   const { pad, eng, ctl, toasts } = glueEnv();
