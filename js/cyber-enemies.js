@@ -721,10 +721,13 @@
     // hollow face
     A.eyeMeshes = eyes(p.head, { mat: cy, y: 0.02, z: -0.115, dx: 0.062, size: 0.065, tall: 1.1 });
     add(p.head, box(0.14, 0.10, 0.03, M(0x06202a, 0, 0.5, { transparent: true, opacity: 0.6 }), true), 0, -0.08, -0.11);
-    p.leftShoulder.rotation.set(0.52, 0, -0.30);
-    p.rightShoulder.rotation.set(0.52, 0, 0.30);
-    p.leftElbow.rotation.set(0.82, 0, 0.18);
-    p.rightElbow.rotation.set(0.82, 0, -0.18);
+    // Reach over the ribcage instead of hanging in a front-view A-pose.
+    p.leftShoulder.position.y += 0.10;
+    p.rightShoulder.position.y += 0.10;
+    p.leftShoulder.rotation.set(0.60, 0, 0.05);
+    p.rightShoulder.rotation.set(0.60, 0, -0.05);
+    p.leftElbow.rotation.set(0.82, 0, 0.35);
+    p.rightElbow.rotation.set(0.82, 0, -0.35);
     root.traverse(function (o) {
       if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; }
     });
@@ -1005,8 +1008,10 @@
       add(pod, cyl(0.035, 0.035, 0.20, rim, 6), 0.05, -0.05, -0.06, Math.PI / 2);
       add(pod, cyl(0.04, 0.04, 0.14, rim, 6), sgn * -0.11, -0.02, 0.06, 0, 0, Math.PI / 2);
       pods.push(pod);
-      p[side + 'Shoulder'].rotation.set(0.3, 0, sgn * 0.2);
-      p[side + 'Elbow'].rotation.set(0.45, 0, 0);
+      // Keep the upper arms tight, then break the forearms forward and inward
+      // so the elbow bend survives the front silhouette.
+      p[side + 'Shoulder'].rotation.set(-0.15, 0, sgn * 0.12);
+      p[side + 'Elbow'].rotation.set(0.45, 0, sgn * -0.32);
     });
     // skull head, green sockets
     add(p.head, box(0.22, 0.12, 0.14, bone), 0, -0.10, -0.12);
