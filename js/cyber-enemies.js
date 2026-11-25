@@ -982,30 +982,31 @@
   // A dedicated horned hell-lord: this intentionally shares only the public
   // humanoid rig contract with the Hell Knight, never knight() construction.
   BUILDERS[3003] = function (root, A) {
-    var carapace = M(0x7c1c24, 0.35, 0.45);
+    var carapace = M(0x7a1c20, 0.35, 0.45);
     var under = M(0x261a19, 0.30, 0.55);
     var dark = M(0x151113, 0.35, 0.50);
     var horn = rough(0xd9ccb2);
-    var accent = E(0x3dff4f, 2.5);
+    var accent = E(0xff3a24, 2.5);
+    var accentRim = E(0xc8202a, 2.5);
     var p = humanoid(root, {
       hipY: 0.90, torsoW: 0.88, torsoH: 0.72, torsoD: 0.50, torsoMat: carapace,
       headSize: 0.36, headMat: carapace, shoulderW: 0.50, upper: 0.38, fore: 0.34,
       armMat: under, handMat: dark, armR: 0.11, thigh: 0.44, shin: 0.42,
       legMat: under, footMat: dark, legR: 0.13,
-      torsoGrad: [0xb02a36, 0x34090d], headGrad: [0xb02a36, 0x34090d]
+      torsoGrad: [0x7a1c20, 0x5a1418], headGrad: [0x7a1c20, 0x5a1418]
     });
 
     // V-shaped cuirass, gorget, tassets, diamond furnace and stepped vents.
     var chest = add(p.torso, taper(0.95, 0.70, 0.45, carapace), 0, 0.47, 0);
     chest.scale.z = 0.58;
-    vgrad(chest, 0xb02a36, 0x34090d);
+    vgrad(chest, 0x7a1c20, 0x5a1418);
     add(p.torso, tor(0.28, 0.055, dark, 4, 12), 0, 0.73, 0, Math.PI / 2);
     add(p.torso, taper(0.28, 0.38, 0.20, carapace), -0.28, 0.01, 0, 0, 0, -0.13);
     add(p.torso, taper(0.28, 0.38, 0.20, carapace), 0.28, 0.01, 0, 0, 0, 0.13);
-    var coreRing = add(p.torso, oct(0.28, 0.28, 0.06, dark), 0, 0.48, -0.28, 0, 0, Math.PI / 4);
+    var coreRing = add(p.torso, oct(0.28, 0.28, 0.06, accentRim), 0, 0.48, -0.28, 0, 0, Math.PI / 4);
     var core = add(p.torso, oct(0.19, 0.19, 0.075, accent, true), 0, 0.48, -0.32, 0, 0, Math.PI / 4);
     for (var vent = 0; vent < 3; vent++) {
-      add(p.torso, box(0.34 - vent * 0.05, 0.035, 0.035, accent, true), 0, 0.29 - vent * 0.07, -0.28);
+      add(p.torso, box(0.34 - vent * 0.05, 0.035, 0.035, accentRim, true), 0, 0.29 - vent * 0.07, -0.28);
     }
 
     // Back spines, angled hell-turbines and short cable looms.
@@ -1015,7 +1016,7 @@
     [-1, 1].forEach(function (sg) {
       var turbine = grp(p.torso, sg * 0.27, 0.60, 0.24, 0.20, 0, sg * 0.20);
       add(turbine, taper(0.16, 0.24, 0.38, dark), 0, 0, 0);
-      add(turbine, cyl(0.09, 0.09, 0.055, accent, 6, true), 0, 0.21, 0);
+      add(turbine, cyl(0.09, 0.09, 0.055, accentRim, 6, true), 0, 0.21, 0);
       cable(p.torso, { mat: dark, x: sg * 0.18, y: 0.48, z: 0.24, n: 2, len: 0.12, r: 0.025, tilt: sg * 0.22 }, A.sway);
     });
 
@@ -1030,7 +1031,7 @@
     add(p.head, cone(0.055, 0.30, horn, 6), 0, 0.31, 0.04, -0.18);
     [-1, 1].forEach(function (sg) {
       add(p.head, cyl(0.065, 0.09, 0.34, horn, 6), sg * 0.22, 0.19, 0.02, 0, 0, -sg * 0.85);
-      add(p.head, cone(0.07, 0.34, horn, 6), sg * 0.42, 0.40, -0.03, -0.45, 0, -sg * 0.25);
+      add(p.head, cone(0.07, 0.34, accentRim, 6), sg * 0.42, 0.40, -0.03, -0.45, 0, -sg * 0.25);
     });
 
     // Forward-ready arms, flared armour, claws and asymmetric plasma barb.
@@ -1040,18 +1041,18 @@
       sh.rotation.set(0.42, 0, sg * 0.24);
       el.rotation.set(0.72, 0, sg * -0.10);
       var pauldron = add(sh, taper(0.42, 0.30, 0.22, carapace), sg * 0.04, 0.02, 0, 0, 0, sg * -0.26);
-      vgrad(pauldron, 0xb02a36, 0x34090d);
+      vgrad(pauldron, 0x7a1c20, 0x5a1418);
       add(sh, cone(0.045, 0.20, horn, 5), sg * 0.15, 0.13, 0, 0, 0, -sg * 0.70);
       add(sh, cone(0.040, 0.17, horn, 5), sg * 0.04, 0.17, 0.04, -0.20, 0, -sg * 0.35);
       add(el, taper(0.24, 0.32, 0.30, carapace), 0, -0.19, 0);
-      add(el, tor(0.13, 0.025, accent, 4, 10, true), 0, -0.37, 0, Math.PI / 2);
+      add(el, tor(0.13, 0.025, accentRim, 4, 10, true), 0, -0.37, 0, Math.PI / 2);
       for (var claw = -1; claw <= 1; claw++) {
         add(el, cone(0.025, 0.17, horn, 4), claw * 0.065, -0.52, -0.08, Math.PI * 0.94, 0, claw * 0.12 * sg);
       }
       var knee = p.limbs[side + 'Leg'].userData.lower;
       add(knee, cone(0.05, 0.19, horn, 5), 0, 0.02, -0.15, -Math.PI / 2);
       var greave = add(knee, taper(0.24, 0.32, 0.42, carapace), 0, -0.22, 0);
-      vgrad(greave, 0xb02a36, 0x34090d);
+      vgrad(greave, 0x7a1c20, 0x5a1418);
       add(knee, cone(0.045, 0.18, horn, 5), -0.07, -0.46, -0.18, -Math.PI / 2);
       add(knee, cone(0.045, 0.18, horn, 5), 0.07, -0.46, -0.18, -Math.PI / 2);
     });
@@ -1065,11 +1066,12 @@
     p.rightHip.userData.lower.rotation.z = -0.07;
     A.eyeMeshes = [eyeL, eyeR];
     A.blink.push({ o: eyeL }, { o: eyeR });
-    A.pulse.push({ m: accent, base: 2.5, amp: 0.8, f: 1.25, ph: 0 });
+    A.pulse.push({ m: accent, base: 2.5, amp: 0.8, f: 1.25, ph: 0 }, { m: accentRim, base: 2.5, amp: 0.8, f: 1.25, ph: 0 });
     A.attackFn = function (w, s) {
       var flare = 1 + w * 0.85 + s * 0.35;
       core.scale.setScalar(flare);
       accent.emissiveIntensity = 2.5 + w * 3.2 + s * 1.2;
+      accentRim.emissiveIntensity = 2.5 + w * 3.2 + s * 1.2;
       barb.scale.y = 1 + w * 0.18 + s * 0.32;
       coreRing.rotation.z = Math.PI / 4 + w * 0.10;
     };
