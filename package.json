@@ -5,6 +5,7 @@
   "description": "Cyberhell - static Three.js FPS with a cloud level/pack editor on Vercel.",
   "type": "module",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "dev:api": "node tools/dev_api_server.mjs",
     "migrate": "node tools/migrate_levels_to_blob.mjs",
     "test:api": "node --test tests/api.test.mjs"

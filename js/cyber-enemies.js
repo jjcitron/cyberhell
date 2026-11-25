@@ -394,20 +394,57 @@
     var jaw = grp(p.head, 0, -0.09, -0.05, 0.28, 0, 0);
     add(jaw, box(0.16, 0.07, 0.15, skin), 0, -0.04, -0.05);
     teeth(jaw, { n: 4, w: 0.13, mat: rough(0xcfc9b4), h: 0.04, y: 0.01, z: -0.10 });
-    // sidearm, raised and kicked by attackFn
-    var gun = grp(p.rightElbow, 0, -0.34, -0.09);
-    add(gun, oct(0.07, 0.13, 0.22, metal(0x1b1b1b)), 0, 0, 0);
-    add(gun, cyl(0.017, 0.017, 0.10, metal(0x0c0e10), 6), 0, 0.03, -0.06, Math.PI / 2);
-    add(gun, box(0.05, 0.02, 0.04, E(0x00e5ff, 1.4), true), 0, 0.08, 0.02);
-    var zflash = add(gun, cone(0.055, 0.17, E(0xffab3d, 1.9), 5, true), 0, 0.03, -0.28, -Math.PI / 2);
+    // Service rifle. The weapon root belongs to the right-hand node, not the
+    // torso or elbow, so it cannot lag behind the hand when the rig blends
+    // idle, walk, pain and fire poses. The left hand is posed onto the forward
+    // grip; the right hand is the authoritative attachment point.
+    p.rightHand.name = 'trooper_right_hand';
+    // Cancel most of the bent arm's inherited pitch so the barrel points at
+    // the hero instead of standing upright beside the trooper.
+    var gun = grp(p.rightHand, 0, -0.01, -0.13, -0.72, 0, 0);
+    gun.name = 'trooper_rifle';
+    gun.userData.attachedTo = 'trooper_right_hand';
+    var gunMetal = metal(0x242a2e), gunDark = metal(0x0c0f12), gunGrip = rough(0x20241e);
+    // receiver, shoulder stock and pistol grip
+    add(gun, oct(0.12, 0.13, 0.38, gunMetal), 0, 0.01, -0.13);
+    add(gun, taper(0.12, 0.20, 0.34, gunGrip), 0, -0.01, 0.22, Math.PI / 2);
+    add(gun, box(0.08, 0.20, 0.10, gunGrip), 0, -0.12, -0.02, -0.28);
+    // long barrel, handguard and muzzle brake — unmistakably a rifle at the
+    // MAP01 spawn distance, while keeping the same low-poly material language.
+    add(gun, oct(0.14, 0.12, 0.34, gunDark), 0, 0.02, -0.46);
+    add(gun, cyl(0.025, 0.025, 0.36, gunDark, 7), 0, 0.02, -0.76, Math.PI / 2);
+    add(gun, taper(0.10, 0.07, 0.14, gunMetal), 0, 0.02, -0.98, Math.PI / 2);
+    // magazine, cyan charge cell, rail and sights
+    add(gun, taper(0.10, 0.14, 0.25, gunDark), 0, -0.17, -0.18, 0.12);
+    add(gun, box(0.055, 0.15, 0.07, E(0x00e5ff, 1.4), true), 0, -0.15, -0.17, 0.12);
+    add(gun, box(0.035, 0.025, 0.60, metal(0x69767d)), 0, 0.095, -0.34);
+    add(gun, box(0.055, 0.075, 0.025, gunDark), 0, 0.14, -0.12);
+    add(gun, box(0.045, 0.065, 0.020, gunDark), 0, 0.13, -0.82);
+    var zflash = add(gun, cone(0.075, 0.24, E(0xffab3d, 1.9), 5, true), 0, 0.02, -1.12, -Math.PI / 2);
     zflash.visible = false;
+    // A compact, two-handed low-ready stance is the baked rest pose. This is
+    // deliberately non-symmetric, with bent elbows, so a missed animation
+    // tick still cannot expose an A/T-pose on the first rendered frame.
+    p.rightShoulder.rotation.set(1.12, 0.05, -0.16);
+    p.rightElbow.rotation.set(-0.36, 0, 0.04);
+    p.leftShoulder.rotation.set(1.00, -0.18, 0.30);
+    p.leftElbow.rotation.set(-0.62, 0.10, -0.10);
+    A.weaponStance = true;
     A.extraPivots = [gun];
     A.attackFn = function (w, s) {
-      addRot(gun, -0.55 * w + 0.40 * s, 0, 0);
+      // Both arms absorb recoil together; the rifle remains a descendant of
+      // the hand for the entire envelope.
+      addRot(p.rightShoulder, -0.16 * w + 0.24 * s, 0, 0);
+      addRot(p.leftShoulder, -0.13 * w + 0.20 * s, 0, 0);
+      addRot(p.rightElbow, 0.08 * w - 0.14 * s, 0, 0);
+      addRot(p.leftElbow, 0.07 * w - 0.12 * s, 0, 0);
+      addRot(gun, -0.06 * w + 0.12 * s, 0, 0);
       zflash.visible = s > 0.5;
       zflash.scale.set(0.7 + s * 0.7, 0.6 + s * 0.8, 0.7 + s * 0.7);
       zflash.rotation.z = s * 9.1;
     };
+    p.rifle = gun;
+    p.rifleMuzzleFlash = zflash;
     A.blink.push({ o: A.eyeMeshes[0] }, { o: A.eyeMeshes[1] });
     return p;
   };
@@ -1613,7 +1650,9 @@
   // ---------------------------------------------------------------------
 
   var POSES = {
-    3004: { attack: 'gun',    death: 'crumple', aim: 1.25 },
+    // The trooper's rifle is already shouldered in its baked rest pose. The
+    // old 1.25-radian sidearm raise pointed a hand-attached long gun overhead.
+    3004: { attack: 'gun',    death: 'crumple', aim: 0.05 },
     9:    { attack: 'gun',    death: 'crumple' },
     65:   { attack: 'gun',    death: 'crumple', attackDur: 0.5 },
     3001: { attack: 'cast',   death: 'crumple' },
@@ -1893,10 +1932,20 @@
         addRot(lower(L.leftLeg), Math.max(0, sw) * 0.85 * amp, 0, 0);
         addRot(lower(L.rightLeg), Math.max(0, -sw) * 0.85 * amp, 0, 0);
       }
-      addRot(P.leftShoulder, -sw * 0.34 * amp, 0, 0);
-      addRot(P.rightShoulder, sw * 0.34 * amp, 0, 0);
-      addRot(lower(P.leftShoulder), Math.max(0, -sw) * 0.4 * amp, 0, 0);
-      addRot(lower(P.rightShoulder), Math.max(0, sw) * 0.4 * amp, 0, 0);
+      if (A.weaponStance) {
+        // Keep a two-handed long gun shouldered while walking. Independent arm
+        // counter-swing tears the support hand away and reads as a broken rig.
+        var carry = Math.cos(A.walk * 2) * 0.035 * amp;
+        addRot(P.leftShoulder, carry, 0, 0);
+        addRot(P.rightShoulder, carry, 0, 0);
+        addRot(lower(P.leftShoulder), -carry * 0.7, 0, 0);
+        addRot(lower(P.rightShoulder), -carry * 0.7, 0, 0);
+      } else {
+        addRot(P.leftShoulder, -sw * 0.34 * amp, 0, 0);
+        addRot(P.rightShoulder, sw * 0.34 * amp, 0, 0);
+        addRot(lower(P.leftShoulder), Math.max(0, -sw) * 0.4 * amp, 0, 0);
+        addRot(lower(P.rightShoulder), Math.max(0, sw) * 0.4 * amp, 0, 0);
+      }
       // torso counter-rotates and the whole body rocks on each footfall
       addRot(P.torso, Math.abs(Math.cos(A.walk)) * 0.05 * amp, -sw * 0.10 * amp, 0);
       root.z += Math.sin(A.walk * 2) * 0.03 * amp;
