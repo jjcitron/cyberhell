@@ -30,10 +30,23 @@
     ? (typeof window.CYBER_TOUCH === 'boolean' ? window.CYBER_TOUCH
       : (window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false))
     : false;
+  // Quality tier owns the dressing budget now. MOBILE stays as the floor for
+  // a build where cyber-quality.js failed to load, and the tier's own Low
+  // preset is what a coarse pointer resolves to anyway.
+  function Q(key, fallback) {
+    var q = (typeof window !== 'undefined') && window.CyberQuality;
+    return q ? q.get(key, fallback) : fallback;
+  }
   var TOTAL_BUDGET = MOBILE ? 100 : 300;
   var TYPE_BUDGET = MOBILE
     ? { ceilLight: 20, pipe: 26, crate: 20, rack: 10, cable: 14, sign: 10 }
     : { ceilLight: 60, pipe: 80, crate: 60, rack: 30, cable: 40, sign: 30 };
+
+  /* Per-level prop budget: the tier's number, never above what the type
+     tables can actually place. */
+  function totalBudget() {
+    return Math.max(0, Math.min(TOTAL_BUDGET, Q('envPropBudget', TOTAL_BUDGET)));
+  }
 
   // ---- theme detection -----------------------------------------------
   // No raw Doom texture names survive the converter, only the family
@@ -159,7 +172,8 @@
   }
 
   function buildDust(theme) {
-    var count = MOBILE ? 90 : 220;
+    var count = Math.round((MOBILE ? 90 : 220) * Q('envDustScale', 1));
+    if (count < 1) return null;
     var positions = new Float32Array(count * 3);
     dustVel = new Float32Array(count * 3);
     var spread = 26;
@@ -200,7 +214,7 @@
     return rec;
   }
 
-  var budget = TOTAL_BUDGET;
+  var budget = totalBudget();
   // tiltX: extra rotation (radians) around local X applied BEFORE the yaw,
   // e.g. -PI/2 to lay a cylinder (whose default axis is Y, vertical) flat so
   // its axis runs horizontally before rotY turns it to face the wall.
@@ -243,6 +257,9 @@
     _mat.cable = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 0.9 });
     _geo.sign = new THREE.PlaneGeometry(0.5, 0.5);
     _mat.sign = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xff9900, emissiveIntensity: 0.6, roughness: 0.6, side: THREE.DoubleSide });
+    // Cached for the life of the page, so level teardown must not dispose them.
+    Object.keys(_geo).forEach(function (k) { _geo[k]._shared = true; });
+    Object.keys(_mat).forEach(function (k) { _mat[k]._shared = true; });
   }
 
   // Converted levels carry x/z/width/depth on the sector itself. The
@@ -281,7 +298,7 @@
     decorate: function (levelData, engine) {
       if (!scene) return;
       API.clear();
-      budget = TOTAL_BUDGET;
+      budget = totalBudget();
 
       var theme = THEME[detectTheme(levelData)];
       // Sky + fog: tasteful multiplier on the level's own fog, not a
@@ -305,7 +322,7 @@
       }
 
       dustPoints = buildDust(theme);
-      scene.add(dustPoints);
+      if (dustPoints) scene.add(dustPoints);
 
       // Ceiling light fixtures in the brightest rooms.
       sectors.forEach(function (sec) {
