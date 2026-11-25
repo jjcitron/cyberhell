@@ -104,7 +104,7 @@
     9:    'skirmisher',  // Shotgun Guy
     65:   'skirmisher',  // Chaingunner
     3001: 'caster',      // Imp
-    3002: 'rusher',      // Demon
+    3002: 'rusher',      // Gutmaw Brute
     58:   'rusher',      // Spectre
     3005: 'caster',      // Cacodemon (flies)
     69:   'bruiser',     // Hell Knight

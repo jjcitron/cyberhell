@@ -22,7 +22,7 @@
   // ponytail: a lookup table beats asking cyber-enemies.js for a "fleshiness"
   // stat that doesn't exist yet; add one there if this list needs to grow.
   var OIL_HEAVY = { 16: 1, 68: 1, 67: 1, 66: 1, 7: 1 };      // Cyberdemon, Arachnotron, Mancubus, Revenant, Spider Mastermind
-  var BLOOD_HEAVY = { 3001: 1, 3002: 1, 3004: 1 };            // Imp, Demon, Zombieman
+  var BLOOD_HEAVY = { 3001: 1, 3002: 1, 3004: 1 };            // Imp, Gutmaw Brute, Zombieman
 
   function oilRatioFor(enemy) {
     var id = enemy && (enemy.enemyType != null

@@ -30,6 +30,8 @@ const PW = process.env.PLAYWRIGHT_PATH ||
   'C:/Dev/Tools/browserclaw-cli/node_modules/playwright-core';
 const { chromium } = require(PW);
 const SHOTS = path.join(ROOT, 'prototype_artifacts');
+const CHROME = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+  (process.platform !== 'win32' && fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined);
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' };
 
@@ -198,7 +200,11 @@ const PARITY = function () {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const server = await serve();
-  const browser = await chromium.launch({ headless: true, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: CHROME,
+    args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader']
+  });
   const page = await browser.newPage({ viewport: { width: 1100, height: 820 } });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));

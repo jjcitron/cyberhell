@@ -593,7 +593,7 @@
     return p;
   };
 
-  // --- 5. Demon / Pinky (3002): no head, face in chest, gorilla arms ---
+  // --- 5. Gutmaw Brute (3002): no head, face in chest, gorilla arms ----
   BUILDERS[3002] = function (root, A) {
     var pink = flesh(0xe0537d), deep = flesh(0x9c2f52), gum = flesh(0x6d1030);
     var ylw = E(0xffe11a, 2.4);
@@ -648,19 +648,54 @@
 
   // --- 6. Spectre (58): semi-transparent, tall, very skinny ------------
   BUILDERS[58] = function (root, A) {
-    var ghost = M(0x8fd8e6, 0.0, 0.35, { transparent: true, opacity: 0.42, depthWrite: false });
-    var deep = M(0x3f8fa6, 0.0, 0.4, { transparent: true, opacity: 0.34, depthWrite: false });
+    // These materials are deliberately local to one Spectre. Mutating a
+    // matCache entry here would leak the shader and attack pulse to enemies
+    // that happen to share one of its colours.
+    var fresnelMats = [];
+    function fresnelGhost(colorHex, opacity) {
+      var lk = look1('mat', colorHex);
+      var m = new T.MeshStandardMaterial({
+        color: lk.color, metalness: 0.0, roughness: 0.35,
+        transparent: true, opacity: opacity, depthWrite: false
+      });
+      if (lk.slot) slotOfMat.set(m, lk.slot);
+      m.userData.rimStrength = 1.35;
+      m.customProgramCacheKey = function () { return 'spectre-fresnel-v1'; };
+      m.onBeforeCompile = function (shader) {
+        shader.uniforms.uRimColor = { value: new T.Color(0x5cf6ff) };
+        shader.uniforms.uRimPower = { value: 2.2 };
+        shader.uniforms.uRimStrength = { value: m.userData.rimStrength };
+        shader.uniforms.uRimAlphaBoost = { value: 0.42 };
+        shader.fragmentShader =
+          'uniform vec3 uRimColor; uniform float uRimPower; uniform float uRimStrength; uniform float uRimAlphaBoost;\n' +
+          shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n' +
+          'float rimDot = clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0);\n' +
+          'float fresnel = pow(1.0 - rimDot, uRimPower);\n' +
+          'totalEmissiveRadiance += uRimColor * fresnel * uRimStrength;\n' +
+          'diffuseColor.a = clamp(diffuseColor.a + fresnel * uRimAlphaBoost, 0.0, 0.95);'
+        );
+        m.userData.rimUniforms = shader.uniforms;
+      };
+      fresnelMats.push(m);
+      return m;
+    }
+    var coreMat = fresnelGhost(0x5fb8cf, 0.62);
+    var ghost = fresnelGhost(0x8fd8e6, 0.46);
+    var deep = fresnelGhost(0x3f8fa6, 0.38);
     var cy = E(0x2ffcff, 2.6, { transparent: true, opacity: 0.9 });
     var p = humanoid(root, {
       hipY: 1.05, torsoW: 0.30, torsoH: 0.66, torsoD: 0.22, torsoMat: ghost,
-      headSize: 0.24, headMat: ghost, shoulderW: 0.22, upper: 0.44, fore: 0.42,
+      headSize: 0.24, headMat: coreMat, shoulderW: 0.28, upper: 0.44, fore: 0.42,
       armMat: ghost, handMat: ghost, armR: 0.04
       // no legs: it floats on a tattered tail
     });
-    p.torso.children.forEach(function (c) { c.castShadow = false; });
     // ribcage read-through, a spine of cyan nodes, and a shoulder lattice
+    add(p.torso, box(0.055, 0.58, 0.055, coreMat, true), 0, 0.34, 0.05);
     for (var i = 0; i < 5; i++) {
-      add(p.torso, box(0.30 - i * 0.015, 0.02, 0.20, deep, true), 0, 0.12 + i * 0.12, 0);
+      add(p.torso, box(0.30 - i * 0.015, 0.02, 0.20, coreMat, true), 0, 0.12 + i * 0.12, 0);
       add(p.torso, sph(0.022, cy, 6, 4, true), 0, 0.14 + i * 0.12, 0.10);
       add(p.torso, box(0.02, 0.13, 0.02, deep, true), (i % 2 ? 0.13 : -0.13), 0.16 + i * 0.12, -0.02, 0, 0, (i % 2 ? 0.2 : -0.2));
     }
@@ -668,34 +703,46 @@
     [-1, 1].forEach(function (sg) {
       add(p.torso, cyl(0.016, 0.016, 0.22, deep, 5, true), sg * 0.11, 0.60, 0, 0, 0, sg * 1.2);
       var el = p[(sg < 0 ? 'left' : 'right') + 'Elbow'];
-      for (var cw = -1; cw <= 1; cw++) add(el, cone(0.016, 0.20, deep, 4, true), cw * 0.035, -0.55, -0.02, Math.PI * 0.94);
+      add(el, tor(0.055, 0.012, cy, 4, 8, true), 0, -0.43, 0, Math.PI / 2);
+      for (var cw = -1; cw <= 1; cw++) {
+        add(el, cone(0.016, 0.20, deep, 4, true), cw * 0.048, -0.55, -0.02,
+          Math.PI * 0.94, 0, cw * 0.18 * sg);
+      }
     });
-    // shredded tail instead of legs
+    // Three separated lower wisps replace the old single-stick tail.
     var tail = grp(root, 0, 1.05, 0);
-    for (var t = 0; t < 4; t++) {
-      var w = 0.20 - t * 0.03;
-      add(tail, box(w, 0.30, w * 0.7, deep, true), (t % 2 ? 0.04 : -0.04), -0.15 - t * 0.26, 0);
-      A.sway.push({ o: tail, amp: 0.05, f: 0.9, ph: t });
-    }
-    add(tail, cone(0.09, 0.34, deep, 6, true), 0, -0.98, 0, Math.PI);
-    // shredded strands trailing off the tail
-    for (var sd = 0; sd < 3; sd++) {
-      var strand = grp(tail, (sd - 1) * 0.06, -0.86, 0.02);
-      add(strand, box(0.035, 0.26, 0.03, deep, true), 0, -0.13, 0);
-      A.sway.push({ o: strand, amp: 0.22, f: 1.4 + sd * 0.3, ph: sd * 1.7 });
-    }
+    add(tail, cone(0.10, 0.46, deep, 5, true), 0, -0.26, 0, Math.PI);
+    [-1, 1].forEach(function (sg) {
+      var wisp = grp(tail, sg * 0.18, -0.02, 0, -0.12, 0, sg * 0.15);
+      add(wisp, taper(0.14, 0.09, 0.42, ghost, true), 0, -0.19, 0);
+      add(wisp, cone(0.08, 0.46, deep, 5, true), 0, -0.60, 0, Math.PI);
+      A.sway.push({ o: wisp, amp: 0.08, f: 1.1, ph: sg < 0 ? 0.7 : 2.4 });
+    });
     // hollow face
     A.eyeMeshes = eyes(p.head, { mat: cy, y: 0.02, z: -0.115, dx: 0.062, size: 0.065, tall: 1.1 });
     add(p.head, box(0.14, 0.10, 0.03, M(0x06202a, 0, 0.5, { transparent: true, opacity: 0.6 }), true), 0, -0.08, -0.11);
-    p.leftShoulder.rotation.set(0.2, 0, 0.25);
-    p.rightShoulder.rotation.set(0.2, 0, -0.25);
+    p.leftShoulder.rotation.set(0.52, 0, -0.30);
+    p.rightShoulder.rotation.set(0.52, 0, 0.30);
+    p.leftElbow.rotation.set(0.82, 0, 0.18);
+    p.rightElbow.rotation.set(0.82, 0, -0.18);
+    root.traverse(function (o) {
+      if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; }
+    });
     A.bob.push({ o: root, amp: 0.07, f: 0.8, ph: 0 });
     A.pulse.push({ m: cy, base: 2.6, amp: 1.4, f: 0.7, ph: 0 });
     // it sharpens as it comes in and washes out again
     A.attackFn = function (w, s) {
       cy.emissiveIntensity += w * 1.6 + s * 2.4;
-      ghost.opacity = 0.42 + w * 0.30 + s * 0.22;
-      deep.opacity = 0.34 + w * 0.26 + s * 0.20;
+      ghost.opacity = 0.46 + w * 0.26 + s * 0.18;
+      deep.opacity = 0.38 + w * 0.24 + s * 0.18;
+      coreMat.opacity = 0.62 + w * 0.18 + s * 0.12;
+      for (var fm = 0; fm < fresnelMats.length; fm++) {
+        var strength = 1.35 + w * 0.7 + s * 0.85;
+        fresnelMats[fm].userData.rimStrength = strength;
+        if (fresnelMats[fm].userData.rimUniforms) {
+          fresnelMats[fm].userData.rimUniforms.uRimStrength.value = strength;
+        }
+      }
     };
     p.tail = tail;
     return p;
@@ -827,8 +874,101 @@
   BUILDERS[69] = function (root, A) {
     return knight(root, A, { plate: 0xa8b3ba, under: 0x4b5459, accent: 0x00e5ff, grad: [0xcfd8dd, 0x3c454a] });
   };
+
+  // A dedicated horned hell-lord: this intentionally shares only the public
+  // humanoid rig contract with the Hell Knight, never knight() construction.
   BUILDERS[3003] = function (root, A) {
-    var p = knight(root, A, { plate: 0xd9a520, under: 0x6b4a10, accent: 0xff2ec4, grad: [0xffcc3d, 0x4d3208] });
+    var carapace = M(0x7c1c24, 0.35, 0.45);
+    var under = M(0x261a19, 0.30, 0.55);
+    var dark = M(0x151113, 0.35, 0.50);
+    var horn = rough(0xd9ccb2);
+    var accent = E(0x3dff4f, 2.5);
+    var p = humanoid(root, {
+      hipY: 0.90, torsoW: 0.88, torsoH: 0.72, torsoD: 0.50, torsoMat: carapace,
+      headSize: 0.36, headMat: carapace, shoulderW: 0.50, upper: 0.38, fore: 0.34,
+      armMat: under, handMat: dark, armR: 0.11, thigh: 0.44, shin: 0.42,
+      legMat: under, footMat: dark, legR: 0.13,
+      torsoGrad: [0xb02a36, 0x34090d], headGrad: [0xb02a36, 0x34090d]
+    });
+
+    // V-shaped cuirass, gorget, tassets, diamond furnace and stepped vents.
+    var chest = add(p.torso, taper(0.95, 0.70, 0.45, carapace), 0, 0.47, 0);
+    chest.scale.z = 0.58;
+    vgrad(chest, 0xb02a36, 0x34090d);
+    add(p.torso, tor(0.28, 0.055, dark, 4, 12), 0, 0.73, 0, Math.PI / 2);
+    add(p.torso, taper(0.28, 0.38, 0.20, carapace), -0.28, 0.01, 0, 0, 0, -0.13);
+    add(p.torso, taper(0.28, 0.38, 0.20, carapace), 0.28, 0.01, 0, 0, 0, 0.13);
+    var coreRing = add(p.torso, oct(0.28, 0.28, 0.06, dark), 0, 0.48, -0.28, 0, 0, Math.PI / 4);
+    var core = add(p.torso, oct(0.19, 0.19, 0.075, accent, true), 0, 0.48, -0.32, 0, 0, Math.PI / 4);
+    for (var vent = 0; vent < 3; vent++) {
+      add(p.torso, box(0.34 - vent * 0.05, 0.035, 0.035, accent, true), 0, 0.29 - vent * 0.07, -0.28);
+    }
+
+    // Back spines, angled hell-turbines and short cable looms.
+    for (var sp = 0; sp < 3; sp++) {
+      add(p.torso, cone(0.055, 0.22, dark, 5), 0, 0.26 + sp * 0.20, 0.30, -0.38);
+    }
+    [-1, 1].forEach(function (sg) {
+      var turbine = grp(p.torso, sg * 0.27, 0.60, 0.24, 0.20, 0, sg * 0.20);
+      add(turbine, taper(0.16, 0.24, 0.38, dark), 0, 0, 0);
+      add(turbine, cyl(0.09, 0.09, 0.055, accent, 6, true), 0, 0.21, 0);
+      cable(p.torso, { mat: dark, x: sg * 0.18, y: 0.48, z: 0.24, n: 2, len: 0.12, r: 0.025, tilt: sg * 0.22 }, A.sway);
+    });
+
+    // Skull helm, heavy brow, split eyes, jaw fangs and swept bull horns.
+    add(p.head, box(0.42, 0.10, 0.20, dark), 0, 0.08, -0.15);
+    add(p.head, box(0.34, 0.15, 0.18, dark), 0, -0.15, -0.13);
+    for (var fang = -2; fang <= 1; fang++) {
+      add(p.head, cone(0.026, 0.11, horn, 4), (fang + 0.5) * 0.075, -0.20, -0.23, Math.PI);
+    }
+    var eyeL = add(p.head, box(0.12, 0.055, 0.035, accent, true), -0.10, 0.02, -0.24, 0, 0, -0.22);
+    var eyeR = add(p.head, box(0.12, 0.055, 0.035, accent, true), 0.10, 0.02, -0.24, 0, 0, 0.22);
+    add(p.head, cone(0.055, 0.30, horn, 6), 0, 0.31, 0.04, -0.18);
+    [-1, 1].forEach(function (sg) {
+      add(p.head, cyl(0.065, 0.09, 0.34, horn, 6), sg * 0.22, 0.19, 0.02, 0, 0, -sg * 0.85);
+      add(p.head, cone(0.07, 0.34, horn, 6), sg * 0.42, 0.40, -0.03, -0.45, 0, -sg * 0.25);
+    });
+
+    // Forward-ready arms, flared armour, claws and asymmetric plasma barb.
+    ['left', 'right'].forEach(function (side) {
+      var sg = side === 'left' ? -1 : 1;
+      var sh = p[side + 'Shoulder'], el = p[side + 'Elbow'];
+      sh.rotation.set(0.42, 0, sg * 0.24);
+      el.rotation.set(0.72, 0, sg * -0.10);
+      var pauldron = add(sh, taper(0.42, 0.30, 0.22, carapace), sg * 0.04, 0.02, 0, 0, 0, sg * -0.26);
+      vgrad(pauldron, 0xb02a36, 0x34090d);
+      add(sh, cone(0.045, 0.20, horn, 5), sg * 0.15, 0.13, 0, 0, 0, -sg * 0.70);
+      add(sh, cone(0.040, 0.17, horn, 5), sg * 0.04, 0.17, 0.04, -0.20, 0, -sg * 0.35);
+      add(el, taper(0.24, 0.32, 0.30, carapace), 0, -0.19, 0);
+      add(el, tor(0.13, 0.025, accent, 4, 10, true), 0, -0.37, 0, Math.PI / 2);
+      for (var claw = -1; claw <= 1; claw++) {
+        add(el, cone(0.025, 0.17, horn, 4), claw * 0.065, -0.52, -0.08, Math.PI * 0.94, 0, claw * 0.12 * sg);
+      }
+      var knee = p.limbs[side + 'Leg'].userData.lower;
+      add(knee, cone(0.05, 0.19, horn, 5), 0, 0.02, -0.15, -Math.PI / 2);
+      var greave = add(knee, taper(0.24, 0.32, 0.42, carapace), 0, -0.22, 0);
+      vgrad(greave, 0xb02a36, 0x34090d);
+      add(knee, cone(0.045, 0.18, horn, 5), -0.07, -0.46, -0.18, -Math.PI / 2);
+      add(knee, cone(0.045, 0.18, horn, 5), 0.07, -0.46, -0.18, -Math.PI / 2);
+    });
+    add(p.rightElbow, box(0.13, 0.34, 0.12, dark), 0.16, -0.22, -0.05, 0.10, 0, -0.20);
+    var barb = add(p.rightElbow, box(0.045, 0.38, 0.05, accent, true), 0.23, -0.27, -0.08, 0.10, 0, -0.20);
+
+    // Broad but grounded stance; counter-rotation keeps the soles level.
+    p.leftHip.rotation.z = -0.07;
+    p.rightHip.rotation.z = 0.07;
+    p.leftHip.userData.lower.rotation.z = 0.07;
+    p.rightHip.userData.lower.rotation.z = -0.07;
+    A.eyeMeshes = [eyeL, eyeR];
+    A.blink.push({ o: eyeL }, { o: eyeR });
+    A.pulse.push({ m: accent, base: 2.5, amp: 0.8, f: 1.25, ph: 0 });
+    A.attackFn = function (w, s) {
+      var flare = 1 + w * 0.85 + s * 0.35;
+      core.scale.setScalar(flare);
+      accent.emissiveIntensity = 2.5 + w * 3.2 + s * 1.2;
+      barb.scale.y = 1 + w * 0.18 + s * 0.32;
+      coreRing.rotation.z = Math.PI / 4 + w * 0.10;
+    };
     root.scale.setScalar(1.25);
     return p;
   };
@@ -866,6 +1006,7 @@
       add(pod, cyl(0.04, 0.04, 0.14, rim, 6), sgn * -0.11, -0.02, 0.06, 0, 0, Math.PI / 2);
       pods.push(pod);
       p[side + 'Shoulder'].rotation.set(0.3, 0, sgn * 0.2);
+      p[side + 'Elbow'].rotation.set(0.45, 0, 0);
     });
     // skull head, green sockets
     add(p.head, box(0.22, 0.12, 0.14, bone), 0, -0.10, -0.12);
@@ -1176,7 +1317,7 @@
     // intertwined legs that slide past each other instead of stepping
     var legs = [];
     [-1, 1].forEach(function (sgn) {
-      var lg = grp(root, sgn * 0.20, 1.10, 0);
+      var lg = grp(root, sgn * 0.20, 1.08, 0);
       add(lg, cyl(0.13, 0.17, 0.62, silver, 8), 0, -0.31, 0, 0, 0, -sgn * 0.10);
       add(lg, cyl(0.11, 0.09, 0.44, dark, 8), sgn * 0.06, -0.82, 0);
       vgrad(add(lg, oct(0.24, 0.10, 0.42, silver), sgn * 0.08, -1.03, -0.06), 0xd3dce1, 0x424b50);
@@ -1185,9 +1326,9 @@
       add(lg, cyl(0.022, 0.022, 0.30, dark, 5), sgn * 0.11, -0.84, 0.08);
       add(lg, tor(0.09, 0.022, dark, 4, 10), sgn * 0.06, -0.98, 0, Math.PI / 2);
       for (var k = 0; k < 3; k++) add(lg, tor(0.15, 0.03, dark, 4, 10), 0, -0.14 - k * 0.22, 0, Math.PI / 2);
-      lg.userData.rest = 1.10;
+      lg.userData.rest = 1.08;
       legs.push(lg);
-      A.slide.push({ o: lg, amp: 0.09, f: 2.2, ph: sgn > 0 ? Math.PI : 0, y0: 1.10 });
+      A.slide.push({ o: lg, amp: 0.09, f: 2.2, ph: sgn > 0 ? Math.PI : 0, y0: 1.08 });
     });
     A.pulse.push({ m: red, base: 2.4, amp: 1.1, f: 1.6, ph: 0 }, { m: cy, base: 1.8, amp: 0.6, f: 2.2, ph: 1 });
     A.eyeMeshes = ey;
@@ -1339,7 +1480,7 @@
 
   var NAMES = {
     3004: 'Zombieman', 9: 'Shotgun Guy', 65: 'Chaingunner', 3001: 'Imp',
-    3002: 'Demon', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
+    3002: 'Gutmaw Brute', 58: 'Spectre', 3005: 'Cacodemon', 69: 'Hell Knight',
     3003: 'Baron of Hell', 66: 'Revenant', 67: 'Mancubus', 68: 'Arachnotron',
     64: 'Archvile', 16: 'Cyberdemon', 7: 'Spider Mastermind'
   };
@@ -1839,7 +1980,10 @@
     }
     for (i = 0; i < A.slide.length; i++) {
       o = A.slide[i];
-      o.o.position.y = o.y0 + Math.sin(t * o.f * (moving ? 2.2 : 0.6) + o.ph) * o.amp;
+      var slideLift = A.gait > 0.01
+        ? Math.max(0, Math.sin(t * o.f * 2.2 + o.ph)) * o.amp * A.gait
+        : 0;
+      o.o.position.y = o.y0 + slideLift;
     }
     for (i = 0; i < A.flame.length; i++) {
       o = A.flame[i];

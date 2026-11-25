@@ -16,7 +16,7 @@
      (that file exposes stats but no names). */
   var ENEMY_TYPES = [
     [3004, 'Zombieman'], [9, 'Shotgun Guy'], [65, 'Chaingunner'], [3001, 'Imp'],
-    [3002, 'Demon'], [58, 'Spectre'], [3005, 'Cacodemon'], [69, 'Hell Knight'],
+    [3002, 'Gutmaw Brute'], [58, 'Spectre'], [3005, 'Cacodemon'], [69, 'Hell Knight'],
     [3003, 'Baron of Hell'], [66, 'Revenant'], [67, 'Mancubus'], [68, 'Arachnotron'],
     [64, 'Archvile'], [16, 'Cyberdemon'], [7, 'Spider Mastermind']
   ];
