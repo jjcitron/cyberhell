@@ -1003,8 +1003,12 @@
     add(p.torso, tor(0.28, 0.055, dark, 4, 12), 0, 0.73, 0, Math.PI / 2);
     add(p.torso, taper(0.28, 0.38, 0.20, carapace), -0.28, 0.01, 0, 0, 0, -0.13);
     add(p.torso, taper(0.28, 0.38, 0.20, carapace), 0.28, 0.01, 0, 0, 0, 0.13);
-    var coreRing = add(p.torso, oct(0.28, 0.28, 0.06, accentRim), 0, 0.48, -0.28, 0, 0, Math.PI / 4);
-    var core = add(p.torso, oct(0.19, 0.19, 0.075, accent, true), 0, 0.48, -0.32, 0, 0, Math.PI / 4);
+    var coreRing = add(p.torso, oct(0.22, 0.22, 0.06, accentRim), 0, 0.48, -0.28, 0, 0, Math.PI / 4);
+    var core = add(p.torso, oct(0.16, 0.16, 0.075, accent, true), 0, 0.48, -0.32, 0, 0, Math.PI / 4);
+    // oct() stores its authored dimensions in mesh.scale. Keep that vector:
+    // setScalar() here used to replace 0.16 x 0.16 x 0.075 with a 1-2 unit
+    // cube on the first cast, leaving a giant bright slab over the whole rig.
+    var coreBaseScale = core.scale.clone();
     for (var vent = 0; vent < 3; vent++) {
       add(p.torso, box(0.34 - vent * 0.05, 0.035, 0.035, accentRim, true), 0, 0.29 - vent * 0.07, -0.28);
     }
@@ -1068,10 +1072,10 @@
     A.blink.push({ o: eyeL }, { o: eyeR });
     A.pulse.push({ m: accent, base: 2.5, amp: 0.8, f: 1.25, ph: 0 }, { m: accentRim, base: 2.5, amp: 0.8, f: 1.25, ph: 0 });
     A.attackFn = function (w, s) {
-      var flare = 1 + w * 0.85 + s * 0.35;
-      core.scale.setScalar(flare);
-      accent.emissiveIntensity = 2.5 + w * 3.2 + s * 1.2;
-      accentRim.emissiveIntensity = 2.5 + w * 3.2 + s * 1.2;
+      var flare = 1 + w * 0.18 + s * 0.08;
+      core.scale.copy(coreBaseScale).multiplyScalar(flare);
+      accent.emissiveIntensity = 2.5 + w * 1.2 + s * 0.45;
+      accentRim.emissiveIntensity = 2.5 + w * 1.2 + s * 0.45;
       barb.scale.y = 1 + w * 0.18 + s * 0.32;
       coreRing.rotation.z = Math.PI / 4 + w * 0.10;
     };

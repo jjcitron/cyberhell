@@ -2608,6 +2608,9 @@ class HudFace {
    ========================================================================== */
 const PROJECTILE_KINDS = {
   fireball:     { color: 0xff5500, halo: 0xff8800, light: 0xff5500, dmg: 14, speed: 12, radius: 0.32, life: 4.0 },
+  // The Daimyo casts at player eye height. Keep the whole glow silhouette,
+  // not just its solid core, below 15% of a portrait viewport at 6 m.
+  daimyo_fireball: { color: 0xff5500, halo: 0xff8800, light: 0xff5500, dmg: 28, speed: 12, radius: 0.14, life: 4.0 },
   plasma:       { color: 0xff22ee, halo: 0xff66ff, light: 0xff22ee, dmg: 16, speed: 16, radius: 0.30, life: 3.5, stretch: true },
   laser:        { color: 0x22ffff, halo: 0x66ffff, light: 0x33ffff, dmg: 12, speed: 42, radius: 0.16, life: 2.0, stretch: true, thin: true },
   energy_bolt:  { color: 0x00ffff, halo: 0x00ffff, light: 0x00ffff, dmg: 22, speed: 34, radius: 0.22, life: 2.5, ring: true },
@@ -6621,8 +6624,10 @@ class CyberDoomEngine {
       return;
     }
 
-    // Projectile kinds: fireball / plasma / laser.
-    const kind = (attack === 'laser' || attack === 'plasma') ? attack : 'fireball';
+    // Projectile kinds: fireball (including the compact Daimyo variant) / plasma / laser.
+    const kind = parseInt(enemy.enemyType, 10) === 3003
+      ? 'daimyo_fireball'
+      : ((attack === 'laser' || attack === 'plasma') ? attack : 'fireball');
     this.sound.playMonsterFireball();
     const from = enemy.group.position.clone();
     // Flyers already sit at hover height, so the shot leaves from there.
@@ -6654,7 +6659,7 @@ class CyberDoomEngine {
   /* -------------------------------------------------------------------
      PROJECTILE API (engine.spawnProjectile) -- consumed by weapons for
      player shots and by enemyAttack above for enemy attacks.
-     kind: fireball | plasma | laser | energy_bolt | energy_burst
+     kind: fireball | daimyo_fireball | plasma | laser | energy_bolt | energy_burst
      ------------------------------------------------------------------- */
   spawnProjectile({ from, dir, speed, kind = 'fireball', owner = 'enemy', damage, radius, life }) {
     const cfg = PROJECTILE_KINDS[kind] || PROJECTILE_KINDS.fireball;
